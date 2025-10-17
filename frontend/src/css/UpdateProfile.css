@@ -1,0 +1,137 @@
+.settings-wrap {
+  background: #edf2fb;
+  min-height: 100vh;
+  padding: 24px 0;
+}
+
+.settings-card {
+  width: min(960px, 92vw);
+  margin: 0 auto;
+  background: #fff;
+  border: 1px solid #d7e3ff;
+  border-radius: 12px;
+  box-shadow: 0 10px 24px rgba(20,40,120,.08);
+  padding: 18px;
+}
+
+.settings-card h2 { margin:0 0 12px; }
+
+.tabs {
+  display: flex; 
+  gap: 10px; 
+  margin: 8px 0 14px;
+}
+
+.tabs button {
+  padding: 8px 12px; 
+  border: 1px solid #d7e3ff; 
+  background: #f7faff; 
+  border-radius: 8px;
+  cursor: pointer; 
+  font-weight: 600;
+}
+
+.tabs button.active {
+  background: #e6efff; 
+  border-color: #8fb1ff; 
+  color: #0a2d88;
+}
+
+.settings-msg {
+  margin: 6px 0 10px; 
+  color: #0a2d88; 
+  font-weight: 600;
+}
+
+.form { display:block; }
+
+.form-row { 
+  display: flex; 
+  gap: 12px; 
+}
+
+.form-row .half { flex: 1; }
+
+.form-group { 
+  display: flex; 
+  flex-direction: column; 
+  gap: 6px; 
+  margin-bottom: 12px; 
+}
+
+.form-group label { font-weight: 600; }
+
+.form-group input, .form-group textarea {
+  border: 1px solid #cfdaf7; 
+  border-radius: 8px; 
+  padding: 10px; 
+  outline: none;
+  background: #fafcff;
+}
+
+.form-group input:focus, .form-group textarea:focus {
+  border-color: #0057ff; 
+  box-shadow: 0 0 0 3px rgba(0,87,255,.12);
+}
+
+.form-group small { color: #6c757d; }
+
+.checkbox { 
+  display: flex; 
+  align-items: center; 
+  gap: 8px; 
+}
+
+.muted { color: #6c757d; }
+
+.save-btn {
+  width: 100%; 
+  padding: 12px; 
+  border: none; 
+  border-radius: 8px; 
+  cursor: pointer;
+  background: #0057ff; 
+  color: #fff; font-weight: 700;
+}
+
+.save-btn:hover { background: #0a2d88; }
+
+@media (max-width: 640px){
+  .form-row { flex-direction: column; }
+}
+
+/* Privacy block */
+.privacy-box {
+  margin-top: 12px;
+}
+
+.policy-line {
+  font-size: 18px;
+  line-height: 1.6;
+  color: #2b2f42;
+  background: #f6f7fb;
+  border: 1px solid #e6ebff;
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+
+.policy-link {
+  color: #0a2d88;
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+.policy-link:hover {
+  color: #0057ff;
+  text-decoration: none;
+}
+
+.alert {
+  margin: 10px 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-weight: 600;
+}
+.alert.info    { background: #eef5ff; color: #0a2d88; border: 1px solid #cfe0ff; }
+.alert.success { background: #e8f7ed; color: #51CF66; border: 1px solid #bfe9cd; }
+.alert.error   { background: #fdecea; color: #FA5252; border: 1px solid #f5c2c7; }

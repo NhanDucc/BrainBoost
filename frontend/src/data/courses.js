@@ -1,0 +1,252 @@
+import placeholder from "../images/skills-placeholder.png";
+
+export const SUBJECTS = [
+  { key: "math",     name: "Mathematics" },
+  { key: "english",  name: "English" },
+  { key: "physics",  name: "Physics" },
+  { key: "chemistry",name: "Chemistry" },
+];
+
+// Nếu sau này bạn có nhiều ảnh, map key -> import ở đây
+export const THUMBS = {
+  placeholder,
+};
+
+// Data khoá học mẫu
+export const COURSES = [
+  // -------------------- MATHEMATICS --------------------
+  {
+    id: "m6-found",
+    subject: "math",
+    title: "Math Grade 6 – Fundamentals",
+    subtitle: "Fractions, decimals, factors, and early algebraic thinking.",
+    gradeMin: 6, gradeMax: 6,
+    lessons: 42, hours: 36, level: "Beginner",
+    priceUSD: 25, rating: 4.7, students: 820,
+    thumbKey: "placeholder",
+    isFeatured: false,
+    tags: ["Grade 6", "Foundations"],
+  },
+  {
+    id: "m7-prealgebra",
+    subject: "math",
+    title: "Pre-Algebra (Grade 7–8)",
+    subtitle: "Expressions, equations, ratios, and proportional reasoning.",
+    gradeMin: 7, gradeMax: 8,
+    lessons: 48, hours: 40, level: "Beginner",
+    priceUSD: 29, rating: 4.8, students: 910,
+    thumbKey: "placeholder",
+    isFeatured: false,
+    tags: ["Grade 7", "Grade 8", "Pre-Algebra"],
+  },
+  {
+    id: "m9-algebra1",
+    subject: "math",
+    title: "Algebra I Essentials (Grade 9)",
+    subtitle: "Linear equations, functions, systems and inequalities.",
+    gradeMin: 9, gradeMax: 9,
+    lessons: 60, hours: 52, level: "Intermediate",
+    priceUSD: 32, rating: 4.8, students: 1200,
+    thumbKey: "placeholder",
+    isFeatured: true,
+    tags: ["Grade 9", "Algebra"],
+  },
+  {
+    id: "m10-geometry",
+    subject: "math",
+    title: "Geometry Essentials (Grade 10)",
+    subtitle: "Triangles, similarity, circle theorems, coordinate geometry.",
+    gradeMin: 10, gradeMax: 10,
+    lessons: 58, hours: 50, level: "Intermediate",
+    priceUSD: 32, rating: 4.7, students: 960,
+    thumbKey: "placeholder",
+    isFeatured: false,
+    tags: ["Grade 10", "Geometry"],
+  },
+  {
+    id: "m11-calculus",
+    subject: "math",
+    title: "Calculus: From Basics to Advanced (Grade 11–12)",
+    subtitle: "Limits, derivatives, integrals and applications.",
+    gradeMin: 11, gradeMax: 12,
+    lessons: 45, hours: 35, level: "Advanced",
+    priceUSD: 40, rating: 4.9, students: 1120,
+    thumbKey: "placeholder",
+    isFeatured: true,
+    tags: ["Calculus", "Grade 11", "Grade 12"],
+  },
+  {
+    id: "m12-examprep",
+    subject: "math",
+    title: "Advanced Math Grade 12 – University Entrance Prep 2025",
+    subtitle: "Full revision + mock tests & time-saving strategies.",
+    gradeMin: 12, gradeMax: 12,
+    lessons: 60, hours: 56, level: "Advanced",
+    priceUSD: 40, rating: 4.9, students: 1780,
+    thumbKey: "placeholder",
+    isFeatured: true,
+    tags: ["Exam Prep", "Grade 12"],
+  },
+
+  // -------------------- ENGLISH --------------------
+  {
+    id: "e6-grammar",
+    subject: "english",
+    title: "English Grade 6 – Grammar & Writing",
+    subtitle: "Core grammar, sentence building, and paragraph writing.",
+    gradeMin: 6, gradeMax: 6,
+    lessons: 40, hours: 34, level: "Beginner",
+    priceUSD: 25, rating: 4.7, students: 650,
+    thumbKey: "placeholder",
+    isFeatured: false,
+    tags: ["Grade 6", "Writing"],
+  },
+  {
+    id: "e8-reading",
+    subject: "english",
+    title: "Reading Comprehension (Grade 7–8)",
+    subtitle: "Skimming, scanning, inference & summarizing skills.",
+    gradeMin: 7, gradeMax: 8,
+    lessons: 44, hours: 36, level: "Beginner",
+    priceUSD: 27, rating: 4.7, students: 720,
+    thumbKey: "placeholder",
+    isFeatured: false,
+    tags: ["Reading", "Grade 7", "Grade 8"],
+  },
+  {
+    id: "e9-grammarMastery",
+    subject: "english",
+    title: "English Mastery – Comprehensive Grammar for High School",
+    subtitle: "Tenses, clauses, modifiers and advanced sentence style.",
+    gradeMin: 9, gradeMax: 10,
+    lessons: 55, hours: 60, level: "Intermediate",
+    priceUSD: 30, rating: 4.8, students: 980,
+    thumbKey: "placeholder",
+    isFeatured: true,
+    tags: ["Grammar", "High School"],
+  },
+  {
+    id: "e12-vocab1000",
+    subject: "english",
+    title: "Accelerate 1,000+ Vocabulary Words for University Exams",
+    subtitle: "Topic-based vocabulary, collocations & test practice.",
+    gradeMin: 11, gradeMax: 12,
+    lessons: 40, hours: 45, level: "Advanced",
+    priceUSD: 35, rating: 4.8, students: 1100,
+    thumbKey: "placeholder",
+    isFeatured: true,
+    tags: ["Vocabulary", "Exam Prep"],
+  },
+
+  // -------------------- PHYSICS --------------------
+  {
+    id: "p7-basics",
+    subject: "physics",
+    title: "Physics Grade 7 – Basics",
+    subtitle: "Measurement, motion, force and simple energy ideas.",
+    gradeMin: 7, gradeMax: 7,
+    lessons: 36, hours: 30, level: "Beginner",
+    priceUSD: 24, rating: 4.6, students: 520,
+    thumbKey: "placeholder",
+    isFeatured: false,
+    tags: ["Grade 7", "Foundations"],
+  },
+  {
+    id: "p10-mechanics",
+    subject: "physics",
+    title: "Mechanics & Electricity (Grade 10–11)",
+    subtitle: "Kinematics, dynamics, work-power, DC circuits & more.",
+    gradeMin: 10, gradeMax: 11,
+    lessons: 52, hours: 44, level: "Intermediate",
+    priceUSD: 32, rating: 4.8, students: 880,
+    thumbKey: "placeholder",
+    isFeatured: false,
+    tags: ["Mechanics", "Electricity"],
+  },
+  {
+    id: "p12-intense",
+    subject: "physics",
+    title: "Physics Grade 12 – Intensive Exam Prep",
+    subtitle: "Full syllabus review, past papers, and exam tactics.",
+    gradeMin: 12, gradeMax: 12,
+    lessons: 50, hours: 48, level: "Advanced",
+    priceUSD: 40, rating: 4.9, students: 1340,
+    thumbKey: "placeholder",
+    isFeatured: true,
+    tags: ["Exam Prep", "Grade 12"],
+  },
+  {
+    id: "p12-golden",
+    subject: "physics",
+    title: "Golden Formulas – Solve Every Physics Question Faster",
+    subtitle: "Formula maps + shortcuts for speed & accuracy.",
+    gradeMin: 11, gradeMax: 12,
+    lessons: 25, hours: 30, level: "Advanced",
+    priceUSD: 28, rating: 4.7, students: 770,
+    thumbKey: "placeholder",
+    isFeatured: true,
+    tags: ["Formula", "Shortcuts"],
+  },
+
+  // -------------------- CHEMISTRY --------------------
+  {
+    id: "c8-intro",
+    subject: "chemistry",
+    title: "Chemistry Grade 8 – Introduction",
+    subtitle: "Particles, mixtures, periodic table basics & bonding.",
+    gradeMin: 8, gradeMax: 8,
+    lessons: 38, hours: 32, level: "Beginner",
+    priceUSD: 24, rating: 4.6, students: 540,
+    thumbKey: "placeholder",
+    isFeatured: false,
+    tags: ["Grade 8", "Foundations"],
+  },
+  {
+    id: "c11-organic",
+    subject: "chemistry",
+    title: "Organic Chemistry Basics (Grade 11)",
+    subtitle: "Hydrocarbons, reactions, isomerism & mechanisms.",
+    gradeMin: 11, gradeMax: 11,
+    lessons: 42, hours: 36, level: "Intermediate",
+    priceUSD: 30, rating: 4.7, students: 680,
+    thumbKey: "placeholder",
+    isFeatured: false,
+    tags: ["Organic", "Grade 11"],
+  },
+  {
+    id: "c12-exam",
+    subject: "chemistry",
+    title: "Chemistry Essentials – University Exam Review 2025",
+    subtitle: "Thermo, kinetics, equilibria, electrochemistry + mocks.",
+    gradeMin: 12, gradeMax: 12,
+    lessons: 55, hours: 52, level: "Advanced",
+    priceUSD: 40, rating: 4.9, students: 1210,
+    thumbKey: "placeholder",
+    isFeatured: true,
+    tags: ["Exam Prep", "Grade 12"],
+  },
+  {
+    id: "c11-equations",
+    subject: "chemistry",
+    title: "Chemical Equations & Stoichiometry Mastery",
+    subtitle: "Balancing, limiting reactants, yield and titration.",
+    gradeMin: 10, gradeMax: 12,
+    lessons: 34, hours: 28, level: "Intermediate",
+    priceUSD: 27, rating: 4.7, students: 740,
+    thumbKey: "placeholder",
+    isFeatured: false,
+    tags: ["Stoichiometry"],
+  },
+];
+
+// ===== Helpers cho UI =====
+export const getCoursesBySubject = (subjectKey) =>
+  COURSES.filter((c) => c.subject === subjectKey);
+
+export const filterByGradeRange = (minGrade, maxGrade) =>
+  COURSES.filter((c) => c.gradeMin >= minGrade && c.gradeMax <= maxGrade);
+
+export const featuredBySubject = (subjectKey) =>
+  COURSES.filter((c) => c.subject === subjectKey && c.isFeatured);
+
+export const pickThumb = (thumbKey) => THUMBS[thumbKey] || placeholder;

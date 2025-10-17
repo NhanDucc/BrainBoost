@@ -1,0 +1,39 @@
+# ========================
+# Node dependencies
+# ========================
+backend/node_modules/
+frontend/node_modules/
+
+# ========================
+# Build and cache
+# ========================
+frontend/build/
+frontend/dist/
+frontend/.cache/
+backend/build/
+backend/dist/
+backend/temp/
+
+# ========================
+# Editor settings
+# ========================
+.vscode/
+*.swp
+*.idea/
+*.sublime-workspace
+
+# ========================
+# System files
+# ========================
+.DS_Store
+Thumbs.db
+
+# ========================
+# Logs
+# ========================
+*.log
+
+# ========================
+# Environment files
+# ========================
+# backend/.env   #This file does not need to be ignored because to use between PC and Laptop

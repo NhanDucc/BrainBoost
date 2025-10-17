@@ -1,0 +1,101 @@
+.contact-wrap{
+  min-height: calc(100vh - 140px);
+  background: #edf2fb;
+  padding: 48px 16px;
+  display: grid;
+  place-items: start center;
+}
+
+.contact-card{
+  width: min(860px, 96vw);
+  background: white;
+  border-radius: 16px;
+  border: 2px solid #d4dcf5;
+  box-shadow: 0 16px 40px rgba(13,110,253,.12);
+  padding: 24px 24px 28px;
+}
+
+.contact-card h1{
+  margin: 0 0 6px;
+  font-size: 36px;
+  color: #0057FF;
+}
+
+.lead{ color:#6b7b99; margin-bottom: 16px; }
+
+.alert{
+  padding: 10px 12px;
+  border-radius: 10px;
+  margin-bottom: 14px;
+  font-weight: 600;
+}
+.alert-success{ color:#51CF66; background:#d1e7dd; border:1px solid #badbcc; }
+.alert-error{ color:#FA5252; background:#f8d7da; border:1px solid #f5c2c7; }
+
+.contact-form{ width: 100%; }
+
+.contact-form *, .contact-card, .contact-wrap { box-sizing: border-box; }
+
+.contact-form .row.two{
+  display: grid;
+  grid-template-columns: minmax(0,1fr) minmax(0,1fr);
+  gap: 14px;
+}
+.contact-form .row.two .form-group{ min-width: 0; }
+
+.form-group{ margin-bottom: 12px; }
+.form-group label{
+  display:block; font-weight:700; margin-bottom:6px; color:#1a1a1a;
+}
+.form-group label span{ color:#FA5252; }
+
+.contact-form input,
+.contact-form select,
+.contact-form textarea{
+  width: 100%;
+  max-width: 100%;
+  padding: 12px 14px;
+  border: 1px solid #cfe0ff;
+  border-radius: 10px;
+  outline: none;
+  background: #f9fbff;
+  font-size: 15px;
+}
+
+.contact-form textarea{
+  resize: vertical;
+  min-height: 140px;
+}
+
+.contact-form .readonly,
+.contact-form input[disabled]{
+  background: #f1f5ff;
+  color: #445;
+  cursor: not-allowed;
+  border-color: #e0e6ff;
+}
+.contact-form input[disabled]:focus{
+  box-shadow: none;
+  border-color: #e0e6ff;
+}
+
+.contact-form input:focus,
+.contact-form select:focus,
+.contact-form textarea:focus{
+  border-color:#0d6efd; box-shadow: 0 0 0 4px rgba(13,110,253,.15);
+  background:white;
+}
+
+.btn-send{
+  display:inline-block;
+  padding: 14px 22px;
+  color:white; font-weight:800; font-size:16px;
+  border:0; border-radius:12px; cursor:pointer;
+  background: linear-gradient(180deg, #0d6efd 0%, #0a58ca 100%);
+  box-shadow: 0 14px 32px rgba(13,110,253,.35);
+}
+.btn-send:hover{ background:#0A2D88; }
+
+@media (max-width:720px){
+  .contact-form .row.two{ grid-template-columns: 1fr; }
+}

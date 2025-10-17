@@ -1,0 +1,146 @@
+/* --- Header bar --- */
+.header {
+  background: #0057FF;
+  padding: 1rem 2rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border: none;
+}
+
+.logo {
+  font-size: 30px;
+  font-weight: 800;
+  color: white;
+  text-decoration: none;
+}
+.logo:hover { color: #0A2D88; }
+
+.header nav a {
+  font-weight: 700;
+  font-size: 20px;
+  margin: 0 10px;
+  text-decoration: none;
+  color: white;
+}
+.header nav a:hover { color: #0A2D88; }
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.account-link {
+  text-decoration: none;
+  background-color: white;
+  color: #0A2D88;
+  font-weight: bold;
+  padding: 6px 12px;
+  border: 2px solid #0A2D88;
+  border-radius: 5px;
+  transition: background 0.3s ease;
+}
+
+.account-link:hover {
+  background: #0A2D88;
+  color: white;
+}
+
+.user-menu {
+  position: relative;
+}
+
+.avatar {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  cursor: pointer;
+  object-fit: cover;
+  border: 3px solid #0A2D88;
+}
+
+/* Dropdown container */
+.dropdown-menu {
+  position: absolute;
+  right: 0;
+  top: 50px;
+  background: #edf2fb;
+  border-radius: 12px;
+  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.2);
+  width: 220px;
+  padding: 16px;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* Avatar circle in dropdown */
+.dropdown-menu .dropdown-avatar {
+  width: 70px;
+  height: 70px;
+  border-radius: 50%;
+  background: #eee;
+  margin-bottom: 10px;
+  border: 3px solid #0A2D88;
+}
+
+/* Username label */
+.dropdown-menu .dropdown-name {
+  font-weight: bold;
+  font-size: 23px;
+  margin-bottom: 15px;
+}
+
+/* Menu items */
+.dropdown-menu .menu-item {
+  width: 100%;
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  transition: background 0.2s ease;
+  cursor: pointer;
+  text-decoration: none;
+  color: #333;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.dropdown-menu .menu-icon {
+  font-size: 18px;
+  color: #333;
+}
+
+.dropdown-menu .arrow {
+  font-size: 16px;
+  color: #999;
+}
+
+.dropdown-menu .menu-item:hover {
+  background-color: #D9E5FD;
+}
+
+.dropdown-menu .menu-item button {
+  background: none;
+  border: none;
+  font: inherit;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+}
+
+.dropdown-menu .menu-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dropdown-menu .menu-left a {
+  text-decoration: none;
+  color: #333;
+  font-weight: 500;
+  display: block;
+}

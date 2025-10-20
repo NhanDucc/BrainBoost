@@ -36,4 +36,4 @@ Thumbs.db
 # ========================
 # Environment files
 # ========================
-# backend/.env   #This file does not need to be ignored because to use between PC and Laptop
+backend/.env

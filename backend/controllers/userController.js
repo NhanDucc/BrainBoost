@@ -1,5 +1,6 @@
 const bcrypt = require('bcryptjs');
 const User = require('../models/User');
+const cloudinary = require('../cloudinaryConfig');
 
 // GET /api/users/me  -> lấy hồ sơ (ẩn password)
 exports.getMe = async (req, res) => {
@@ -62,15 +63,19 @@ exports.updateAvatar = async (req, res) => {
     try {
         if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
 
-        const url = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+        const result = await cloudinary.uploader.upload(req.file.path, {
+            folder: 'avatars', // You can specify the folder name
+        });
+
+        const avatarUrl = result.secure_url;
 
         const user = await User.findByIdAndUpdate(
-        req.userId,
-        { $set: { avatarUrl: url } },
-        { new: true }
+            req.userId,
+            { $set: { avatarUrl } },
+            { new: true }
         ).select('-password');
 
-        res.json({ message: 'Avatar updated', avatarUrl: user.avatarUrl, updatedAt: user.updatedAt });
+        res.json({ message: 'Avatar updated', avatarUrl: user.avatarUrl });
     } catch (e) {
         res.status(500).json({ message: 'Upload failed', error: e.message });
     }
@@ -80,15 +85,20 @@ exports.updateAvatar = async (req, res) => {
 exports.updateBanner = async (req, res) => {
     try {
         if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
-        const url = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+
+        const result = await cloudinary.uploader.upload(req.file.path, {
+            folder: 'banners', // You can specify the folder name
+        });
+
+        const bannerUrl = result.secure_url;
 
         const user = await User.findByIdAndUpdate(
-        req.userId,
-        { $set: { bannerUrl: url } },
-        { new: true }
+            req.userId,
+            { $set: { bannerUrl } },
+            { new: true }
         ).select('-password');
 
-        res.json({ message: 'Banner updated', bannerUrl: user.bannerUrl, updatedAt: user.updatedAt });
+        res.json({ message: 'Banner updated', bannerUrl: user.bannerUrl });
     } catch (e) {
         res.status(500).json({ message: 'Upload failed', error: e.message });
     }

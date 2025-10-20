@@ -221,10 +221,9 @@ export default function Profile() {
     const isAdmin = role === "admin";
 
     // Avatar/Banner
-    const rawAvatar = user?.avatarUrl ? toAbsolute(user.avatarUrl) : defaultAvatar;
-    const avatarSrc = user?.avatarUrl ? withBust(rawAvatar, user.updatedAt) : defaultAvatar;
-    const rawBanner = user?.bannerUrl ? toAbsolute(user.bannerUrl) : "";
-    const bannerSrc = rawBanner ? withBust(rawBanner, user.updatedAt) : "";
+    const rawAvatar = user?.avatarUrl || defaultAvatar;
+    const avatarSrc = user?.avatarUrl ? rawAvatar : defaultAvatar;
+    const bannerSrc = user?.bannerUrl || "https://via.placeholder.com/1200x300?text=Cover+Image";
 
     const [myTests, setMyTests] = useState([]);
     const [itLoading, setItLoading] = useState(false);
@@ -259,7 +258,7 @@ export default function Profile() {
             {/* Cover */}
             <div className="profile-cover">
             <img
-                src={bannerSrc || "https://via.placeholder.com/1200x300?text=Cover+Image"}
+                src={bannerSrc}
                 alt="Cover"
                 className="cover-fake-image"
             />

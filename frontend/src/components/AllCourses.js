@@ -1,58 +1,71 @@
-import React, { use, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import "../css/AllCourses.css";
-import { COURSES, SUBJECTS, pickThumb } from "../data/courses";
 import SiteHeader from "./Header";
 import SiteFooter from "./Footer";
-import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { toAbsolute } from "../utils/url";
+
+const SUBJECTS = [
+  { key: "math", name: "Mathematics" },
+  { key: "english", name: "English" },
+  { key: "physics", name: "Physics" },
+  { key: "chemistry", name: "Chemistry" },
+];
 
 const TABS = [{ key: "all", name: "All" }, ...SUBJECTS];
-
-const matchesQuery = (course, q) => {
-  if (!q) return true;
-  const hay = (
-    course.title +
-    " " +
-    (course.subtitle || "") +
-    " " +
-    (course.tags || []).join(" ")
-  ).toLowerCase();
-  return hay.includes(q.toLowerCase());
-};
 
 export default function AllCourses() {
   const [tab, setTab] = useState("all");
   const [query, setQuery] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState("");
+  const [courses, setCourses] = useState([]);
   const navigate = useNavigate();
 
-  // Filter by tab and search
-  const filtered = useMemo(() => {
-    return COURSES.filter(
-      (c) => (tab === "all" || c.subject === tab) && matchesQuery(c, query)
-    );
+  // fetch từ backend mỗi khi tab/query đổi
+  useEffect(() => {
+    let ignore = false;
+    (async () => {
+      try {
+        setLoading(true);
+        setErr("");
+        const qs = new URLSearchParams();
+        if (tab && tab !== "all") qs.set("subject", tab);
+        if (query.trim()) qs.set("q", query.trim());
+        const url = toAbsolute(`/api/courses${qs.toString() ? `?${qs}` : ""}`);
+        const res = await fetch(url, { credentials: "include" });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data?.message || `HTTP ${res.status}`);
+        }
+        const data = await res.json(); // [{id,title,subject,coverUrl,priceUSD,lessons,hours}]
+        if (!ignore) setCourses(Array.isArray(data) ? data : []);
+      } catch (e) {
+        if (!ignore) setErr(e.message || "Failed to load");
+      } finally {
+        if (!ignore) setLoading(false);
+      }
+    })();
+    return () => { ignore = true; };
   }, [tab, query]);
 
+  // group theo subject để render section giống bản cũ
   const grouped = useMemo(() => {
     const map = new Map();
     SUBJECTS.forEach((s) => map.set(s.key, []));
-    filtered.forEach((c) => {
+    courses.forEach((c) => {
       if (!map.has(c.subject)) map.set(c.subject, []);
       map.get(c.subject).push(c);
     });
     return map;
-  }, [filtered]);
+  }, [courses]);
 
-
-  useEffect(() => {
-    window.scrollTo(0, 0);
-  }, []);
+  useEffect(() => { window.scrollTo(0, 0); }, []);
 
   return (
     <div className="courses-page">
-      {/* Header */}
       <SiteHeader />
 
-      {/* Tool bar */}
       <div className="courses-toolbar">
         <div className="courses-search">
           <i className="bi bi-search"></i>
@@ -77,32 +90,34 @@ export default function AllCourses() {
         </div>
       </div>
 
-      {/* Sections per subject */}
-      {SUBJECTS.map((s) => {
+      {loading && <div className="empty">Loading…</div>}
+      {!loading && err && <div className="empty">Error: {err}</div>}
+
+      {!loading && !err && SUBJECTS.map((s) => {
         const list = grouped.get(s.key) || [];
         if (!list.length) return null;
-
         return (
           <section key={s.key} className="courses-section">
             <h2 className="section-title-subject">{s.name}</h2>
 
             <div className="courses-grid">
               {list.map((c) => (
-                <article 
-                  key={c.id} 
+                <article
+                  key={c.id}
                   className="course-card"
                   role="button"
                   tabIndex={0}
                   onClick={() => navigate(`/courses/${c.id}`)}
-                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === " ") navigate(`/courses/${c.id}`); }}>
-                  
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") navigate(`/courses/${c.id}`);
+                  }}
+                >
                   <div className="thumb">
-                    <img src={pickThumb(c.thumbKey)} alt="" />
+                    <img src={c.coverUrl || "/img/course-placeholder.jpg"} alt="" />
                   </div>
 
                   <div className="info">
                     <h3 className="title">{c.title}</h3>
-                    {c.subtitle && <p className="subtitle" title={c.subtitle}>{c.subtitle}</p>}
                     <div className="meta">
                       <span className="meta-item" data-ico="📘">{c.lessons} lessons</span>
                       <span className="meta-dot">•</span>
@@ -112,11 +127,12 @@ export default function AllCourses() {
 
                   <div className="price-row">
                     <span className="price">${c.priceUSD}</span>
-                    <button 
+                    <button
                       className="ghost-btn"
-                      onClick={(e) => { 
-                        e.stopPropagation();
-                        navigate(`/courses/${c.id}`); }}>Details</button>
+                      onClick={(e) => { e.stopPropagation(); navigate(`/courses/${c.id}`); }}
+                    >
+                      Details
+                    </button>
                   </div>
                 </article>
               ))}
@@ -124,8 +140,8 @@ export default function AllCourses() {
           </section>
         );
       })}
-        {/* Footer */}
-        <SiteFooter />
+
+      <SiteFooter />
     </div>
   );
 }

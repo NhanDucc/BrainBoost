@@ -4,7 +4,7 @@ import SiteHeader from "./Header";
 import SiteFooter from "./Footer";
 import skillsPlaceholder from "../images/skills-placeholder.png";
 import { toAbsolute } from "../utils/url";
-import "../css/Tests.css";
+import "../css/AllTests.css";
 
 /** dropdown options (minutes) */
 const TIME_OPTIONS = [

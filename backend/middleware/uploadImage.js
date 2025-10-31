@@ -1,39 +1,48 @@
 const cloudinary = require('../cloudinaryConfig');
 const multer = require('multer');
 
-// Middleware to upload image to Cloudinary
-exports.uploadImage = async (req, res, next) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ message: 'No file uploaded' });
+// 1) Nhận file vào RAM (buffer), không ghi ra ổ đĩa
+const uploadImage = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB, tùy chỉnh nếu cần
+  fileFilter: (req, file, cb) => {
+    if (!file.mimetype || !file.mimetype.startsWith('image/')) {
+      return cb(new Error('Only image files are allowed'));
     }
-
-    const file = req.file; // The uploaded file
-    const result = await cloudinary.uploader.upload(file.path, {
-      folder: 'Images_of_BB',
-      use_filename: true,
-      unique_filename: false,
-    });
-
-    // Attach the URL of the uploaded image to the request object
-    req.fileUrl = result.secure_url;
-
-    // Continue to the next middleware
-    next();
-  } catch (error) {
-    res.status(500).json({ message: 'Failed to upload image', error: error.message });
-  }
-};
-
-const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        cb(null, './uploads');  // temporary directory for multer before uploading to Cloudinary
-    },
-    filename: function (req, file, cb) {
-        cb(null, file.originalname);  // keep original file name
-    }
+    cb(null, true);
+  },
 });
 
-const upload = multer({ storage });
+// 2) Đẩy buffer lên Cloudinary bằng upload_stream
+//    - folder: thư mục Cloudinary, ví dụ 'brainboost/avatars'
+const toCloudinary = (folder = 'Images_of_BB') => (req, res, next) => {
+  if (!req.file || !req.file.buffer) {
+    return res.status(400).json({ message: 'No file uploaded' });
+  }
 
-module.exports = upload;
+  const options = {
+    folder,
+    resource_type: 'image',
+    use_filename: true,
+    unique_filename: false,
+    // overwrite: true, // bật nếu muốn ghi đè theo tên
+  };
+
+  const stream = cloudinary.uploader.upload_stream(options, (err, result) => {
+    if (err) {
+      return res
+        .status(500)
+        .json({ message: 'Failed to upload image', error: err.message });
+    }
+
+    // Gắn thông tin để controller dùng
+    req.fileUrl = result.secure_url;
+    req.cloudinaryPublicId = result.public_id;
+    next();
+  });
+
+  // Đẩy buffer vào stream
+  stream.end(req.file.buffer);
+};
+
+module.exports = { uploadImage, toCloudinary };

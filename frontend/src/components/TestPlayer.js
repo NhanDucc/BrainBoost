@@ -1,3 +1,4 @@
+// src/components/TestPlayer.js
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import SiteHeader from "./Header";
@@ -7,7 +8,6 @@ import "../css/TestPlayer.css";
 
 /* Helpers */
 const pad2 = (n) => (n < 10 ? `0${n}` : `${n}`);
-
 function formatSeconds(s) {
     if (s == null) return "Unlimited";
     const hh = Math.floor(s / 3600);
@@ -15,42 +15,7 @@ function formatSeconds(s) {
     const ss = s % 60;
     return hh ? `${pad2(hh)}:${pad2(mm)}:${pad2(ss)}` : `${pad2(mm)}:${pad2(ss)}`;
 }
-
 const ABC = ["A", "B", "C", "D"];
-
-function groupByPart(paper, items) {
-    // items are in the same order as flatQuestions
-    const parts = paper.parts.map((p) => ({
-        name: p.name || "Part",
-        start: 0,
-        end: 0,
-        total: p.questions.length,
-        correct: 0,
-        incorrect: 0,
-        unanswered: 0,
-        indices: [], // global indices of questions in this part
-    }));
-
-    let cursor = 0;
-    parts.forEach((part, i) => {
-        part.start = cursor;              // inclusive global index
-        part.end = cursor + part.total;   // exclusive
-        for (let g = part.start; g < part.end; g++) {
-        const it = items[g];
-        part.indices.push(g + 1); // 1-based display
-        if (it.chosen == null) part.unanswered++;
-        else if (it.isCorrect) part.correct++;
-        else part.incorrect++;
-        }
-        cursor = part.end;
-    });
-    return parts;
-}
-
-function fmtPercent(n, d) {
-    if (!d) return "0%";
-    return `${Math.round((n / d) * 100)}%`;
-}
 
 export default function TestPlayer() {
     const { id } = useParams();
@@ -70,6 +35,10 @@ export default function TestPlayer() {
     const [error, setError] = useState("");
     const [highlight, setHighlight] = useState(true);
 
+    /** answers:
+     *  - MCQ / Boolean: number (index)
+     *  - Essay: string (free text)
+     */
     const [answers, setAnswers] = useState({});
     const [reviewSet, setReviewSet] = useState(() => new Set());
     const [pi, setPi] = useState(0);
@@ -98,14 +67,34 @@ export default function TestPlayer() {
             const data = await res.json();
 
             // Map DB -> player paper shape
-            const questions = (data.questions || []).map((q, i) => ({
-            id: q._id ? String(q._id) : `q${i + 1}`,
-            type: "mcq",
-            stem: q.stem,
-            choices: q.choices || [],
-            // keep as "answer" so our existing scoring works
-            answer: typeof q.correctIndex === "number" ? q.correctIndex : undefined,
-            }));
+            const questions = (data.questions || []).map((q, i) => {
+            const base = {
+                id: q._id ? String(q._id) : `q${i + 1}`,
+                type: q.type || "mcq",
+                stem: q.stem,
+            };
+            if (base.type === "mcq") {
+                return {
+                ...base,
+                choices: q.choices || [],
+                answer:
+                    typeof q.correctIndex === "number" ? q.correctIndex : undefined,
+                };
+            }
+            if (base.type === "boolean") {
+                return {
+                ...base,
+                // render như 2 lựa chọn
+                choices: ["True", "False"],
+                answer:
+                    typeof q.correctBool === "boolean"
+                    ? (q.correctBool ? 0 : 1) // True -> 0, False -> 1
+                    : undefined,
+                };
+            }
+            // essay
+            return { ...base, choices: [] }; // không auto-grade
+            });
 
             const mapped = {
             title: data.title,
@@ -139,7 +128,7 @@ export default function TestPlayer() {
         }
         load();
         return () => {
-        ignore = true;
+            ignore = true;
         };
         // eslint-disable-next-line
     }, [id]);
@@ -148,8 +137,8 @@ export default function TestPlayer() {
     useEffect(() => {
         if (secondsLeft == null || secondsLeft <= 0) return;
         timerRef.current = setInterval(
-        () => setSecondsLeft((s) => (s == null ? null : s - 1)),
-        1000
+            () => setSecondsLeft((s) => (s == null ? null : s - 1)),
+            1000
         );
         return () => clearInterval(timerRef.current);
     }, [secondsLeft]);
@@ -164,10 +153,10 @@ export default function TestPlayer() {
     useEffect(() => {
         if (result) return; // don't persist after submit
         const payload = {
-        answers,
-        reviewIds: Array.from(reviewSet),
-        pointer: { pi, qi },
-        secondsLeft,
+            answers,
+            reviewIds: Array.from(reviewSet),
+            pointer: { pi, qi },
+            secondsLeft,
         };
         localStorage.setItem(LS_KEY, JSON.stringify(payload));
     }, [answers, reviewSet, pi, qi, secondsLeft, result]);
@@ -205,8 +194,11 @@ export default function TestPlayer() {
         return paper.parts[pi]?.questions?.[qi] ?? null;
     }, [paper, pi, qi]);
 
-    const setAnswer = (qid, choiceIndex) =>
-        setAnswers((prev) => ({ ...prev, [qid]: choiceIndex }));
+    // set answers
+    const setAnswerIndex = (qid, idx) =>
+        setAnswers((prev) => ({ ...prev, [qid]: idx }));
+    const setEssayText = (qid, text) =>
+        setAnswers((prev) => ({ ...prev, [qid]: text }));
 
     const toggleReview = (qid) =>
         setReviewSet((s) => {
@@ -218,41 +210,70 @@ export default function TestPlayer() {
     // Build result and show review screen
     const handleSubmit = (auto = false) => {
         const items = flatQuestions.map((q, i) => {
-        const chosen = answers[q.id];
-        const correct = typeof q.answer === "number" ? q.answer : null;
-        const isCorrect = correct != null && chosen === correct;
-        return {
-            idx: i + 1,
-            stem: q.stem,
-            choices: q.choices,
-            chosen,
-            correct,
-            isCorrect,
-        };
-        });
+            const chosen = answers[q.id];
+            if (q.type === "essay") {
+                return {
+                idx: i + 1,
+                type: q.type,
+                stem: q.stem,
+                essayAnswer: typeof chosen === "string" ? chosen : "",
+                isCorrect: null, // không chấm
+                };
+            }
+            // mcq/boolean
+            const correct = typeof q.answer === "number" ? q.answer : null;
+            const isCorrect = correct != null && chosen === correct;
+            return {
+                idx: i + 1,
+                type: q.type,
+                stem: q.stem,
+                choices: q.choices,
+                chosen,
+                correct,
+                isCorrect,
+            };
+            });
 
-        const correctCount = items.filter((x) => x.isCorrect).length;
-        const attemptedCount = Object.keys(answers).length;
-        const incorrectCount = attemptedCount - correctCount;
+        const gradableItems = items.filter(
+            (it) => it.type === "mcq" || it.type === "boolean"
+        );
+        const correctCount = gradableItems.filter((x) => x.isCorrect).length;
+        const gradableTotal = gradableItems.length;
+
+        const attemptedCount =
+            Object.keys(answers).filter((qid) => {
+                const q = flatQuestions.find((x) => x.id === qid);
+                if (!q) return false;
+                if (q.type === "essay") return (answers[qid] || "").trim().length > 0;
+                return typeof answers[qid] === "number";
+        }).length;
+
+        const incorrectCount =
+            gradableItems.filter(
+                (x) => x.chosen != null && x.isCorrect === false
+        ).length;
+
         const unansweredCount = total - attemptedCount;
-        const percent = total ? Math.round((correctCount / total) * 100) : 0;
+        const percent = gradableTotal
+            ? Math.round((correctCount / gradableTotal) * 100)
+            : 0;
 
         // stop timer + clear saved session
         clearInterval(timerRef.current);
         localStorage.removeItem(LS_KEY);
 
         setResult({
-        correctCount,
-        incorrectCount,
-        unansweredCount,
-        attemptedCount,
-        total,
-        percent,
-        auto,
-        items,
+            correctCount,
+            incorrectCount,
+            unansweredCount,
+            attemptedCount,
+            total,
+            gradableTotal,
+            percent,
+            auto,
+            items,
         });
 
-        // scroll to top of container
         try {
         window.scrollTo({ top: 0, behavior: "smooth" });
         } catch {}
@@ -265,6 +286,13 @@ export default function TestPlayer() {
         setQi(0);
         setResult(null);
         setSecondsLeft(minutes ? minutes * 60 : null);
+    };
+
+    // palette answered flag
+    const isAnswered = (q) => {
+        const v = answers[q.id];
+        if (q.type === "essay") return typeof v === "string" && v.trim().length > 0;
+        return typeof v === "number";
     };
 
     return (
@@ -288,19 +316,25 @@ export default function TestPlayer() {
                     <div className="res-note">⏰ Auto submitted — time is up.</div>
                 )}
                 <div className="res-score">
-                    <div className="big">{result.correctCount}/{result.total}</div>
+                    <div className="big">
+                    {result.correctCount}/{result.gradableTotal}
+                    </div>
                     <div className="percent">{result.percent}%</div>
                 </div>
                 <div className="res-stats">
                     <span className="ok">✔ Correct: {result.correctCount}</span>
                     <span className="bad">✖ Incorrect: {result.incorrectCount}</span>
-                    <span className="muted">… Unanswered: {result.unansweredCount}</span>
+                    <span className="muted">
+                    … Unanswered: {result.unansweredCount}
+                    </span>
                 </div>
                 <div className="res-actions">
                     <button className="ghost-btn" onClick={() => navigate("/tests")}>
                     ← Back to Tests
                     </button>
-                    <button className="primary-btn" onClick={retry}>Retry</button>
+                    <button className="primary-btn" onClick={retry}>
+                    Retry
+                    </button>
                 </div>
                 </div>
 
@@ -311,37 +345,62 @@ export default function TestPlayer() {
                     <div className="rv-head">
                         <span className="rv-idx">Q{it.idx}</span>
                         <span
-                        className={`rv-badge ${it.chosen == null ? "na" : it.isCorrect ? "ok" : "bad"}`}
+                        className={`rv-badge ${
+                            it.type === "essay"
+                            ? "na"
+                            : it.chosen == null
+                            ? "na"
+                            : it.isCorrect
+                            ? "ok"
+                            : "bad"
+                        }`}
                         >
-                        {it.chosen == null
+                        {it.type === "essay"
+                            ? "Essay"
+                            : it.chosen == null
                             ? "Unanswered"
                             : it.isCorrect
                             ? "Correct"
                             : "Incorrect"}
                         </span>
                     </div>
+
                     <div className="rv-stem">{it.stem}</div>
-                    <ul className="rv-choices">
+
+                    {it.type === "essay" ? (
+                        <div className="rv-essay">
+                        <div className="rv-essay-label">Your answer:</div>
+                        <div className="rv-essay-text">
+                            {(it.essayAnswer || "").trim() || "— (empty) —"}
+                        </div>
+                        </div>
+                    ) : (
+                        <ul className="rv-choices">
                         {it.choices.map((c, ci) => {
-                        const isCorrect = ci === it.correct;
-                        const isChosen = ci === it.chosen;
-                        return (
+                            const isCorrect = ci === it.correct;
+                            const isChosen = ci === it.chosen;
+                            return (
                             <li
-                            key={ci}
-                            className={[
+                                key={ci}
+                                className={[
                                 "rv-choice",
                                 isCorrect ? "correct" : "",
                                 isChosen && !isCorrect ? "chosen" : "",
-                            ].join(" ")}
+                                ].join(" ")}
                             >
-                            <span className="rv-index">{ABC[ci]}.</span>
-                            <span className="rv-text">{c}</span>
-                            {isCorrect && <span className="rv-tag">Correct</span>}
-                            {isChosen && !isCorrect && <span className="rv-tag wrong">Your choice</span>}
+                                <span className="rv-index">
+                                {ABC[ci] ?? (ci === 0 ? "T" : "F")}.
+                                </span>
+                                <span className="rv-text">{c}</span>
+                                {isCorrect && <span className="rv-tag">Correct</span>}
+                                {isChosen && !isCorrect && (
+                                <span className="rv-tag wrong">Your choice</span>
+                                )}
                             </li>
-                        );
+                            );
                         })}
-                    </ul>
+                        </ul>
+                    )}
                     </div>
                 ))}
                 </div>
@@ -387,7 +446,9 @@ export default function TestPlayer() {
                         </span>
                         {current && (
                         <button
-                            className={`mark-btn ${reviewSet.has(current.id) ? "marked" : ""}`}
+                            className={`mark-btn ${
+                            reviewSet.has(current.id) ? "marked" : ""
+                            }`}
                             onClick={() => toggleReview(current.id)}
                         >
                             {reviewSet.has(current.id) ? "★ Marked" : "☆ Mark for review"}
@@ -399,6 +460,7 @@ export default function TestPlayer() {
                         <>
                         <div className="tp-stem">{current.stem}</div>
 
+                        {/* MCQ */}
                         {current.type === "mcq" && (
                             <ul className="tp-choices">
                             {current.choices.map((c, idx) => {
@@ -410,7 +472,7 @@ export default function TestPlayer() {
                                         type="radio"
                                         name={`q-${current.id}`}
                                         checked={chosen}
-                                        onChange={() => setAnswer(current.id, idx)}
+                                        onChange={() => setAnswerIndex(current.id, idx)}
                                     />
                                     <span className="choice-index">
                                         {String.fromCharCode(65 + idx)}.
@@ -421,6 +483,38 @@ export default function TestPlayer() {
                                 );
                             })}
                             </ul>
+                        )}
+
+                        {/* TRUE / FALSE */}
+                        {current.type === "boolean" && (
+                            <div className="tf-row">
+                            {[0, 1].map((idx) => (
+                                <label key={idx} className="chip-radio">
+                                <input
+                                    type="radio"
+                                    name={`q-${current.id}`}
+                                    checked={answers[current.id] === idx}
+                                    onChange={() => setAnswerIndex(current.id, idx)}
+                                />
+                                <span>{idx === 0 ? "True" : "False"}</span>
+                                </label>
+                            ))}
+                            </div>
+                        )}
+
+                        {/* ESSAY */}
+                        {current.type === "essay" && (
+                            <div className="essay-box">
+                            <textarea
+                                rows={6}
+                                placeholder="Write your answer here…"
+                                value={typeof answers[current.id] === "string" ? answers[current.id] : ""}
+                                onChange={(e) => setEssayText(current.id, e.target.value)}
+                            />
+                            <div className="essay-note">
+                                This question will not be auto-graded.
+                            </div>
+                            </div>
                         )}
                         </>
                     )}
@@ -449,7 +543,7 @@ export default function TestPlayer() {
                     <div className="tp-palette-title">Part</div>
                     <div className="tp-palette">
                     {flatQuestions.map((q, idx) => {
-                        const answered = answers[q.id] != null;
+                        const answered = isAnswered(q);
                         const marked = reviewSet.has(q.id);
                         const active = idx === globalIndex;
                         return (

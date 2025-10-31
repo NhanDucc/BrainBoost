@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import SiteHeader from "./Header";
 import SiteFooter from "./Footer";
@@ -11,17 +11,31 @@ const SUBJECTS = [
   { key: "physics", name: "Physics" },
   { key: "chemistry", name: "Chemistry" },
 ];
+
 const DIFFICULTY_TAGS = ["Easy", "Medium", "Hard"];
 
+const Q_TYPES = [
+  { key: "mcq", label: "Multiple choice" },
+  { key: "boolean", label: "True / False" },
+  { key: "essay", label: "Essay" },
+];
+
+// Câu mặc định (MCQ)
 const emptyQuestion = (i) => ({
+  type: "mcq",                // 'mcq' | 'boolean' | 'essay'
   stem: `Question ${i + 1} content`,
+  // MCQ
   choices: ["", "", "", ""],
-  correctIndex: null,
+  correctIndex: null,         // 0..3
+  // True/False
+  correctBool: null,          // true | false
+  // Essay
+  modelAnswer: "",
   explanation: "",
 });
 
 export default function TestEditor() {
-  const { id } = useParams(); // undefined => new
+  const { id } = useParams();
   const isEdit = Boolean(id);
   const navigate = useNavigate();
 
@@ -40,7 +54,7 @@ export default function TestEditor() {
 
   useEffect(() => { window.scrollTo(0, 0); }, []);
 
-  // load existing test
+  // Load test khi edit
   useEffect(() => {
     if (!isEdit) return;
     (async () => {
@@ -48,25 +62,34 @@ export default function TestEditor() {
       try {
         const res = await fetch(toAbsolute(`/api/tests/${id}`), { credentials: "include" });
         if (!res.ok) {
-          const data = await res.json().catch(()=> ({}));
+          const data = await res.json().catch(() => ({}));
           throw new Error(data?.message || `HTTP ${res.status}`);
         }
         const t = await res.json();
+
         setTitle(t.title || "");
         setGrade(t.grade || "");
         setSubject(t.subject || SUBJECTS[0].key);
         setTags(t.tags || []);
         setDescription(t.description || "");
-        setQuestions(
-          (t.questions && t.questions.length ? t.questions : Array.from({length:10}, (_,i)=>emptyQuestion(i)))
-            .map((q, i) => ({
-              stem: q.stem || `Question ${i + 1} content`,
-              choices: Array.isArray(q.choices) && q.choices.length === 4 ? q.choices : ["", "", "", ""],
-              correctIndex: Number.isInteger(q.correctIndex) ? q.correctIndex : null,
-              explanation: q.explanation || "",
-            }))
-        );
-        setNumQuestions((t.questions && t.questions.length) || 10);
+
+        const qs = (Array.isArray(t.questions) ? t.questions : []).map((q, i) => {
+          const type = q.type || "mcq";
+          return {
+            type,
+            stem: q.stem || `Question ${i + 1} content`,
+            choices: type === "mcq"
+              ? (Array.isArray(q.choices) && q.choices.length === 4 ? q.choices : ["", "", "", ""])
+              : ["", "", "", ""],
+            correctIndex: type === "mcq" && Number.isInteger(q.correctIndex) ? q.correctIndex : null,
+            correctBool: type === "boolean" && typeof q.correctBool === "boolean" ? q.correctBool : null,
+            modelAnswer: type === "essay" ? (q.modelAnswer || "") : "",
+            explanation: q.explanation || "",
+          };
+        });
+
+        setQuestions(qs.length ? qs : Array.from({ length: 10 }, (_, i) => emptyQuestion(i)));
+        setNumQuestions(qs.length || 10);
       } catch (e) {
         setToast({ type: "error", msg: `Load failed: ${e.message}` });
       } finally {
@@ -76,7 +99,7 @@ export default function TestEditor() {
     })();
   }, [isEdit, id]);
 
-  // keep questions length
+  // Đồng bộ số lượng câu hỏi
   useEffect(() => {
     const n = Math.max(1, Math.min(200, Number(numQuestions) || 1));
     setQuestions((prev) => {
@@ -93,54 +116,107 @@ export default function TestEditor() {
   const toggleTag = (t) =>
     setTags((arr) => (arr.includes(t) ? arr.filter((x) => x !== t) : [...arr, t]));
 
-  const onChangeChoice = (qi, ci, val) =>
-    setQuestions((prev) => {
-      const next = [...prev];
-      const q = { ...next[qi], choices: [...next[qi].choices] };
-      q.choices[ci] = val;
-      next[qi] = q;
-      return next;
-    });
-
+  // ===== Change handlers =====
   const onChangeStem = (qi, val) =>
     setQuestions((prev) => {
-      const next = [...prev];
-      next[qi] = { ...next[qi], stem: val };
-      return next;
+      const n = [...prev];
+      n[qi] = { ...n[qi], stem: val };
+      return n;
     });
 
-  const onChangeCorrect = (qi, idx) =>
+  const onChangeQType = (qi, type) =>
     setQuestions((prev) => {
-      const next = [...prev];
-      next[qi] = { ...next[qi], correctIndex: idx };
-      return next;
+      const n = [...prev];
+      const base = { ...n[qi], type };
+      // reset fields theo loại
+      if (type === "mcq") {
+        base.choices = base.choices?.length === 4 ? [...base.choices] : ["", "", "", ""];
+        base.correctIndex = null;
+        base.correctBool = null;
+        base.modelAnswer = "";
+      } else if (type === "boolean") {
+        base.correctBool = null;
+        base.correctIndex = null;
+        base.modelAnswer = "";
+      } else if (type === "essay") {
+        base.modelAnswer = base.modelAnswer || "";
+        base.correctIndex = null;
+        base.correctBool = null;
+      }
+      n[qi] = base;
+      return n;
     });
 
+  // MCQ
+  const onChangeChoice = (qi, ci, val) =>
+    setQuestions((prev) => {
+      const n = [...prev];
+      const q = { ...n[qi], choices: [...(n[qi].choices || ["", "", "", ""])] };
+      q.choices[ci] = val;
+      n[qi] = q;
+      return n;
+    });
+
+  const onChangeCorrectIndex = (qi, idx) =>
+    setQuestions((prev) => {
+      const n = [...prev];
+      n[qi] = { ...n[qi], correctIndex: idx };
+      return n;
+    });
+
+  // True/False
+  const onChangeBool = (qi, boolVal) =>
+    setQuestions((prev) => {
+      const n = [...prev];
+      n[qi] = { ...n[qi], correctBool: boolVal };
+      return n;
+    });
+
+  // Essay
+  const onChangeModelAnswer = (qi, val) =>
+    setQuestions((prev) => {
+      const n = [...prev];
+      n[qi] = { ...n[qi], modelAnswer: val };
+      return n;
+    });
+
+  // Common
   const onChangeExplain = (qi, val) =>
     setQuestions((prev) => {
-      const next = [...prev];
-      next[qi] = { ...next[qi], explanation: val };
-      return next;
+      const n = [...prev];
+      n[qi] = { ...n[qi], explanation: val };
+      return n;
     });
 
+  // ===== Validation theo loại =====
   const validate = () => {
     if (!title.trim()) return "Please enter a test title.";
     if (!grade.toString().trim()) return "Please enter a grade/level.";
     if (!subject) return "Please select a subject.";
     if (questions.length < 1) return "Please add at least 1 question.";
+
     for (let i = 0; i < questions.length; i++) {
       const q = questions[i];
-      if (!q.stem.trim()) return `Question ${i + 1}: stem is required.`;
-      for (let j = 0; j < 4; j++) {
-        if (!q.choices[j] || !q.choices[j].trim())
-          return `Question ${i + 1}: choice ${String.fromCharCode(65 + j)} is empty.`;
+      if (!q.stem || !q.stem.trim()) return `Question ${i + 1}: stem is required.`;
+
+      if (q.type === "mcq") {
+        for (let j = 0; j < 4; j++) {
+          if (!q.choices[j] || !q.choices[j].trim())
+            return `Question ${i + 1}: choice ${String.fromCharCode(65 + j)} is empty.`;
+        }
+        if (!Number.isInteger(q.correctIndex))
+          return `Question ${i + 1}: please select the correct answer.`;
+      } else if (q.type === "boolean") {
+        if (typeof q.correctBool !== "boolean")
+          return `Question ${i + 1}: please choose True or False.`;
+      } else if (q.type === "essay") {
+        // modelAnswer không bắt buộc
       }
-      if (q.correctIndex == null)
-        return `Question ${i + 1}: please select the correct answer.`;
     }
     return null;
   };
 
+  // Submit
   const handleSubmit = async () => {
     const err = validate();
     if (err) {
@@ -149,19 +225,41 @@ export default function TestEditor() {
     }
     setSaving(true);
     try {
+      // Chuẩn hoá payload
+      const qs = questions.map((q) => {
+        if (q.type === "mcq") {
+          return {
+            type: "mcq",
+            stem: q.stem.trim(),
+            choices: q.choices.map((c) => c.trim()),
+            correctIndex: q.correctIndex,
+            explanation: q.explanation?.trim() || "",
+          };
+        }
+        if (q.type === "boolean") {
+          return {
+            type: "boolean",
+            stem: q.stem.trim(),
+            correctBool: !!q.correctBool,
+            explanation: q.explanation?.trim() || "",
+          };
+        }
+        return {
+          type: "essay",
+          stem: q.stem.trim(),
+          modelAnswer: (q.modelAnswer || "").trim(),
+          explanation: q.explanation?.trim() || "",
+        };
+      });
+
       const payload = {
         title: title.trim(),
         grade: grade.toString().trim(),
         subject,
         tags,
         description,
-        numQuestions: questions.length,
-        questions: questions.map((q) => ({
-          stem: q.stem.trim(),
-          choices: q.choices.map((c) => c.trim()),
-          correctIndex: q.correctIndex,
-          explanation: q.explanation?.trim() || "",
-        })),
+        numQuestions: qs.length,
+        questions: qs,
       };
 
       const url = isEdit ? toAbsolute(`/api/tests/${id}`) : toAbsolute(`/api/tests`);
@@ -178,15 +276,76 @@ export default function TestEditor() {
       }
 
       setToast({ type: "success", msg: isEdit ? "Updated." : "Created." });
-      setTimeout(() => {
-        navigate("/instructor"); // back to dashboard
-      }, 600);
+      setTimeout(() => navigate("/instructor"), 600);
     } catch (e) {
       setToast({ type: "error", msg: `Save failed: ${e.message}` });
     } finally {
       setSaving(false);
       setTimeout(() => setToast(null), 4000);
     }
+  };
+
+  // ===== UI helpers =====
+  const QuestionBody = ({ q, qi }) => {
+    if (q.type === "mcq") {
+      return (
+        <div className="choices">
+          {[0, 1, 2, 3].map((ci) => (
+            <label key={ci} className="choice-row">
+              <input
+                type="radio"
+                name={`correct-${qi}`}
+                checked={q.correctIndex === ci}
+                onChange={() => onChangeCorrectIndex(qi, ci)}
+                aria-label={`Mark choice ${String.fromCharCode(65 + ci)} as correct`}
+              />
+              <span className="choice-idx">{String.fromCharCode(65 + ci)}.</span>
+              <input
+                value={q.choices[ci]}
+                onChange={(e) => onChangeChoice(qi, ci, e.target.value)}
+                placeholder={`Choice ${String.fromCharCode(65 + ci)}`}
+              />
+            </label>
+          ))}
+        </div>
+      );
+    }
+    if (q.type === "boolean") {
+      return (
+        <div className="tf-row">
+          <label className="chip-radio">
+            <input
+              type="radio"
+              name={`tf-${qi}`}
+              checked={q.correctBool === true}
+              onChange={() => onChangeBool(qi, true)}
+            />
+            <span>True</span>
+          </label>
+          <label className="chip-radio">
+            <input
+              type="radio"
+              name={`tf-${qi}`}
+              checked={q.correctBool === false}
+              onChange={() => onChangeBool(qi, false)}
+            />
+            <span>False</span>
+          </label>
+        </div>
+      );
+    }
+    // essay
+    return (
+      <label className="q-row">
+        <span>Sample answer / Rubric (optional)</span>
+        <textarea
+          rows={3}
+          value={q.modelAnswer}
+          onChange={(e) => onChangeModelAnswer(qi, e.target.value)}
+          placeholder="Provide a model answer or scoring rubric…"
+        />
+      </label>
+    );
   };
 
   return (
@@ -199,6 +358,7 @@ export default function TestEditor() {
           <div className="empty">Loading…</div>
         ) : (
           <>
+            {/* Meta */}
             <section className="card">
               <h3>Test information</h3>
               <div className="form-grid">
@@ -206,10 +366,12 @@ export default function TestEditor() {
                   <span>Test title</span>
                   <input value={title} onChange={(e) => setTitle(e.target.value)} />
                 </label>
+
                 <label className="form-row">
                   <span>Grade</span>
                   <input value={grade} onChange={(e) => setGrade(e.target.value)} />
                 </label>
+
                 <label className="form-row">
                   <span>Subject</span>
                   <select value={subject} onChange={(e) => setSubject(e.target.value)}>
@@ -218,6 +380,7 @@ export default function TestEditor() {
                     ))}
                   </select>
                 </label>
+
                 <div className="form-row">
                   <span>Tags</span>
                   <div className="chips">
@@ -233,10 +396,12 @@ export default function TestEditor() {
                     ))}
                   </div>
                 </div>
+
                 <label className="form-row full">
                   <span>Description</span>
                   <textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} />
                 </label>
+
                 <label className="form-row">
                   <span>Number of questions</span>
                   <input
@@ -244,6 +409,7 @@ export default function TestEditor() {
                     value={numQuestions} onChange={(e) => setNumQuestions(e.target.value)}
                   />
                 </label>
+
                 <div className="form-row">
                   <span>Test time for students</span>
                   <div className="readonly">
@@ -253,36 +419,48 @@ export default function TestEditor() {
               </div>
             </section>
 
+            {/* Builder */}
             <section className="card">
               <h3>Questions</h3>
+
               <div className="q-list">
                 {questions.map((q, qi) => (
                   <div key={qi} className="q-card">
-                    <div className="q-head"><span className="q-no">Q{qi + 1}</span></div>
+                    <div className="q-head">
+                      <span className="q-no">Q{qi + 1}</span>
+                      <select
+                        className="qtype-select"
+                        value={q.type}
+                        onChange={(e) => onChangeQType(qi, e.target.value)}
+                        aria-label="Question type"
+                      >
+                        {Q_TYPES.map((t) => (
+                          <option key={t.key} value={t.key}>{t.label}</option>
+                        ))}
+                      </select>
+                    </div>
+
                     <label className="q-row">
                       <span>Question</span>
-                      <textarea rows={2} value={q.stem} onChange={(e) => onChangeStem(qi, e.target.value)} />
+                      <textarea
+                        rows={2}
+                        value={q.stem}
+                        onChange={(e) => onChangeStem(qi, e.target.value)}
+                        placeholder="Write your question..."
+                      />
                     </label>
-                    <div className="choices">
-                      {[0, 1, 2, 3].map((ci) => (
-                        <label key={ci} className="choice-row">
-                          <input
-                            type="radio"
-                            name={`correct-${qi}`}
-                            checked={q.correctIndex === ci}
-                            onChange={() => onChangeCorrect(qi, ci)}
-                          />
-                          <span className="choice-idx">{String.fromCharCode(65 + ci)}.</span>
-                          <input
-                            value={q.choices[ci]}
-                            onChange={(e) => onChangeChoice(qi, ci, e.target.value)}
-                          />
-                        </label>
-                      ))}
-                    </div>
+
+                    {/* Nội dung đáp án theo loại */}
+                    <QuestionBody q={q} qi={qi} />
+
                     <label className="q-row">
                       <span>Explanation (optional)</span>
-                      <textarea rows={2} value={q.explanation} onChange={(e) => onChangeExplain(qi, e.target.value)} />
+                      <textarea
+                        rows={2}
+                        value={q.explanation}
+                        onChange={(e) => onChangeExplain(qi, e.target.value)}
+                        placeholder="Why is this answer correct? (or hints for essay)"
+                      />
                     </label>
                   </div>
                 ))}

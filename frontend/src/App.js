@@ -17,9 +17,10 @@ import RequireAuth from "./components/RequireAuth";
 import AdminDashboard from "./components/AdminDashboard";
 import InstructorDashboard from "./components/InstructorDashboard";
 import TestEditor from "./components/TestEditor";
+import CourseEditor from "./components/CourseEditor";
 import StudentHome from "./components/HomePage";
 import ApplyInstructor from "./components/ApplyInstructor";
-import Tests from "./components/Tests";
+import AllTests from "./components/AllTests";
 import TestPlayer from "./components/TestPlayer";
 
 const App = () => {
@@ -34,7 +35,7 @@ const App = () => {
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/courses" element={<AllCourses />} />
         <Route path="/courses/:courseId" element={<CourseDetail />} />
-        <Route path="/tests" element={<Tests />} />
+        <Route path="/tests" element={<AllTests />} />
         <Route path="/tests/:id" element={<TestPlayer />} />
         <Route path="/privacy-policy" element={<Privacy />} />
         <Route path="/terms-of-use" element={<Terms />} />
@@ -54,6 +55,8 @@ const App = () => {
           <Route path="/instructor" element={<InstructorDashboard />} />
           <Route path="/instructor/tests/new" element={<TestEditor />} />
           <Route path="/instructor/tests/:id/edit" element={<TestEditor />} />
+          <Route path="/instructor/courses/new" element={<CourseEditor />} />
+          <Route path="/instructor/courses/:id/edit" element={<CourseEditor />} />
         </Route>
       </Routes>
     </Router>

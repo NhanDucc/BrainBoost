@@ -1,0 +1,58 @@
+.course-page { background:#EDF2FB; }
+.course-container { width:min(1100px,92vw); margin:24px auto 48px; }
+.pg-title { font-size:clamp(20px,3vw,28px); font-weight:900; margin:0 0 12px; }
+
+/* cards */
+.card {
+  background:#fff; border:1px solid #e6ecff; border-radius:12px; padding:16px; margin-bottom:14px;
+  box-shadow:0 8px 20px rgba(2,14,56,.06);
+}
+
+/* form */
+.form-grid { display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:12px; }
+.form-row { display:flex; flex-direction:column; gap:6px; }
+.form-row.full { grid-column:1/-1; }
+.form-row > span { font-weight:800; color:#1a1a1a; }
+.form-row input, .form-row select, .form-row textarea {
+  border:1px solid #cfe0ff; background:#fff; padding:10px; border-radius:10px; font:inherit;
+}
+
+.cover-uploader { display:flex; gap:8px; align-items:center; }
+.cover-uploader .url-input { flex:1; }
+.cover-preview { margin-top:8px; max-width:100%; border-radius:10px; border:1px solid #e6ecff; }
+
+/* builder */
+.sec-list { display:grid; gap:12px; }
+.sec-card { border:1px solid #e6ecff; border-radius:12px; padding:12px; background:#fff; }
+.sec-head { display:flex; gap:8px; align-items:center; justify-content:space-between; }
+.sec-title { font-weight:800; border:1px solid #cfe0ff; padding:8px; border-radius:10px; min-width:240px; }
+.sec-actions { display:flex; gap:8px; }
+.mini { background:#fff; border:1px solid #cfe0ff; border-radius:10px; padding:6px 10px; cursor:pointer; font-weight:800; }
+.mini.danger { border-color:#ffd1d1; color:#b42318; }
+
+.lesson-list { display:grid; gap:8px; margin-top:10px; }
+.lesson-row { display:grid; grid-template-columns: 34px 1fr 140px 90px 1.2fr 34px; gap:8px; align-items:center; }
+.ls-idx { text-align:right; font-weight:800; color:#0a2d88; }
+.ls-title, .ls-type, .ls-dur, .ls-url {
+  border:1px solid #cfe0ff; padding:8px; border-radius:10px; font:inherit;
+}
+
+/* actions + toast */
+.actions { display:flex; justify-content:flex-end; gap:8px; margin-top:12px; }
+.primary-btn { background:#0057FF; color:#fff; border:0; padding:10px 16px; border-radius:10px; font-weight:800; cursor:pointer; }
+.ghost-btn { background:#fff; color:#0a2d88; border:1px solid #cfe0ff; padding:10px 16px; border-radius:10px; font-weight:800; cursor:pointer; }
+
+.toast {
+  position:fixed; right:16px; bottom:16px; padding:10px 14px; border-radius:10px; color:#fff; font-weight:800; z-index:9999;
+  box-shadow:0 10px 24px rgba(0,0,0,.2);
+}
+.toast.success { background:#16a34a; }
+.toast.error { background:#dc2626; }
+.toast.info { background:#2563eb; }
+
+.empty { background:#fff; border:1px dashed #cfe0ff; padding:16px; border-radius:12px; }
+
+@media (max-width: 980px){
+  .form-grid { grid-template-columns:1fr; }
+  .lesson-row { grid-template-columns: 26px 1fr 120px 80px 1fr 30px; }
+}

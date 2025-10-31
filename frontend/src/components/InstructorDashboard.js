@@ -20,7 +20,14 @@ const SUBJECTS = [
 
 export default function InstructorDashboard() {
   const [tab, setTab] = useState("tests");
+
+  // tests
   const [tests, setTests] = useState([]);
+
+  // courses
+  const [courses, setCourses] = useState([]);
+
+  // shared UI state
   const [loading, setLoading] = useState(false);
   const [q, setQ] = useState("");
   const [subj, setSubj] = useState("all");
@@ -29,7 +36,7 @@ export default function InstructorDashboard() {
 
   useEffect(() => { window.scrollTo(0, 0); }, []);
 
-  // fetch my tests when tab=tests
+  // ===== Fetchers =====
   const fetchTests = async () => {
     setLoading(true);
     try {
@@ -49,10 +56,34 @@ export default function InstructorDashboard() {
     }
   };
 
+  const fetchCourses = async () => {
+    setLoading(true);
+    try {
+      // backend: list riêng của giảng viên – yêu cầu đăng nhập
+      const url = toAbsolute(`/api/courses?mine=1`);
+      const res = await fetch(url, { credentials: "include" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.message || `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      // kỳ vọng mỗi item: {_id,title,subject,grade,coverUrl,price,sections,updatedAt,createdAt}
+      setCourses(Array.isArray(data) ? data : []);
+    } catch (e) {
+      setToast({ type: "error", msg: `Load failed: ${e.message}` });
+    } finally {
+      setLoading(false);
+      setTimeout(() => setToast(null), 4000);
+    }
+  };
+
   useEffect(() => {
     if (tab === "tests") fetchTests();
+    if (tab === "courses") fetchCourses();
+    // eslint-disable-next-line
   }, [tab]);
 
+  // ===== Filters =====
   const filteredTests = useMemo(() => {
     const term = q.trim().toLowerCase();
     return tests.filter(t => {
@@ -63,7 +94,18 @@ export default function InstructorDashboard() {
     });
   }, [tests, q, subj]);
 
-  const onDelete = async (id) => {
+  const filteredCourses = useMemo(() => {
+    const term = q.trim().toLowerCase();
+    return courses.filter(c => {
+      const okSubj = subj === "all" || c.subject === subj;
+      if (!term) return okSubj;
+      const hay = `${c.title} ${c.description || ""} ${(c.tags||[]).join(" ")} ${c.grade || ""}`.toLowerCase();
+      return okSubj && hay.includes(term);
+    });
+  }, [courses, q, subj]);
+
+  // ===== Actions =====
+  const onDeleteTest = async (id) => {
     if (!window.confirm("Delete this test permanently?")) return;
     try {
       const res = await fetch(toAbsolute(`/api/tests/${id}`), {
@@ -76,6 +118,26 @@ export default function InstructorDashboard() {
       }
       setToast({ type: "success", msg: "Deleted." });
       setTests(prev => prev.filter(x => String(x._id) !== String(id)));
+    } catch (e) {
+      setToast({ type: "error", msg: `Delete failed: ${e.message}` });
+    } finally {
+      setTimeout(() => setToast(null), 4000);
+    }
+  };
+
+  const onDeleteCourse = async (id) => {
+    if (!window.confirm("Delete this course permanently?")) return;
+    try {
+      const res = await fetch(toAbsolute(`/api/courses/${id}`), {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.message || `HTTP ${res.status}`);
+      }
+      setToast({ type: "success", msg: "Deleted." });
+      setCourses((prev) => prev.filter((x) => String(x._id) !== String(id)));
     } catch (e) {
       setToast({ type: "error", msg: `Delete failed: ${e.message}` });
     } finally {
@@ -105,13 +167,13 @@ export default function InstructorDashboard() {
         </div>
 
         {/* Toolbar per tab */}
-        {tab === "tests" && (
+        {(tab === "tests" || tab === "courses") && (
           <div className="bar">
             <div className="bar-left">
               <div className="search">
                 <i className="bi bi-search" />
                 <input
-                  placeholder="Search your tests…"
+                  placeholder={tab === "tests" ? "Search your tests…" : "Search your courses…"}
                   value={q}
                   onChange={(e) => setQ(e.target.value)}
                 />
@@ -128,32 +190,26 @@ export default function InstructorDashboard() {
             </div>
 
             <div className="bar-right">
-              <button
-                className="primary-btn"
-                onClick={() => navigate("/instructor/tests/new")}
-              >
-                <i className="bi bi-plus-lg" /> Add New Test
-              </button>
+              {tab === "tests" ? (
+                <button
+                  className="primary-btn"
+                  onClick={() => navigate("/instructor/tests/new")}
+                >
+                  <i className="bi bi-plus-lg" /> Add New Test
+                </button>
+              ) : (
+                <button
+                  className="primary-btn"
+                  onClick={() => navigate("/instructor/courses/new")}
+                >
+                  <i className="bi bi-plus-lg" /> Add New Course
+                </button>
+              )}
             </div>
           </div>
         )}
 
-        {tab === "courses" && (
-          <div className="bar">
-            <div />
-            <div className="bar-right">
-              <button
-                className="ghost-btn"
-                onClick={() => navigate("/instructor/courses/new")}
-                title="Not implemented yet"
-              >
-                <i className="bi bi-plus-lg" /> Add New Course
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Content per tab */}
+        {/* ===== Tests list ===== */}
         {tab === "tests" && (
           <section className="list-wrap">
             {loading ? (
@@ -190,7 +246,7 @@ export default function InstructorDashboard() {
                       </button>
                       <button
                         className="danger-btn"
-                        onClick={() => onDelete(t._id)}
+                        onClick={() => onDeleteTest(t._id)}
                       >
                         <i className="bi bi-trash-fill" /> Delete
                       </button>
@@ -208,11 +264,63 @@ export default function InstructorDashboard() {
           </section>
         )}
 
+        {/* ===== Courses list ===== */}
         {tab === "courses" && (
           <section className="list-wrap">
-            <div className="empty">
-              Courses tab is not implemented yet. Click <b>Add New Course</b> to start (placeholder).
-            </div>
+            {loading ? (
+              <div className="empty">Loading…</div>
+            ) : filteredCourses.length === 0 ? (
+              <div className="empty">
+                No courses found. Click <b>Add New Course</b> to create one.
+              </div>
+            ) : (
+              <div className="cards">
+                {filteredCourses.map(c => {
+                  const sections = Array.isArray(c.sections) ? c.sections : [];
+                  const lessons = sections.reduce((a, s) => a + (s.lessons?.length || 0), 0);
+                  return (
+                    <article key={c._id} className="tcard">
+                      <div className="tcard-main">
+                        <h3 className="t-title">{c.title}</h3>
+                        {c.description && (
+                          <p className="t-desc" title={c.description}>{c.description}</p>
+                        )}
+                        <div className="t-meta">
+                          <span className="chip">{(c.subject||"").toUpperCase()}</span>
+                          {c.grade && <span className="chip">Grade {c.grade}</span>}
+                          <span className="chip">{lessons} lessons</span>
+                          {Array.isArray(c.tags) && c.tags.map((tg, i) => (
+                            <span className="tag" key={i}>{tg}</span>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="tcard-actions">
+                        <button
+                          className="ghost-btn-edit"
+                          onClick={() => navigate(`/instructor/courses/${c._id}/edit`)}
+                        >
+                          <i className="bi bi-pencil-square" /> Edit
+                        </button>
+                        {/* Bật nếu backend đã có DELETE /api/courses/:id */}
+                        <button
+                          className="danger-btn"
+                          onClick={() => onDeleteCourse(c._id)}
+                        >
+                          <i className="bi bi-trash-fill" /> Delete
+                        </button>
+                      </div>
+
+                      <div className="tcard-foot">
+                        <span className="muted">Updated {new Date(c.updatedAt).toLocaleString()}</span>
+                        <span className="dot">•</span>
+                        <span className="muted">Created {new Date(c.createdAt).toLocaleDateString()}</span>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            )}
           </section>
         )}
       </main>

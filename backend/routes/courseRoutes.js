@@ -10,6 +10,39 @@ const {
     getPublicCourseById,
     deleteCourse,
 } = require("../controllers/courseController");
+const { uploadDoc, toCloudinaryDoc } = require("../middleware/uploadDoc");
+
+// POST /api/courses/upload-doc
+router.post(
+  "/upload-doc",
+  auth,
+  authorize("admin", "instructor"),
+  (req, res, next) => {
+    console.log(">>> /api/courses/upload-doc hit");
+    next();
+  },
+  uploadDoc.single("file"),
+  toCloudinaryDoc("BB_lecture_docs"),
+  (req, res) => {
+    return res.json({
+      url: req.fileUrl,
+      publicId: req.cloudinaryPublicId,
+      originalName: req.file.originalname,
+      mimeType: req.file.mimetype,
+    });
+  }
+);
+
+// error handler riêng cho upload-doc (MULTER / CLOUDINARY)
+router.use((err, req, res, next) => {
+  if (req.path === "/upload-doc") {
+    console.error("Upload-doc error:", err);
+    return res.status(400).json({
+      message: err.message || "Upload doc failed",
+    });
+  }
+  next(err);
+});
 
 // --- Public routes ---
 router.get("/public", listPublicCourses);

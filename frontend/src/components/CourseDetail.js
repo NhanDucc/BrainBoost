@@ -340,7 +340,12 @@ export default function CourseDetail() {
                     )}
                 </div>
 
-                <button className="enroll-btn">Enroll</button>
+                <button
+                    className="enroll-btn"
+                    onClick={() => navigate(`/courses/${courseId}/learn`)}
+                >
+                    Enroll
+                </button>
 
                 <ul className="right-facts">
                     <li>

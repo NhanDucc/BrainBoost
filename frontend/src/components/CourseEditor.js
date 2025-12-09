@@ -59,6 +59,7 @@ export default function CourseEditor() {
 
   // Builder
   const [sections, setSections] = useState([emptySection(0)]);
+  const [uploadingLesson, setUploadingLesson] = useState(null);
 
   useEffect(() => { window.scrollTo(0, 0); }, []);
 
@@ -145,6 +146,43 @@ export default function CourseEditor() {
       n[si] = { ...n[si], lessons: list };
       return n;
     });
+
+const handleLessonFileChange = async (si, li, file) => {
+  if (!file) return;
+
+  try {
+    setUploadingLesson(`${si}-${li}`);
+    const fd = new FormData();
+    fd.append("file", file);
+
+    const res = await fetch(toAbsolute("/api/courses/upload-doc"), {
+      method: "POST",
+      credentials: "include",
+      body: fd,
+    });
+
+    console.log("Upload-doc status:", res.status);
+
+    const data = await res.json().catch(() => ({}));
+    console.log("Upload-doc response:", data);
+
+    if (!res.ok) {
+      throw new Error(data?.message || `HTTP ${res.status}`);
+    }
+
+    setLesson(si, li, { contentUrl: data.url });
+
+    setToast({ type: "success", msg: "Document uploaded." });
+    setTimeout(() => setToast(null), 2500);
+  } catch (e) {
+    console.error("Upload-doc error:", e);
+    setToast({ type: "error", msg: `Upload failed: ${e.message}` });
+    setTimeout(() => setToast(null), 4000);
+  } finally {
+    setUploadingLesson(null);
+  }
+};
+
 
   // ====== Validation ======
   const validate = () => {
@@ -357,6 +395,7 @@ export default function CourseEditor() {
                           >
                             {LESSON_TYPES.map(t => <option key={t.key} value={t.key}>{t.name}</option>)}
                           </select>
+
                           <input
                             className="ls-dur"
                             type="number"
@@ -365,13 +404,45 @@ export default function CourseEditor() {
                             value={ls.durationMin ?? ""}
                             onChange={(e) => setLesson(si, li, { durationMin: e.target.value })}
                           />
-                          <input
-                            className="ls-url"
-                            placeholder="Content URL / video link / quiz id"
-                            value={ls.contentUrl}
-                            onChange={(e) => setLesson(si, li, { contentUrl: e.target.value })}
-                          />
+                          <div className="ls-resource">
+                            <input
+                              className="ls-url"
+                              placeholder="Content URL / document link"
+                              value={ls.contentUrl}
+                              onChange={(e) => setLesson(si, li, { contentUrl: e.target.value })}
+                            />
+                            <div className="ls-file-actions">
+                              <label className="mini">
+                                Upload file
+                                <input
+                                  type="file"
+                                  accept=".pdf,.doc,.docx,.txt"
+                                  style={{ display: "none" }}
+                                  onChange={(e) => {
+                                    const file = e.target.files && e.target.files[0];
+                                    if (file) {
+                                      handleLessonFileChange(si, li, file);
+                                      e.target.value = "";
+                                    }
+                                  }}
+                                />
+                              </label>
+                              {uploadingLesson === `${si}-${li}` && (
+                                <span className="ls-uploading">Uploading…</span>
+                              )}
+                              {ls.contentUrl && (
+                                <button
+                                  type="button"
+                                  className="mini danger"
+                                  onClick={() => setLesson(si, li, { contentUrl: "" })}
+                                >
+                                  Remove file
+                                </button>
+                              )}
+                            </div>
+                          </div>
                           <button className="mini danger" onClick={() => removeLesson(si, li)}>✕</button>
+
                         </div>
                       ))}
                     </div>

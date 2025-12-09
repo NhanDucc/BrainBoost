@@ -22,6 +22,7 @@ import StudentHome from "./components/HomePage";
 import ApplyInstructor from "./components/ApplyInstructor";
 import AllTests from "./components/AllTests";
 import TestPlayer from "./components/TestPlayer";
+import CoursePlayer from "./components/CoursePlayer";
 
 const App = () => {
   return (
@@ -35,6 +36,7 @@ const App = () => {
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/courses" element={<AllCourses />} />
         <Route path="/courses/:courseId" element={<CourseDetail />} />
+        <Route path="/courses/:courseId/learn" element={<CoursePlayer />} />
         <Route path="/tests" element={<AllTests />} />
         <Route path="/tests/:id" element={<TestPlayer />} />
         <Route path="/privacy-policy" element={<Privacy />} />

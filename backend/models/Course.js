@@ -29,7 +29,7 @@ const CourseSchema = new mongoose.Schema(
         tags: { type: [String], default: [] },
         price: { type: Number, min: 0, default: null },
 
-        visibility: { type: String, enum: ["draft", "published"], default: "draft" },
+        visibility: { type: String, default: "published" },
         coverUrl: { type: String, default: "" },
 
         sections: { type: [SectionSchema], default: [] },

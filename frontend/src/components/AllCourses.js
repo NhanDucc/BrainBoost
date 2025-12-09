@@ -32,13 +32,17 @@ export default function AllCourses() {
         const qs = new URLSearchParams();
         if (tab && tab !== "all") qs.set("subject", tab);
         if (query.trim()) qs.set("q", query.trim());
-        const url = toAbsolute(`/api/courses${qs.toString() ? `?${qs}` : ""}`);
-        const res = await fetch(url, { credentials: "include" });
+
+        const url = toAbsolute(
+          `/api/courses/public${qs.toString() ? `?${qs}` : ""}`
+        );
+
+        const res = await fetch(url); // KHÔNG cần credentials ở đây
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
           throw new Error(data?.message || `HTTP ${res.status}`);
         }
-        const data = await res.json(); // [{id,title,subject,coverUrl,priceUSD,lessons,hours}]
+        const data = await res.json();
         if (!ignore) setCourses(Array.isArray(data) ? data : []);
       } catch (e) {
         if (!ignore) setErr(e.message || "Failed to load");
@@ -46,7 +50,9 @@ export default function AllCourses() {
         if (!ignore) setLoading(false);
       }
     })();
-    return () => { ignore = true; };
+    return () => {
+      ignore = true;
+    };
   }, [tab, query]);
 
   // group theo subject để render section giống bản cũ

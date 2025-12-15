@@ -8,6 +8,8 @@ const allowedMimes = [
   'application/msword',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'text/plain',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/vnd.ms-powerpoint',
 ];
 
 const uploadDoc = multer({
@@ -19,7 +21,7 @@ const uploadDoc = multer({
       return cb(new Error('Invalid file'));
     }
     if (!allowedMimes.includes(file.mimetype)) {
-      return cb(new Error('Only PDF, Word, or text files are allowed'));
+      return cb(new Error('Only PDF, Word, text, or slide files are allowed'));
     }
     cb(null, true);
   },

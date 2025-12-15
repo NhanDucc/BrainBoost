@@ -126,62 +126,52 @@ export default function CoursePlayer() {
 
     // ----- render doc viewer -----
     const renderDocViewer = () => {
-    if (!currentLesson || !currentLesson.contentUrl) {
-        return (
-        <div className="doc-empty">
-            <p>No document uploaded for this lesson yet.</p>
-        </div>
-        );
-    }
+        if (!currentLesson || !currentLesson.contentUrl) {
+            return (
+            <div className="doc-empty">
+                <p>No document uploaded for this lesson yet.</p>
+            </div>
+            );
+        }
 
-    const url = currentLesson.contentUrl;
-    // bỏ query string & lấy đuôi file
-    const lower = url.split("?")[0].toLowerCase();
-    const ext = lower.substring(lower.lastIndexOf(".") + 1);
+        const url = currentLesson.contentUrl.trim();
+        if (!url) {
+            return (
+            <div className="doc-empty">
+                <p>No document uploaded for this lesson yet.</p>
+            </div>
+            );
+        }
 
-    const isPdf = ext === "pdf";
-    const isDocLike = ["doc", "docx", "txt"].includes(ext);
+        // Bỏ query string (nếu Cloudinary có ?v=123&...)
+        const base = url.split("?")[0];
+        const lower = base.toLowerCase();
 
-    // PDF – nhúng trực tiếp
-    if (isPdf) {
-        return (
-        <iframe
-            src={url} // có thể thêm #view=FitH nếu muốn
-            title={currentLesson.title || "Lesson document"}
-            className="doc-frame"
-        />
-        );
-    }
+        const isPdf = lower.endsWith(".pdf");
 
-    // Word / text – dùng Google Docs Viewer để xem trong iframe
-    if (isDocLike) {
+        // Nếu là PDF → nhúng trực tiếp, cho phép scroll
+        if (isPdf) {
+            return (
+            <iframe
+                src={base + "#view=FitH"} // có thể bỏ #view=FitH nếu không thích
+                title={currentLesson.title || "Lesson document"}
+                className="doc-frame"
+            />
+            );
+        }
+
+        // Các loại doc/docx/txt → dùng Google Docs Viewer
         const viewerUrl = `https://docs.google.com/gview?url=${encodeURIComponent(
-        url
+            base
         )}&embedded=true`;
 
         return (
-        <iframe
+            <iframe
             src={viewerUrl}
             title={currentLesson.title || "Lesson document"}
             className="doc-frame"
-        />
+            />
         );
-    }
-
-    // Các loại file khác: fallback mở tab mới
-    return (
-        <div className="doc-empty">
-        <p>This document cannot be previewed here.</p>
-        <a
-            href={url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="btn-primary"
-        >
-            Open document
-        </a>
-        </div>
-    );
     };
 
     // ----- xử lý gửi tin nhắn demo -----

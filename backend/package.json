@@ -11,6 +11,7 @@
   "license": "ISC",
   "dependencies": {
     "adm-zip": "^0.5.16",
+    "axios": "^1.13.2",
     "bcryptjs": "^3.0.2",
     "cloudinary": "^2.8.0",
     "cookie-parser": "^1.4.7",
@@ -18,11 +19,14 @@
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
     "jsonwebtoken": "^9.0.2",
+    "jszip": "^3.10.1",
+    "mammoth": "^1.11.0",
     "mongoose": "^8.17.2",
     "multer": "^2.0.2",
     "nodemailer": "^7.0.5",
     "openai": "^6.10.0",
-    "pdf-parse": "^2.4.5",
-    "slugify": "^1.6.6"
+    "pdf-parse": "^1.1.1",
+    "slugify": "^1.6.6",
+    "unpdf": "^1.4.0"
   }
 }

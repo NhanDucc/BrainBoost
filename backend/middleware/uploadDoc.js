@@ -1,6 +1,7 @@
 // middleware/uploadDoc.js
 const cloudinary = require('../cloudinaryConfig');
 const multer = require('multer');
+const path = require('path');
 
 const allowedMimes = [
   'application/pdf',
@@ -29,11 +30,17 @@ const toCloudinaryDoc = (folder = 'BB_docs') => (req, res, next) => {
     return res.status(400).json({ message: 'No file uploaded' });
   }
 
+  const originalName = req.file.originalname;
+  const ext = path.extname(originalName);
+  const baseName = path.basename(originalName, ext);
+
   const options = {
     folder,
-    resource_type: 'auto',   // dùng auto cho dễ, pdf/doc đều ok
-    use_filename: true,
-    unique_filename: false,
+    resource_type: 'raw',          // BẮT BUỘC với pdf/doc/docx/txt
+    public_id: baseName,          // giữ nguyên tên (không có đuôi)
+    use_filename: false,          // dùng đúng public_id mình set
+    unique_filename: false,       // không tự thêm chuỗi random
+    overwrite: false,             // nếu trùng tên thì báo lỗi
   };
 
   console.log(">>> Uploading to Cloudinary:", req.file.originalname);

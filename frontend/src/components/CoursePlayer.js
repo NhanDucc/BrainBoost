@@ -5,7 +5,7 @@ import SiteFooter from "./Footer";
 import { toAbsolute } from "../utils/url";
 import "../css/CoursePlayer.css";
 
-/** Lấy sections/lessons từ course */
+// Get sections/lessons from the course.
 const buildSyllabus = (course) => {
   if (Array.isArray(course?.sections) && course.sections.length) {
     return course.sections.map((sec, idx) => ({
@@ -37,7 +37,7 @@ export default function CoursePlayer() {
   ]);
   const [chatInput, setChatInput] = useState("");
 
-  // ====== TTS state ======
+  // ==== TTS state ====
   // idle | loading | ready | speaking | paused
   const [ttsStatus, setTtsStatus] = useState("idle");
   const [ttsText, setTtsText] = useState("");
@@ -50,14 +50,14 @@ export default function CoursePlayer() {
     setTtsStatus("idle");
   };
 
-  // dừng TTS khi rời trang
+  // Stop TTS when leaving the page
   useEffect(() => {
     return () => {
       stopTts();
     };
   }, []);
 
-  // ====== Load course public ======
+  // ==== Load course public ====
   useEffect(() => {
     let cancelled = false;
 
@@ -96,7 +96,7 @@ export default function CoursePlayer() {
     };
   }, [courseId]);
 
-  // ====== state hiển thị lỗi / loading ======
+  // ==== State displaying error / loading ====
   if (loading) {
     return (
       <div className="learning-page">
@@ -139,19 +139,37 @@ export default function CoursePlayer() {
     );
   }
 
-  // ====== từ đây chắc chắn có course ======
+  // ==== Main render of course player ====
   const syllabus = buildSyllabus(course);
   const currentSection = syllabus[activeSec] || { lessons: [] };
   const currentLesson = currentSection.lessons[activeLesson] || null;
 
-  // ====== Load text của lesson cho TTS ======
+  // ==== Helper: extracts the URL to only get the path portion for extension testing ====
+  const getUrlParts = (url) => {
+    if (!url) return { full: "", forExt: "" };
+    const full = url.trim();
+    let cutAt = full.length;
+    const qIndex = full.indexOf("?");
+    const hIndex = full.indexOf("#");
+    if (qIndex !== -1 && hIndex !== -1) {
+      cutAt = Math.min(qIndex, hIndex);
+    } else if (qIndex !== -1) {
+      cutAt = qIndex;
+    } else if (hIndex !== -1) {
+      cutAt = hIndex;
+    }
+    const forExt = full.slice(0, cutAt);
+    return { full, forExt };
+  };
+
+  // ==== Load the lesson text for TTS ====
   const loadLessonText = async () => {
     if (!currentLesson || !currentLesson.contentUrl) {
       alert("No document to read.");
       return "";
     }
 
-    // Nếu đang speaking/paused thì dùng lại text đã có
+    // If you are speaking/paused, reuse the existing text.
     if (ttsStatus === "speaking" || ttsStatus === "paused") {
       return ttsText;
     }
@@ -159,19 +177,16 @@ export default function CoursePlayer() {
     setTtsStatus("loading");
 
     try {
-      const url = currentLesson.contentUrl.trim();
-      if (!url) {
+      const { full, forExt } = getUrlParts(currentLesson.contentUrl);
+      if (!full) {
         throw new Error("Lesson has no document URL.");
       }
 
-      // Bỏ query string (nếu Cloudinary có ?v=123&...),
-      // nhưng KHÔNG cố đoán extension từ .com nữa
-      const base = url.split("?")[0];
-      const lower = base.toLowerCase();
+      const lower = forExt.toLowerCase();
 
-      // 1) Nếu là .txt thì đọc trực tiếp trên client
+      // 1) If it's a .txt file, read it directly on the client (while still retaining the query/token).
       if (lower.endsWith(".txt")) {
-        const res = await fetch(base);
+        const res = await fetch(full);
         if (!res.ok) {
           throw new Error(`Cannot load text file (HTTP ${res.status}).`);
         }
@@ -184,9 +199,9 @@ export default function CoursePlayer() {
         return text;
       }
 
-      // 2) MỌI LOẠI FILE KHÁC → giao cho backend /api/tts/extract xử lý
+      // 2) ANY OTHER FILE TYPE → delegate to backend /api/tts/extract
       const res = await fetch(
-        toAbsolute(`/api/tts/extract?url=${encodeURIComponent(base)}`),
+        toAbsolute(`/api/tts/extract?url=${encodeURIComponent(full)}`),
         { credentials: "include" }
       );
 
@@ -206,7 +221,6 @@ export default function CoursePlayer() {
       setTtsStatus("ready");
       return text;
     } catch (err) {
-      // In lỗi ra console đúng lúc hiện thông báo
       console.error("[TTS] loadLessonText failed:", err);
       if (err && err.stack) {
         console.error(err.stack);
@@ -218,7 +232,7 @@ export default function CoursePlayer() {
     }
   };
 
-  // ====== Handle Play / Pause TTS ======
+  // ==== Handle Play / Pause TTS ====
   const handlePlayPause = async () => {
     if (!currentLesson || !currentLesson.contentUrl) return;
 
@@ -246,7 +260,7 @@ export default function CoursePlayer() {
     }
 
     const u = new SpeechSynthesisUtterance(text);
-    u.lang = "en-US"; // đổi sang "vi-VN" nếu bài tiếng Việt
+    u.lang = "en-US"; // Change to "vi-VN" if the article is in Vietnamese.
     u.rate = 1.0;
     u.onend = () => setTtsStatus("ready");
     u.onerror = () => setTtsStatus("ready");
@@ -257,7 +271,7 @@ export default function CoursePlayer() {
     setTtsStatus("speaking");
   };
 
-  // ----- render doc viewer -----
+  // ==== render doc viewer ====
   const renderDocViewer = () => {
     if (!currentLesson || !currentLesson.contentUrl) {
       return (
@@ -267,8 +281,8 @@ export default function CoursePlayer() {
       );
     }
 
-    const url = currentLesson.contentUrl.trim();
-    if (!url) {
+    const { full, forExt } = getUrlParts(currentLesson.contentUrl);
+    if (!full) {
       return (
         <div className="doc-empty">
           <p>No document uploaded for this lesson yet.</p>
@@ -276,22 +290,44 @@ export default function CoursePlayer() {
       );
     }
 
-    const base = url.split("?")[0];
-    const lower = base.toLowerCase();
+    const lower = forExt.toLowerCase();
     const isPdf = lower.endsWith(".pdf");
+    const isPpt = lower.endsWith(".ppt") || lower.endsWith(".pptx");
+    const isDoc = lower.endsWith(".doc") || lower.endsWith(".docx");
 
+    // 1) PDF: use Google Docs Viewer
     if (isPdf) {
+      const pdfViewerUrl = `https://docs.google.com/gview?url=${encodeURIComponent(
+        full
+      )}&embedded=true`;
+
       return (
         <iframe
-          src={base + "#view=FitH"}
+          src={pdfViewerUrl}
           title={currentLesson.title || "Lesson document"}
           className="doc-frame"
         />
       );
     }
 
+    // 2) Word / PowerPoint: use Office Web Viewer
+    if (isPpt || isDoc) {
+      const officeUrl = `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(
+        full
+      )}`;
+
+      return (
+        <iframe
+          src={officeUrl}
+          title={currentLesson.title || "Lesson document"}
+          className="doc-frame"
+        />
+      );
+    }
+
+    // 3) Fallback: Google Docs Viewer (cho txt, v.v.)
     const viewerUrl = `https://docs.google.com/gview?url=${encodeURIComponent(
-      base
+      full
     )}&embedded=true`;
 
     return (
@@ -303,7 +339,7 @@ export default function CoursePlayer() {
     );
   };
 
-  // ----- xử lý gửi tin nhắn demo -----
+  // ==== Handle sending demo chat message ====
   const handleSendChat = (e) => {
     e.preventDefault();
     const text = chatInput.trim();
@@ -320,7 +356,7 @@ export default function CoursePlayer() {
     setChatInput("");
   };
 
-  // ====== text hiển thị trong thanh audio ======
+  // ==== Text displayed in the audio bar ====
   const audioStatusText =
     ttsStatus === "loading"
       ? "Preparing audio from this document…"
@@ -347,7 +383,7 @@ export default function CoursePlayer() {
         </nav>
 
         <div className="learning-layout">
-          {/* Cột bên trái: danh sách bài */}
+          {/* Left column: List of articles */}
           <aside className="learning-sidebar">
             <h2 className="course-title">{course.title}</h2>
             <p className="course-sub">
@@ -396,17 +432,17 @@ export default function CoursePlayer() {
             </div>
           </aside>
 
-          {/* Khu vực học tập chính */}
+          {/* Main learning area */}
           <section className="learning-main">
-            {/* khung doc/pdf */}
+            {/* doc/pdf frame */}
             <div className="doc-container">{renderDocViewer()}</div>
 
-            {/* thanh audio – giờ là trạng thái audio */}
+            {/* audio bar – now shows audio status */}
             <div className="audio-bar">
               <span className="audio-label">{audioStatusText}</span>
             </div>
 
-            {/* nút điều khiển */}
+            {/* control button */}
             <div className="controls-row">
               <button
                 type="button"
@@ -436,7 +472,7 @@ export default function CoursePlayer() {
 
       <SiteFooter />
 
-      {/* ====== Hộp thoại AI Assistant ====== */}
+      {/* ==== AI Assistant ==== */}
       {showChat && (
         <div
           className="ai-modal-backdrop"
@@ -462,7 +498,9 @@ export default function CoursePlayer() {
               {chatMessages.map((m, idx) => (
                 <div
                   key={idx}
-                  className={`ai-msg ai-msg-${m.from === "user" ? "user" : "ai"}`}
+                  className={`ai-msg ai-msg-${
+                    m.from === "user" ? "user" : "ai"
+                  }`}
                 >
                   <div className="ai-msg-bubble">{m.text}</div>
                 </div>

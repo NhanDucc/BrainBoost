@@ -1,25 +1,21 @@
-// routes/ttsRoutes.js
 const express = require('express');
 const axios = require('axios');
-const pdfParse = require('pdf-parse'); // dùng require trực tiếp
+const pdfParse = require('pdf-parse');
 const mammoth = require('mammoth');
-const JSZip = require('jszip');       // 👈 dùng để đọc file PPTX (slide)
+const JSZip = require('jszip');
 const { TextDecoder } = require('util');
 
 const router = express.Router();
 
 /**
- * Helper: detect file type from magic bytes nếu Content-Type là application/octet-stream
- * (chỉ phân loại thô cho PDF / DOC (cũ) / file OpenXML dạng zip).
+ * Helper: detect file type from magic bytes if Content-Type is application/octet-stream
  */
 function detectTypeFromBuffer(buf) {
   if (!buf || buf.length < 4) return null;
 
-  // PDF: bắt đầu bằng "%PDF"
+  // PDF: "%PDF"
   const header4 = buf.slice(0, 4).toString();
-  if (header4 === '%PDF') {
-    return 'application/pdf';
-  }
+  if (header4 === '%PDF') return 'application/pdf';
 
   // DOC (OLE Compound File): d0 cf 11 e0 a1 b1 1a e1
   const first8Hex = buf.slice(0, 8).toString('hex');
@@ -27,26 +23,24 @@ function detectTypeFromBuffer(buf) {
     return 'application/msword';
   }
 
-  // Các định dạng Office mới (DOCX, PPTX, XLSX...) là file zip, header "PK"
+  // New Office formats (DOCX, PPTX, etc.) are zip files with the "PK" header
   const first2Hex = buf.slice(0, 2).toString('hex');
   if (first2Hex === '504b') {
     return 'application/zip-openxml';
   }
 
-  // Nếu không match gì, coi như text
+  // By default, it is treated as text
   return 'text/plain';
 }
 
 /**
- * Helper: đọc text từ file Office OpenXML (DOCX / PPTX) bằng JSZip
- * - DOCX: dùng mammoth (đơn giản, chất lượng tốt)
- * - PPTX: duyệt các slide, lấy nội dung trong <a:t> ... </a:t>
+ * Helper: read text from Office OpenXML (DOCX/PPTX) files using JSZip
  */
 async function extractOpenXmlText(buffer, contentType) {
   const zip = await JSZip.loadAsync(buffer);
   const files = Object.keys(zip.files);
 
-  // Đoán loại file nếu chưa rõ
+  // Guess file type if not clear
   let isDocx = contentType.includes(
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
   );
@@ -62,13 +56,13 @@ async function extractOpenXmlText(buffer, contentType) {
     }
   }
 
-  // DOCX → dùng mammoth
+  // DOCX → use mammoth
   if (isDocx) {
     const result = await mammoth.extractRawText({ buffer });
     return result.value || '';
   }
 
-  // PPTX → duyệt slide XML, lấy <a:t>...</a:t>
+  // PPTX → browse XML slides, get <a:t>...</a:t>
   if (isPptx) {
     let text = '';
     const slideFiles = files
@@ -93,7 +87,7 @@ async function extractOpenXmlText(buffer, contentType) {
     return text;
   }
 
-  // Fallback: nếu không xác định được, trả rỗng để phía trên xử lý
+  // Fallback
   return '';
 }
 
@@ -105,10 +99,15 @@ router.get('/extract', async (req, res) => {
   }
 
   try {
-    // Tải file từ Cloudinary
+    console.log('[TTS] Fetching file from:', url);
+
+    // Download files from Cloudinary – use the EXACT URL that FE sent (with query/token)
     const resp = await axios.get(url, { responseType: 'arraybuffer' });
 
-    // axios trả về ArrayBuffer -> chuyển sang Buffer cho dễ xử lý
+    console.log('[TTS] HTTP status from Cloudinary:', resp.status);
+    console.log('[TTS] Response headers:', resp.headers);
+
+    // axios returns ArrayBuffer -> convert to Buffer
     const buffer = Buffer.isBuffer(resp.data)
       ? resp.data
       : Buffer.from(resp.data);
@@ -116,7 +115,7 @@ router.get('/extract', async (req, res) => {
     let contentType = (resp.headers['content-type'] || '').toLowerCase();
     console.log('[TTS] Raw content-type from Cloudinary:', contentType);
 
-    // Nếu là application/octet-stream hoặc rỗng -> tự detect bằng magic bytes
+    // If it's application/octet-stream or empty -> automatically detect it using magic bytes
     if (!contentType || contentType === 'application/octet-stream') {
       const detected = detectTypeFromBuffer(buffer);
       console.log('[TTS] Detected type from magic bytes:', detected);
@@ -151,12 +150,28 @@ router.get('/extract', async (req, res) => {
       console.log('[TTS] Using JSZip + mammoth to extract OpenXML text...');
       text = await extractOpenXmlText(buffer, contentType);
     }
-    // 4) DOC (Office 97–2003)
+    // 4) DOC (Office 97–2003) or DOCX incorrectly assigned content-type
     else if (contentType.includes('application/msword')) {
-      return res.status(415).json({
-        message:
-          'Legacy .doc files are not fully supported for TTS. Please save as DOCX or PDF.',
-      });
+      console.log('[TTS] application/msword – trying OpenXML parser fallback...');
+      try {
+        // Try reading as DOCX (in case Cloudinary set wrong mimetype)
+        text = await extractOpenXmlText(
+          buffer,
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        );
+        if (!text || !text.trim()) {
+          return res.status(415).json({
+            message:
+              'Legacy .doc files are not fully supported for TTS. Please save as DOCX or PDF.',
+          });
+        }
+      } catch (e) {
+        console.error('[TTS] Fallback OpenXML parse for .doc failed:', e);
+        return res.status(415).json({
+          message:
+            'Legacy .doc files are not fully supported for TTS. Please save as DOCX or PDF.',
+        });
+      }
     }
     // 5) PPT (PowerPoint 97–2003)
     else if (contentType.includes('application/vnd.ms-powerpoint')) {
@@ -165,7 +180,7 @@ router.get('/extract', async (req, res) => {
           'Legacy .ppt slides are not supported for TTS. Please save as PPTX or PDF.',
       });
     }
-    // 6) Loại khác → không hỗ trợ
+    // 6) Other types → not supported
     else {
       console.log('[TTS] Unsupported contentType after detection:', contentType);
       return res.status(415).json({
@@ -183,6 +198,22 @@ router.get('/extract', async (req, res) => {
     return res.json({ text });
   } catch (err) {
     console.error('[TTS] extract error:', err);
+
+    if (err.response) {
+      console.error('[TTS] Upstream status:', err.response.status);
+      console.error(
+        '[TTS] Upstream headers x-cld-error:',
+        err.response.headers?.['x-cld-error']
+      );
+
+      if (err.response.status === 401 || err.response.status === 403) {
+        return res.status(err.response.status).json({
+          message:
+            'Cloud storage denied access to this file (401/403). Please check Cloudinary access control / hotlink settings.',
+        });
+      }
+    }
+
     return res.status(500).json({
       message: 'Failed to extract text for TTS.',
       error: err.message,

@@ -6,20 +6,19 @@
   flex-direction: column;
 }
 
-/* ===== Container chính – FULL WIDTH ===== */
+/* ===== Main container – FULL WIDTH ===== */
 .learning-page main,
 .learning-container {
   width: 100%;
-  max-width: 100% !important;       /* bỏ giới hạn 1200px */
+  max-width: 100% !important;       
   margin: 0;
-  padding: 1.5rem 2.5rem 3rem;      /* chừa mép trái/phải giống mockup */
+  padding: 1.5rem 2.5rem 3rem;      
   box-sizing: border-box;
 }
 
-/* ===== Layout 2 cột: sidebar rất hẹp, main cực rộng ===== */
 .learning-layout {
   display: grid;
-  grid-template-columns: 200px minmax(0, 1fr);  /* 190px sidebar + phần còn lại */
+  grid-template-columns: 200px minmax(0, 1fr);
   gap: 1.5rem;
   align-items: stretch;
 }
@@ -102,7 +101,6 @@
   color: #0051ff;
 }
 
-/* ===== Khối học tập bên phải ===== */
 .learning-main {
   background: #ffffff;
   border-radius: 18px;
@@ -114,11 +112,10 @@
   font-size: 1rem;
 }
 
-/* Khung hiển thị doc/pdf – RẤT TO */
 .doc-frame,
 .doc-empty {
   width: 100%;
-  height: calc(100vh - 340px);  /* giảm xuống chút so với trước */
+  height: calc(100vh - 340px);
   min-height: 380px;
   max-height: 680px;
   border-radius: 12px;
@@ -144,7 +141,6 @@
   padding: 1rem;
 }
 
-/* Thanh “audio track” */
 .audio-bar {
   margin-top: 0.6rem;
   padding: 0.5rem 1rem;
@@ -154,7 +150,6 @@
   color: #6c757d;
 }
 
-/* Nút Play / Ask AI */
 .controls-row {
   display: flex;
   gap: 1rem;
@@ -166,8 +161,8 @@
 .learning-page .btn-secondary {
   font-family: inherit;
   font-weight: 600;
-  font-size: 0.95rem;        /* tăng cỡ chữ */
-  padding: 0.85rem 1.8rem;   /* tăng chiều cao / bề ngang */
+  font-size: 0.95rem;        
+  padding: 0.85rem 1.8rem;   
   border-radius: 999px;
   cursor: pointer;
   outline: none;
@@ -175,16 +170,15 @@
 }
 
 .learning-page .btn-primary {
-  background: #0051ff;       /* Primary */
+  background: #0051ff;       
   color: #ffffff;
   box-shadow: 0 4px 10px rgba(0, 81, 255, 0.25);
 }
 
 .learning-page .btn-primary:hover {
-  background: #0a2d88;       /* Hover */
+  background: #0a2d88;       
 }
 
-/* Nút viền xanh (Ask AI, Back, …) */
 .learning-page .btn-outline {
   background: #ffffff;
   color: #0051ff;
@@ -192,35 +186,30 @@
 }
 
 .learning-page .btn-outline:hover {
-  background: #d9e5fd;       /* Object */
+  background: #d9e5fd;
 }
 
-/* Nút phụ (Back to courses, v.v. – nếu muốn khác chút) */
 .learning-page .btn-secondary {
   background: #d9e5fd;
   color: #0051ff;
 }
 
-/* chỉnh riêng 2 nút dưới khung doc cho rộng đều nhau */
 .controls-row .btn-primary,
 .controls-row .btn-outline {
   flex: 0 0 200px;
   text-align: center;
 }
 
-/* ===== AI Assistant Modal ===== */
-
 .ai-modal-backdrop {
-  position: fixed;          /* phủ toàn màn hình */
+  position: fixed;          
   inset: 0;
   background: rgba(0, 0, 0, 0.45);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 2000;            /* cao hơn header/footer */
+  z-index: 2000;           
 }
 
-/* Hộp chat */
 .ai-modal {
   width: min(480px, 100% - 2.5rem);
   max-height: 80vh;
@@ -233,7 +222,6 @@
   font-size: 0.95rem;
 }
 
-/* Header của hộp chat */
 .ai-modal-header {
   display: flex;
   align-items: center;
@@ -258,7 +246,6 @@
   color: #6c757d;
 }
 
-/* Vùng chat */
 .ai-modal-body {
   padding: 0.75rem 1rem;
   background: #f5f7ff;
@@ -266,7 +253,6 @@
   overflow-y: auto;
 }
 
-/* Bong bóng chat */
 .ai-msg {
   display: flex;
   margin-bottom: 0.5rem;
@@ -299,7 +285,6 @@
   color: #ffffff;
 }
 
-/* Hàng input + nút Send */
 .ai-input-row {
   display: flex;
   align-items: center;
@@ -323,26 +308,23 @@
   box-shadow: 0 0 0 2px rgba(0, 81, 255, 0.15);
 }
 
-/* nút Send đã dùng class btn-primary nên giữ style cũ */
 .ai-input-row .btn-primary {
   flex: 0 0 90px;
   padding-inline: 0;
 }
 
-/* Khung bao quanh tài liệu */
 .doc-container {
   width: 100%;
-  height: calc(100vh - 320px);  /* gần full chiều cao màn hình */
+  height: calc(100vh - 320px);
   min-height: 420px;
   max-height: 720px;
   border-radius: 12px;
   border: 1px dashed #d9e2ff;
   background: #f5f7ff;
-  overflow: hidden;             /* bo tròn viền đẹp */
+  overflow: hidden;
   box-sizing: border-box;
 }
 
-/* Iframe hiển thị tài liệu */
 .doc-frame {
   width: 100%;
   height: 100%;

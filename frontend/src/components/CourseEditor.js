@@ -14,20 +14,27 @@ const SUBJECTS = [
   { key: "chemistry", name: "Chemistry" },
 ];
 
+// CHỈ còn 2 loại: Lesson & Quiz
 const LESSON_TYPES = [
-  { key: "video", name: "Video" },
-  { key: "article", name: "Article" },
+  { key: "lesson", name: "Lesson" },
   { key: "quiz", name: "Quiz" },
 ];
 
 // Các đuôi file được phép upload cho lesson (document + slide)
 const LESSON_FILE_EXTS = [".pdf", ".doc", ".docx", ".txt", ".ppt", ".pptx"];
 
+// lesson “rỗng” cho builder
 const emptyLesson = () => ({
   title: "",
-  type: "video",
-  durationMin: "", // optional
-  contentUrl: "", // link video/pdf/quiz id
+  type: "lesson",
+  // dùng cho QUIZ: thời gian làm (phút). Với lesson sẽ để rỗng.
+  durationMin: "",
+  // URL tài nguyên chính (document / slide / v.v.)
+  contentUrl: "",
+  originalDocUrl: "",
+  originalDocType: "",
+  useAiSlides: false,
+  showOriginalToStudents: true,
 });
 
 const emptySection = (i) => ({
@@ -42,9 +49,9 @@ export default function CourseEditor() {
   const navigate = useNavigate();
 
   // Chỉ admin/instructor được vào
-  const canEdit = user && (user.role === "admin" || user.role === "instructor");
+  const canEdit =
+    user && (user.role === "admin" || user.role === "instructor");
 
-  // Khi tạo mới: loading = false. Khi edit: loading = true cho tới khi load xong.
   const [loading, setLoading] = useState(isEdit);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
@@ -58,7 +65,7 @@ export default function CourseEditor() {
   const [price, setPrice] = useState("");
 
   const [description, setDescription] = useState("");
-  const [coverUrl, setCoverUrl] = useState(""); // chỉ dùng URL
+  const [coverUrl, setCoverUrl] = useState("");
 
   // Builder
   const [sections, setSections] = useState([emptySection(0)]);
@@ -82,6 +89,7 @@ export default function CourseEditor() {
           throw new Error(data?.message || `HTTP ${res.status}`);
         }
         const c = await res.json();
+
         setTitle(c.title || "");
         setSlug(c.slug || "");
         setSubject(c.subject || SUBJECTS[0].key);
@@ -90,15 +98,23 @@ export default function CourseEditor() {
         setPrice(c.price ?? "");
         setDescription(c.description || "");
         setCoverUrl(c.coverUrl || "");
+
         setSections(
           Array.isArray(c.sections) && c.sections.length
             ? c.sections.map((s) => ({
                 title: s.title || "",
                 lessons: (s.lessons || []).map((ls) => ({
                   title: ls.title || "",
-                  type: ls.type || "video",
+                  type: ls.type || "lesson",
                   durationMin: ls.durationMin ?? "",
                   contentUrl: ls.contentUrl || "",
+                  originalDocUrl: ls.originalDocUrl || "",
+                  originalDocType: ls.originalDocType || "",
+                  useAiSlides: !!ls.useAiSlides,
+                  showOriginalToStudents:
+                    typeof ls.showOriginalToStudents === "boolean"
+                      ? ls.showOriginalToStudents
+                      : true,
                 })),
               }))
             : [emptySection(0)]
@@ -160,7 +176,6 @@ export default function CourseEditor() {
   const handleLessonFileChange = async (si, li, file) => {
     if (!file) return;
 
-    // Check extension ở client cho rõ ràng (backend vẫn kiểm tra MIME)
     const lowerName = file.name.toLowerCase();
     const ok = LESSON_FILE_EXTS.some((ext) => lowerName.endsWith(ext));
     if (!ok) {
@@ -183,17 +198,33 @@ export default function CourseEditor() {
         body: fd,
       });
 
-      console.log("Upload-doc status:", res.status);
-
       const data = await res.json().catch(() => ({}));
-      console.log("Upload-doc response:", data);
 
       if (!res.ok) {
         throw new Error(data?.message || `HTTP ${res.status}`);
       }
 
-      // data.url là secure_url do backend trả về
-      setLesson(si, li, { contentUrl: data.url });
+      const url = data.url || "";
+      const mime = (data.mimeType || file.type || "").toLowerCase();
+
+      let docType = "";
+      if (mime.includes("pdf")) docType = "pdf";
+      else if (
+        mime.includes("word") ||
+        mime.includes("officedocument.wordprocessingml.document")
+      )
+        docType = "docx";
+      else if (
+        mime.includes("presentation") ||
+        mime.includes("powerpoint")
+      )
+        docType = "pptx";
+
+      setLesson(si, li, {
+        contentUrl: url,
+        originalDocUrl: url,
+        originalDocType: docType,
+      });
 
       setToast({ type: "success", msg: "Document/slide uploaded." });
       setTimeout(() => setToast(null), 2500);
@@ -217,12 +248,13 @@ export default function CourseEditor() {
     for (let i = 0; i < sections.length; i++) {
       const s = sections[i];
       if (!s.title.trim()) return `Section ${i + 1}: title is required.`;
-      if (!s.lessons.length) return `Section ${i + 1}: add at least 1 lesson.`;
+      if (!s.lessons.length)
+        return `Section ${i + 1}: add at least 1 lesson.`;
       for (let j = 0; j < s.lessons.length; j++) {
         const L = s.lessons[j];
         if (!L.title.trim())
           return `Section ${i + 1}, Lesson ${j + 1}: title required.`;
-        if (!["video", "article", "quiz"].includes(L.type))
+        if (!["lesson", "quiz"].includes(L.type))
           return `Section ${i + 1}, Lesson ${j + 1}: invalid type.`;
       }
     }
@@ -248,15 +280,25 @@ export default function CourseEditor() {
         description,
         tags,
         price: price === "" ? null : Number(price),
-        coverUrl, // chỉ là URL string
+        coverUrl,
         sections: sections.map((s) => ({
           title: s.title.trim(),
           lessons: s.lessons.map((L) => ({
             title: L.title.trim(),
             type: L.type,
+            // durationMin bây giờ dùng cho QUIZ time
             durationMin:
-              L.durationMin === "" ? null : Number(L.durationMin),
-            contentUrl: L.contentUrl.trim(),
+              L.type === "quiz" && L.durationMin !== ""
+                ? Number(L.durationMin)
+                : null,
+            contentUrl: (L.contentUrl || "").trim(),
+            originalDocUrl: (L.originalDocUrl || "").trim(),
+            originalDocType: L.originalDocType || "",
+            useAiSlides: !!L.useAiSlides,
+            showOriginalToStudents:
+              typeof L.showOriginalToStudents === "boolean"
+                ? L.showOriginalToStudents
+                : true,
           })),
         })),
       };
@@ -361,9 +403,7 @@ export default function CourseEditor() {
                   <textarea
                     rows={4}
                     value={description}
-                    onChange={(e) =>
-                      setDescription(e.target.value)
-                    }
+                    onChange={(e) => setDescription(e.target.value)}
                   />
                 </label>
 
@@ -417,6 +457,38 @@ export default function CourseEditor() {
             <section className="card">
               <h3>Curriculum</h3>
 
+              {/* Hộp chú ý cho giáo viên – hiển thị 1 lần ở đầu card */}
+              <div className="upload-hints">
+                <div className="upload-hints-title">
+                  Teaching files & AI slides
+                </div>
+                <p className="upload-hints-text">
+                  For each lesson choose <strong>Lesson</strong> or{" "}
+                  <strong>Quiz</strong>. You can upload a PDF/Word/Slides file.
+                  Students can either view the original document or
+                  AI-generated slides in the player.
+                </p>
+                <ul>
+                  <li>
+                    <strong>Lesson:</strong> upload your teaching document and
+                    optionally let BrainBoost generate AI slides.
+                  </li>
+                  <li>
+                    <strong>Quiz:</strong> set a quiz duration (in minutes) and
+                    link it with your quiz content later.
+                  </li>
+                  <li>
+                    Always review AI-generated slides and formulas before using
+                    them in class.
+                  </li>
+                  <li>
+                    Avoid uploading confidential exam papers or sensitive
+                    personal data. Only extracted text is sent to the AI
+                    provider.
+                  </li>
+                </ul>
+              </div>
+
               <div className="sec-list">
                 {sections.map((sec, si) => (
                   <div key={si} className="sec-card">
@@ -431,12 +503,14 @@ export default function CourseEditor() {
                       <div className="sec-actions">
                         <button
                           className="mini"
+                          type="button"
                           onClick={() => addLesson(si)}
                         >
                           + Lesson
                         </button>
                         <button
                           className="mini danger"
+                          type="button"
                           onClick={() => removeSection(si)}
                         >
                           Delete Section
@@ -448,6 +522,7 @@ export default function CourseEditor() {
                       {sec.lessons.map((ls, li) => (
                         <div key={li} className="lesson-row">
                           <span className="ls-idx">{li + 1}.</span>
+
                           <input
                             className="ls-title"
                             placeholder="Lesson title"
@@ -458,14 +533,20 @@ export default function CourseEditor() {
                               })
                             }
                           />
+
+                          {/* Lesson / Quiz */}
                           <select
                             className="ls-type"
                             value={ls.type}
-                            onChange={(e) =>
-                              setLesson(si, li, {
-                                type: e.target.value,
-                              })
-                            }
+                            onChange={(e) => {
+                              const newType = e.target.value;
+                              const patch = { type: newType };
+                              // nếu chuyển từ quiz → lesson thì xoá thời gian
+                              if (newType !== "quiz") {
+                                patch.durationMin = "";
+                              }
+                              setLesson(si, li, patch);
+                            }}
                           >
                             {LESSON_TYPES.map((t) => (
                               <option key={t.key} value={t.key}>
@@ -474,65 +555,89 @@ export default function CourseEditor() {
                             ))}
                           </select>
 
-                          <input
-                            className="ls-dur"
-                            type="number"
-                            min="0"
-                            placeholder="min"
-                            value={ls.durationMin ?? ""}
-                            onChange={(e) =>
-                              setLesson(si, li, {
-                                durationMin: e.target.value,
-                              })
-                            }
-                          />
-
-                          <div className="ls-resource">
+                          {/* Chỉ hiện ô thời gian khi là Quiz */}
+                          {ls.type === "quiz" ? (
                             <input
-                              className="ls-url"
-                              placeholder="Content URL / document / slide link"
-                              value={ls.contentUrl}
+                              className="ls-dur"
+                              type="number"
+                              min="0"
+                              placeholder="Quiz min"
+                              value={ls.durationMin ?? ""}
                               onChange={(e) =>
                                 setLesson(si, li, {
-                                  contentUrl: e.target.value,
+                                  durationMin: e.target.value,
                                 })
                               }
                             />
+                          ) : (
+                            <div /> /* giữ layout */
+                          )}
+
+                          {/* Khối resource: checkbox + upload */}
+                          <div className="ls-resource">
+                            <div className="lesson-switch-row">
+                              <label className="lesson-switch-label">
+                                <input
+                                  type="checkbox"
+                                  checked={!!ls.showOriginalToStudents}
+                                  onChange={(e) =>
+                                    setLesson(si, li, {
+                                      showOriginalToStudents: e.target.checked,
+                                    })
+                                  }
+                                />
+                                <span>Let students open the original document</span>
+                              </label>
+
+                              <label className="lesson-switch-label">
+                                <input
+                                  type="checkbox"
+                                  checked={!!ls.useAiSlides}
+                                  onChange={(e) =>
+                                    setLesson(si, li, {
+                                      useAiSlides: e.target.checked,
+                                    })
+                                  }
+                                />
+                                <span>
+                                  Allow BrainBoost to generate AI slides (beta)
+                                </span>
+                              </label>
+                            </div>
+
                             <div className="ls-file-actions">
                               <label className="mini">
-                                Upload document / slide
+                                Upload teaching file
                                 <input
                                   type="file"
                                   accept=".pdf,.doc,.docx,.txt,.ppt,.pptx"
                                   style={{ display: "none" }}
                                   onChange={(e) => {
                                     const file =
-                                      e.target.files &&
-                                      e.target.files[0];
+                                      e.target.files && e.target.files[0];
                                     if (file) {
-                                      handleLessonFileChange(
-                                        si,
-                                        li,
-                                        file
-                                      );
-                                      // reset input để chọn lại cùng 1 file nếu cần
+                                      handleLessonFileChange(si, li, file);
                                       e.target.value = "";
                                     }
                                   }}
                                 />
                               </label>
+
                               {uploadingLesson === `${si}-${li}` && (
                                 <span className="ls-uploading">
                                   Uploading…
                                 </span>
                               )}
-                              {ls.contentUrl && (
+
+                              {(ls.contentUrl || ls.originalDocUrl) && (
                                 <button
                                   type="button"
                                   className="mini danger"
                                   onClick={() =>
                                     setLesson(si, li, {
                                       contentUrl: "",
+                                      originalDocUrl: "",
+                                      originalDocType: "",
                                     })
                                   }
                                 >
@@ -540,10 +645,28 @@ export default function CourseEditor() {
                                 </button>
                               )}
                             </div>
+
+                            {(ls.originalDocUrl || ls.useAiSlides) && (
+                              <div className="lesson-ai-preview">
+                                <div className="lesson-ai-preview-title">
+                                  This lesson will use:
+                                </div>
+                                <p>
+                                  {ls.originalDocUrl
+                                    ? "• Original document is available in the player."
+                                    : "• No original file uploaded yet."}
+                                  <br />
+                                  {ls.useAiSlides
+                                    ? "• AI slides will be generated from this file."
+                                    : "• AI slides are currently disabled for this lesson."}
+                                </p>
+                              </div>
+                            )}
                           </div>
 
                           <button
                             className="mini danger"
+                            type="button"
                             onClick={() => removeLesson(si, li)}
                           >
                             ✕
@@ -556,11 +679,16 @@ export default function CourseEditor() {
               </div>
 
               <div className="actions">
-                <button className="ghost-btn" onClick={addSection}>
+                <button
+                  className="ghost-btn"
+                  type="button"
+                  onClick={addSection}
+                >
                   + Add Section
                 </button>
                 <button
                   className="primary-btn"
+                  type="button"
                   disabled={saving}
                   onClick={handleSubmit}
                 >

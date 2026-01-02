@@ -15,6 +15,7 @@ const adminInstructorRouters = require('./routes/adminInstructorRoutes');
 const testRoutes = require("./routes/testRoutes");
 const courseRoutes = require('./routes/courseRoutes');
 const ttsRoutes = require("./routes/ttsRoutes");
+const aiSlidesRoutes = require("./routes/aiSlidesRoutes");
 
 const app = express();
 
@@ -50,6 +51,8 @@ app.use("/api/tests", testRoutes);
 app.use('/api/courses', courseRoutes);
 
 app.use("/api/tts", ttsRoutes);
+
+app.use("/api/ai-slides", aiSlidesRoutes);
 
 mongoose.connect('mongodb://localhost:27017/learning_platform', {
     useNewUrlParser: true,

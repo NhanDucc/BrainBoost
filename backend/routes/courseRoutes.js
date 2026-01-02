@@ -9,6 +9,7 @@ const {
     listPublicCourses,
     getPublicCourseById,
     deleteCourse,
+    generateLessonSlides,
 } = require("../controllers/courseController");
 const { uploadDoc, toCloudinaryDoc } = require("../middleware/uploadDoc");
 
@@ -43,6 +44,15 @@ router.use((err, req, res, next) => {
   }
   next(err);
 });
+
+// --- AI slide generation for a lesson ---
+// POST /api/courses/:courseId/sections/:secIndex/lessons/:lessonIndex/gen-slides
+router.post(
+  "/:courseId/sections/:secIndex/lessons/:lessonIndex/gen-slides",
+  auth,
+  authorize("admin", "instructor"),
+  generateLessonSlides
+);
 
 // --- Public routes ---
 router.get("/public", listPublicCourses);

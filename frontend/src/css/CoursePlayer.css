@@ -10,9 +10,9 @@
 .learning-page main,
 .learning-container {
   width: 100%;
-  max-width: 100% !important;       
+  max-width: 100% !important;
   margin: 0;
-  padding: 1.5rem 2.5rem 3rem;      
+  padding: 1.5rem 2.5rem 3rem;
   box-sizing: border-box;
 }
 
@@ -101,6 +101,7 @@
   color: #0051ff;
 }
 
+/* ===== Main panel ===== */
 .learning-main {
   background: #ffffff;
   border-radius: 18px;
@@ -108,30 +109,71 @@
   padding: 1.25rem 1.75rem 1.75rem;
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 0.8rem;
   font-size: 1rem;
 }
 
-.doc-frame,
-.doc-empty {
+/* ===== Tabs chọn chế độ xem: Original / AI slides ===== */
+.viewer-mode-tabs {
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:0.5rem;
+  margin-bottom:0.25rem;
+}
+.viewer-mode-tab {
+  border-radius:999px;
+  border:1px solid #d0d7ff;
+  background:#f8fafc;
+  padding:0.35rem 0.9rem;
+  font-size:0.82rem;
+  font-weight:600;
+  color:#475569;
+  cursor:pointer;
+}
+.viewer-mode-tab.active {
+  background:#0051ff;
+  border-color:#0051ff;
+  color:#ffffff;
+  box-shadow:0 4px 10px rgba(0,81,255,0.25);
+}
+.viewer-mode-tab .badge-beta {
+  margin-left:6px;
+  padding:1px 6px;
+  border-radius:999px;
+  font-size:0.7rem;
+  background:#f97316;
+  color:#fff;
+}
+
+/* ===== Document container / iframe ===== */
+.doc-container {
   width: 100%;
-  height: calc(100vh - 340px);
-  min-height: 380px;
-  max-height: 680px;
+  height: calc(100vh - 320px);
+  min-height: 420px;
+  max-height: 720px;
   border-radius: 12px;
   border: 1px dashed #d9e2ff;
   background: #f5f7ff;
+  overflow: hidden;
   box-sizing: border-box;
 }
 
+.doc-frame,
 .doc-empty {
   width: 100%;
   height: 100%;
   min-height: 420px;
   max-height: 720px;
   border-radius: 12px;
-  border: 1px dashed #d9e2ff;
+  border: none;
   background: #f5f7ff;
+  box-sizing: border-box;
+}
+
+/* khi không có tài liệu */
+.doc-empty {
+  border: 1px dashed #d9e2ff;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -141,8 +183,75 @@
   padding: 1rem;
 }
 
+/* ===== Panel AI slides ===== */
+.ai-slides-panel {
+  width:100%;
+  height: calc(100vh - 320px);
+  min-height:420px;
+  max-height:720px;
+  border-radius:12px;
+  border:1px dashed #d9e2ff;
+  background:#f5f7ff;
+  padding:10px 12px;
+  box-sizing:border-box;
+  overflow-y:auto;
+}
+.ai-slide-empty {
+  width:100%;
+  height:100%;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  color:#6b7280;
+  font-size:0.9rem;
+  text-align:center;
+  padding:1rem;
+}
+.ai-slides-list {
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+.ai-slide-card {
+  background:#ffffff;
+  border-radius:12px;
+  border:1px solid #e0e7ff;
+  padding:8px 10px;
+  box-shadow:0 4px 10px rgba(15,23,42,0.04);
+}
+.ai-slide-header {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  margin-bottom:4px;
+}
+.ai-slide-index {
+  font-size:0.78rem;
+  font-weight:700;
+  color:#0f172a;
+  background:#e0edff;
+  border-radius:999px;
+  padding:2px 8px;
+}
+.ai-slide-title {
+  font-size:0.9rem;
+  font-weight:700;
+  color:#0f172a;
+}
+.ai-slide-bullets {
+  margin:0;
+  padding-left:18px;
+  font-size:0.86rem;
+  color:#374151;
+}
+.ai-slide-bullets li {
+  margin-bottom:2px;
+}
+
+/* ===== Audio bar + controls ===== */
 .audio-bar {
-  margin-top: 0.6rem;
+  margin-top: 0.4rem;
   padding: 0.5rem 1rem;
   border-radius: 999px;
   background: #f1f4ff;
@@ -153,7 +262,7 @@
 .controls-row {
   display: flex;
   gap: 1rem;
-  margin-top: 1rem;
+  margin-top: 0.8rem;
 }
 
 .learning-page .btn-primary,
@@ -161,8 +270,8 @@
 .learning-page .btn-secondary {
   font-family: inherit;
   font-weight: 600;
-  font-size: 0.95rem;        
-  padding: 0.85rem 1.8rem;   
+  font-size: 0.95rem;
+  padding: 0.85rem 1.8rem;
   border-radius: 999px;
   cursor: pointer;
   outline: none;
@@ -170,13 +279,13 @@
 }
 
 .learning-page .btn-primary {
-  background: #0051ff;       
+  background: #0051ff;
   color: #ffffff;
   box-shadow: 0 4px 10px rgba(0, 81, 255, 0.25);
 }
 
 .learning-page .btn-primary:hover {
-  background: #0a2d88;       
+  background: #0a2d88;
 }
 
 .learning-page .btn-outline {
@@ -200,14 +309,15 @@
   text-align: center;
 }
 
+/* ===== AI chat modal ===== */
 .ai-modal-backdrop {
-  position: fixed;          
+  position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.45);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 2000;           
+  z-index: 2000;
 }
 
 .ai-modal {
@@ -313,24 +423,12 @@
   padding-inline: 0;
 }
 
-.doc-container {
-  width: 100%;
-  height: calc(100vh - 320px);
-  min-height: 420px;
-  max-height: 720px;
-  border-radius: 12px;
-  border: 1px dashed #d9e2ff;
-  background: #f5f7ff;
-  overflow: hidden;
-  box-sizing: border-box;
-}
-
-.doc-frame {
-  width: 100%;
-  height: 100%;
-  min-height: 420px;
-  max-height: 720px;
-  border: none;
-  background: #f5f7ff;
-  box-sizing: border-box;
+/* ===== Responsive ===== */
+@media (max-width: 900px) {
+  .learning-layout {
+    grid-template-columns: 1fr;
+  }
+  .learning-container {
+    padding-inline:1rem;
+  }
 }

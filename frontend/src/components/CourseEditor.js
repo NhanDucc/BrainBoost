@@ -33,6 +33,7 @@ const emptyLesson = () => ({
   contentUrl: "",
   originalDocUrl: "",
   originalDocType: "",
+  aiSlides: [],
   useAiSlides: false,
   showOriginalToStudents: true,
 });
@@ -70,6 +71,7 @@ export default function CourseEditor() {
   // Builder
   const [sections, setSections] = useState([emptySection(0)]);
   const [uploadingLesson, setUploadingLesson] = useState(null);
+  const [aiGeneratingLesson, setAiGeneratingLesson] = useState(null);
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -110,6 +112,7 @@ export default function CourseEditor() {
                   contentUrl: ls.contentUrl || "",
                   originalDocUrl: ls.originalDocUrl || "",
                   originalDocType: ls.originalDocType || "",
+                  aiSlides: Array.isArray(ls.aiSlides) ? ls.aiSlides : [],
                   useAiSlides: !!ls.useAiSlides,
                   showOriginalToStudents:
                     typeof ls.showOriginalToStudents === "boolean"
@@ -237,6 +240,60 @@ export default function CourseEditor() {
     }
   };
 
+  // ====== Generate AI slides for a lesson ====== //
+  const handleGenerateSlides = async (si, li, lesson) => {
+    if (!lesson.originalDocUrl) {
+      setToast({
+        type: "error",
+        msg: "Please upload a teaching document first.",
+      });
+      setTimeout(() => setToast(null), 2500);
+      return;
+    }
+
+    try {
+      setAiGeneratingLesson(`${si}-${li}`);
+
+      const res = await fetch(toAbsolute("/api/ai-slides/generate"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          docUrl: lesson.originalDocUrl,
+          maxSlides: 10,
+        }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(data?.message || `HTTP ${res.status}`);
+      }
+
+      const slides = Array.isArray(data.slides) ? data.slides : [];
+
+      setLesson(si, li, {
+        aiSlides: slides,
+        useAiSlides: true,
+      });
+
+      setToast({
+        type: "success",
+        msg: `Generated ${slides.length} AI slides for this lesson.`,
+      });
+      setTimeout(() => setToast(null), 3000);
+    } catch (e) {
+      console.error("[AI-SLIDES] Frontend error:", e);
+      setToast({
+        type: "error",
+        msg: `Generate slides failed: ${e.message}`,
+      });
+      setTimeout(() => setToast(null), 4000);
+    } finally {
+      setAiGeneratingLesson(null);
+    }
+  };
+
   // ====== Validation ====== //
   const validate = () => {
     if (!canEdit) return "Forbidden";
@@ -294,6 +351,7 @@ export default function CourseEditor() {
             contentUrl: (L.contentUrl || "").trim(),
             originalDocUrl: (L.originalDocUrl || "").trim(),
             originalDocType: L.originalDocType || "",
+            aiSlides: Array.isArray(L.aiSlides) ? L.aiSlides : [],
             useAiSlides: !!L.useAiSlides,
             showOriginalToStudents:
               typeof L.showOriginalToStudents === "boolean"
@@ -575,6 +633,7 @@ export default function CourseEditor() {
 
                           {/* Khối resource: checkbox + upload */}
                           <div className="ls-resource">
+                            {/* 2 checkbox chế độ hiển thị */}
                             <div className="lesson-switch-row">
                               <label className="lesson-switch-label">
                                 <input
@@ -599,12 +658,11 @@ export default function CourseEditor() {
                                     })
                                   }
                                 />
-                                <span>
-                                  Allow BrainBoost to generate AI slides (beta)
-                                </span>
+                                <span>Allow BrainBoost to generate AI slides (beta)</span>
                               </label>
                             </div>
 
+                            {/* Upload file */}
                             <div className="ls-file-actions">
                               <label className="mini">
                                 Upload teaching file
@@ -613,8 +671,7 @@ export default function CourseEditor() {
                                   accept=".pdf,.doc,.docx,.txt,.ppt,.pptx"
                                   style={{ display: "none" }}
                                   onChange={(e) => {
-                                    const file =
-                                      e.target.files && e.target.files[0];
+                                    const file = e.target.files && e.target.files[0];
                                     if (file) {
                                       handleLessonFileChange(si, li, file);
                                       e.target.value = "";
@@ -624,9 +681,7 @@ export default function CourseEditor() {
                               </label>
 
                               {uploadingLesson === `${si}-${li}` && (
-                                <span className="ls-uploading">
-                                  Uploading…
-                                </span>
+                                <span className="ls-uploading">Uploading…</span>
                               )}
 
                               {(ls.contentUrl || ls.originalDocUrl) && (
@@ -638,6 +693,7 @@ export default function CourseEditor() {
                                       contentUrl: "",
                                       originalDocUrl: "",
                                       originalDocType: "",
+                                      aiSlides: [],
                                     })
                                   }
                                 >
@@ -646,18 +702,47 @@ export default function CourseEditor() {
                               )}
                             </div>
 
-                            {(ls.originalDocUrl || ls.useAiSlides) && (
+                            {/* Nút tạo slide + trạng thái */}
+                            <div className="lesson-ai-actions">
+                              <button
+                                type="button"
+                                className="mini primary"
+                                disabled={
+                                  !ls.originalDocUrl ||
+                                  aiGeneratingLesson === `${si}-${li}`
+                                }
+                                onClick={() => handleGenerateSlides(si, li, ls)}
+                              >
+                                {aiGeneratingLesson === `${si}-${li}`
+                                  ? "Generating slides…"
+                                  : "Generate AI slides"}
+                              </button>
+
+                              {!ls.originalDocUrl && (
+                                <span className="lesson-hint">
+                                  Upload a document first to generate slides.
+                                </span>
+                              )}
+
+                              {Array.isArray(ls.aiSlides) && ls.aiSlides.length > 0 && (
+                                <span className="lesson-hint">
+                                  AI slides ready: {ls.aiSlides.length} slide(s).
+                                </span>
+                              )}
+                            </div>
+
+                            {(ls.originalDocUrl || ls.aiSlides?.length) && (
                               <div className="lesson-ai-preview">
-                                <div className="lesson-ai-preview-title">
-                                  This lesson will use:
-                                </div>
+                                <div className="lesson-ai-preview-title">Lesson display modes</div>
                                 <p>
                                   {ls.originalDocUrl
-                                    ? "• Original document is available in the player."
-                                    : "• No original file uploaded yet."}
+                                    ? "• Original document will be available in the player."
+                                    : "• No original document uploaded yet."}
                                   <br />
                                   {ls.useAiSlides
-                                    ? "• AI slides will be generated from this file."
+                                    ? `• AI slides ${
+                                        ls.aiSlides?.length ? `(${ls.aiSlides.length}) ` : ""
+                                      }will be used when students choose the AI slide mode.`
                                     : "• AI slides are currently disabled for this lesson."}
                                 </p>
                               </div>

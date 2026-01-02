@@ -27,7 +27,7 @@ export default function CoursePlayer() {
   const [activeSec, setActiveSec] = useState(0);
   const [activeLesson, setActiveLesson] = useState(0);
 
-  // UI Ask AI
+  // UI Ask AI (demo)
   const [showChat, setShowChat] = useState(false);
   const [chatMessages, setChatMessages] = useState([
     {
@@ -47,12 +47,8 @@ export default function CoursePlayer() {
   // "original" = file viewer, "ai" = AI slides (beta)
   const [viewMode, setViewMode] = useState("original");
 
-  // ==== AI slides state ====
-  const [aiSlides, setAiSlides] = useState([]); // [{title, bullets:[]}, ...]
-  const [aiSlidesLoading, setAiSlidesLoading] = useState(false);
-  const [aiSlidesError, setAiSlidesError] = useState("");
+  // ==== AI slides ====
   const [activeSlide, setActiveSlide] = useState(0);
-  const lastSlidesLessonKeyRef = useRef(null);
 
   // ===== Helpers =====
   const stopTts = () => {
@@ -89,7 +85,7 @@ export default function CoursePlayer() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Load course
+  // Load course (public)
   useEffect(() => {
     let cancelled = false;
 
@@ -130,51 +126,47 @@ export default function CoursePlayer() {
   const currentLesson = currentSection.lessons[activeLesson] || null;
 
   const lessonHasFile = !!(currentLesson && currentLesson.contentUrl);
-  const lessonUseOriginal =
-    currentLesson && typeof currentLesson.useOriginalDoc === "boolean"
-      ? currentLesson.useOriginalDoc
-      : lessonHasFile;
-  const lessonUseAiSlides =
-    currentLesson && typeof currentLesson.useAiSlides === "boolean"
-      ? currentLesson.useAiSlides
-      : false;
 
-  // Reset khi đổi bài học
+  // cho xem tài liệu gốc hay không (schema: showOriginalToStudents)
+  const lessonUseOriginal =
+    currentLesson && typeof currentLesson.showOriginalToStudents === "boolean"
+      ? currentLesson.showOriginalToStudents && lessonHasFile
+      : lessonHasFile;
+
+  const hasAiSlides =
+    currentLesson &&
+    Array.isArray(currentLesson.aiSlides) &&
+    currentLesson.aiSlides.length > 0;
+
+  // chỉ bật AI slides nếu giáo viên cho phép + thực sự có slide
+  const lessonUseAiSlides =
+    currentLesson && currentLesson.useAiSlides && hasAiSlides;
+
+  // Reset khi đổi bài học: chọn view mặc định + reset TTS & slide index
   useEffect(() => {
-    setViewMode("original");
-    setAiSlides([]);
-    setAiSlidesError("");
+    if (!currentLesson) {
+      setViewMode("original");
+    } else if (lessonUseOriginal) {
+      setViewMode("original");
+    } else if (!lessonUseOriginal && lessonUseAiSlides) {
+      setViewMode("ai");
+    } else {
+      setViewMode("original");
+    }
     setActiveSlide(0);
     setTtsText("");
     stopTts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSec, activeLesson, courseId]);
 
-  // Đảm bảo viewMode hợp lệ với lựa chọn của giáo viên
-  useEffect(() => {
-    if (!currentLesson) return;
-
-    if (viewMode === "original" && !lessonUseOriginal && lessonUseAiSlides) {
-      setViewMode("ai");
-    } else if (
-      viewMode === "ai" &&
-      (!lessonUseAiSlides || !lessonHasFile) &&
-      lessonUseOriginal
-    ) {
-      setViewMode("original");
-    }
-  }, [
-    viewMode,
-    lessonUseOriginal,
-    lessonUseAiSlides,
-    lessonHasFile,
-    currentLesson,
-  ]);
-
-  // ===== TTS =====
+  // ===== TTS (đọc tài liệu gốc) =====
   const loadLessonText = async () => {
     if (!currentLesson || !currentLesson.contentUrl) {
       alert("No document to read.");
+      return "";
+    }
+    if (!lessonUseOriginal) {
+      alert("The teacher has disabled the original document for this lesson.");
       return "";
     }
 
@@ -205,7 +197,7 @@ export default function CoursePlayer() {
         return text;
       }
 
-      // Các loại khác → gọi backend
+      // Các loại khác → gọi backend extract
       const res = await fetch(
         toAbsolute(`/api/tts/extract?url=${encodeURIComponent(full)}`),
         { credentials: "include" }
@@ -234,7 +226,9 @@ export default function CoursePlayer() {
   };
 
   const handlePlayPause = async () => {
-    if (!currentLesson || !currentLesson.contentUrl) return;
+    if (!currentLesson || !currentLesson.contentUrl || !lessonUseOriginal) {
+      return;
+    }
 
     if (typeof window === "undefined" || !("speechSynthesis" in window)) {
       alert("Your browser does not support text-to-speech.");
@@ -271,64 +265,15 @@ export default function CoursePlayer() {
     setTtsStatus("speaking");
   };
 
-  // ===== AI slides (gọi API Gemini ở backend) =====
-  const ensureAiSlidesLoaded = async () => {
-    if (!currentLesson || !currentLesson.contentUrl) return;
-
-    const { full } = getUrlParts(currentLesson.contentUrl);
-    if (!full) return;
-
-    const lessonKey = `${courseId}-${activeSec}-${activeLesson}-${full}`;
-    lastSlidesLessonKeyRef.current = lessonKey;
-
-    setAiSlidesLoading(true);
-    setAiSlidesError("");
-
-    try {
-      const res = await fetch(toAbsolute("/api/tts/gen-slides"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          url: full,
-          lessonTitle: currentLesson.title || "Lesson",
-        }),
-      });
-
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(
-          data.message || `Slide generation failed (HTTP ${res.status}).`
-        );
-      }
-
-      const slides = Array.isArray(data.slides) ? data.slides : [];
-      if (!slides.length) {
-        throw new Error("AI did not return any slides.");
-      }
-
-      if (lastSlidesLessonKeyRef.current !== lessonKey) return;
-
-      setAiSlides(slides);
-      setActiveSlide(0);
-    } catch (e) {
-      console.error("[AI slides] error:", e);
-      if (lastSlidesLessonKeyRef.current === lessonKey) {
-        setAiSlidesError(e.message || "Cannot generate slides for this lesson.");
-      }
-    } finally {
-      if (lastSlidesLessonKeyRef.current === lessonKey) {
-        setAiSlidesLoading(false);
-      }
-    }
-  };
-
   // ===== Viewers =====
   const renderDocViewer = () => {
-    if (!currentLesson || !currentLesson.contentUrl) {
+    if (!currentLesson || !currentLesson.contentUrl || !lessonUseOriginal) {
       return (
         <div className="doc-empty">
-          <p>No document uploaded for this lesson yet.</p>
+          <p>
+            This lesson does not provide the original document to students.  
+            If you are the teacher, enable “Show original document” in the editor.
+          </p>
         </div>
       );
     }
@@ -389,42 +334,39 @@ export default function CoursePlayer() {
   };
 
   const renderAiSlides = () => {
-    if (!currentLesson || !currentLesson.contentUrl) {
-      return (
-        <div className="doc-empty">
-          <p>No document to generate AI slides from.</p>
-        </div>
-      );
-    }
+    const slides =
+      currentLesson && Array.isArray(currentLesson.aiSlides)
+        ? currentLesson.aiSlides
+        : [];
 
-    if (aiSlidesLoading) {
-      return (
-        <div className="doc-empty">
-          <p>Generating AI slides for this lesson…</p>
-        </div>
-      );
-    }
-
-    if (aiSlidesError) {
-      return (
-        <div className="doc-empty">
-          <p>{aiSlidesError}</p>
-        </div>
-      );
-    }
-
-    if (!aiSlides.length) {
+    if (!lessonUseAiSlides) {
       return (
         <div className="doc-empty">
           <p>
-            Click on <strong>AI slides (beta)</strong> again if nothing appears,
-            or ask your teacher to enable AI slides for this lesson.
+            AI slides are not enabled for this lesson.  
+            If you are the teacher, tick “Allow BrainBoost to generate AI slides”
+            and save the course.
           </p>
         </div>
       );
     }
 
-    const slide = aiSlides[activeSlide] || {};
+    if (!slides.length) {
+      return (
+        <div className="doc-empty">
+          <p>
+            No AI slides were saved for this lesson.  
+            Please regenerate slides in the instructor editor.
+          </p>
+        </div>
+      );
+    }
+
+    const safeIndex = Math.min(
+      Math.max(activeSlide, 0),
+      Math.max(slides.length - 1, 0)
+    );
+    const slide = slides[safeIndex] || {};
     const bullets = Array.isArray(slide.bullets) ? slide.bullets : [];
 
     return (
@@ -438,7 +380,9 @@ export default function CoursePlayer() {
               ))}
             </ul>
           ) : (
-            slide.body && <p className="ai-slide-body">{slide.body}</p>
+            slide.ttsText && (
+              <p className="ai-slide-body">{slide.ttsText}</p>
+            )
           )}
         </div>
 
@@ -447,20 +391,22 @@ export default function CoursePlayer() {
             type="button"
             className="btn-outline"
             onClick={() => setActiveSlide((s) => Math.max(0, s - 1))}
-            disabled={activeSlide === 0}
+            disabled={safeIndex === 0}
           >
             ◀ Prev
           </button>
           <span className="ai-slide-index">
-            {activeSlide + 1} / {aiSlides.length}
+            {safeIndex + 1} / {slides.length}
           </span>
           <button
             type="button"
             className="btn-outline"
             onClick={() =>
-              setActiveSlide((s) => Math.min(aiSlides.length - 1, s + 1))
+              setActiveSlide((s) =>
+                Math.min(slides.length - 1, s + 1)
+              )
             }
-            disabled={activeSlide >= aiSlides.length - 1}
+            disabled={safeIndex >= slides.length - 1}
           >
             Next ▶
           </button>
@@ -470,10 +416,18 @@ export default function CoursePlayer() {
   };
 
   const renderActiveView = () => {
-    if (!lessonHasFile) {
+    if (!currentLesson) {
       return (
         <div className="doc-empty">
-          <p>No document uploaded for this lesson yet.</p>
+          <p>Select a lesson from the left to start learning.</p>
+        </div>
+      );
+    }
+
+    if (!lessonHasFile && !lessonUseAiSlides) {
+      return (
+        <div className="doc-empty">
+          <p>No document or AI slides are available for this lesson yet.</p>
         </div>
       );
     }
@@ -482,13 +436,17 @@ export default function CoursePlayer() {
       return renderAiSlides();
     }
 
-    if (lessonUseOriginal) {
+    if (viewMode === "original" && lessonUseOriginal) {
       return renderDocViewer();
     }
 
+    // Fallback: nếu viewMode không hợp lệ, ưu tiên original rồi đến AI
+    if (lessonUseOriginal) return renderDocViewer();
+    if (lessonUseAiSlides) return renderAiSlides();
+
     return (
       <div className="doc-empty">
-        <p>This lesson does not have any document or AI slide view enabled.</p>
+        <p>This lesson does not have any enabled view.</p>
       </div>
     );
   };
@@ -520,7 +478,9 @@ export default function CoursePlayer() {
       ? "Audio paused – press Resume."
       : ttsStatus === "ready" && ttsText
       ? "Audio ready – press Play to listen again."
-      : "Press Play to listen to this lesson.";
+      : lessonUseOriginal && lessonHasFile
+      ? "Press Play to listen to this lesson."
+      : "Audio is only available for the original document view.";
 
   // ======= EARLY RETURNS (sau tất cả hooks) =======
   if (loading) {
@@ -636,7 +596,7 @@ export default function CoursePlayer() {
                   viewMode === "original" ? "active" : ""
                 }`}
                 onClick={() => setViewMode("original")}
-                disabled={!lessonUseOriginal || !lessonHasFile}
+                disabled={!lessonUseOriginal}
               >
                 Original document
               </button>
@@ -645,13 +605,8 @@ export default function CoursePlayer() {
                 className={`view-toggle-btn ${
                   viewMode === "ai" ? "active" : ""
                 }`}
-                onClick={() => {
-                  setViewMode("ai");
-                  if (!aiSlides.length && !aiSlidesLoading && lessonUseAiSlides) {
-                    ensureAiSlidesLoaded();
-                  }
-                }}
-                disabled={!lessonUseAiSlides || !lessonHasFile}
+                onClick={() => setViewMode("ai")}
+                disabled={!lessonUseAiSlides}
               >
                 AI slides (beta)
               </button>
@@ -671,7 +626,9 @@ export default function CoursePlayer() {
                 type="button"
                 className="btn-primary"
                 onClick={handlePlayPause}
-                disabled={ttsStatus === "loading" || !lessonHasFile}
+                disabled={
+                  ttsStatus === "loading" || !lessonHasFile || !lessonUseOriginal
+                }
               >
                 {ttsStatus === "loading"
                   ? "Loading text…"

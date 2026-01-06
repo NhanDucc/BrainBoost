@@ -16,6 +16,33 @@ const buildSyllabus = (course) => {
   return [];
 };
 
+// Build one big TTS string from AI slides
+const buildSlidesTts = (slides) => {
+  if (!Array.isArray(slides) || !slides.length) return "";
+
+  const pieces = slides
+    .map((s, idx) => {
+      const title = (s.title || "").toString().trim();
+      const bullets = Array.isArray(s.bullets)
+        ? s.bullets.map((b) => String(b || "").trim()).filter(Boolean)
+        : [];
+      const explicit = (s.ttsText || "").toString().trim();
+
+      if (explicit) {
+        return explicit;
+      }
+
+      const parts = [];
+      if (title) parts.push(`Slide ${idx + 1}: ${title}`);
+      if (bullets.length) parts.push(bullets.join(". "));
+
+      return parts.join(". ");
+    })
+    .filter(Boolean);
+
+  return pieces.join(". ");
+};
+
 export default function CoursePlayer() {
   const { courseId } = useParams();
   const navigate = useNavigate();
@@ -27,15 +54,21 @@ export default function CoursePlayer() {
   const [activeSec, setActiveSec] = useState(0);
   const [activeLesson, setActiveLesson] = useState(0);
 
-  // UI Ask AI (demo)
+  // ==== Auth state ====
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
+
+  // UI Ask AI
   const [showChat, setShowChat] = useState(false);
   const [chatMessages, setChatMessages] = useState([
     {
       from: "ai",
-      text: "Hi, I'm BrainBoost Assistant. This is a demo chat UI – later we will connect real AI to explain your lessons.",
+      text:
+        "Hi, I'm BrainBoost Assistant. Ask me about this lesson and I will answer based on the uploaded content.",
     },
   ]);
   const [chatInput, setChatInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
 
   // ==== TTS state ====
   // idle | loading | ready | speaking | paused
@@ -44,7 +77,7 @@ export default function CoursePlayer() {
   const utteranceRef = useRef(null);
 
   // ==== View mode ====
-  // "original" = file viewer, "ai" = AI slides (beta)
+  // "original" = file viewer, "ai" = AI slides
   const [viewMode, setViewMode] = useState("original");
 
   // ==== AI slides ====
@@ -76,6 +109,33 @@ export default function CoursePlayer() {
   };
 
   // ===== Hooks =====
+
+  // Check current user (đã login hay chưa)
+  useEffect(() => {
+    let cancelled = false;
+
+    async function checkAuth() {
+      try {
+        const res = await fetch(toAbsolute("/api/users/me"), {
+          method: "GET",
+          credentials: "include",
+        });
+        if (!cancelled && res.ok) {
+          // Nếu backend trả user thành công => đã đăng nhập
+          setIsLoggedIn(true);
+        }
+      } catch (err) {
+        console.warn("[CoursePlayer] /api/users/me failed:", err);
+      } finally {
+        if (!cancelled) setAuthChecked(true);
+      }
+    }
+
+    checkAuth();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Cleanup TTS on unmount
   useEffect(() => {
@@ -142,7 +202,11 @@ export default function CoursePlayer() {
   const lessonUseAiSlides =
     currentLesson && currentLesson.useAiSlides && hasAiSlides;
 
-  // Reset khi đổi bài học: chọn view mặc định + reset TTS & slide index
+  const canPlayAudio =
+    (viewMode === "ai" && lessonUseAiSlides) ||
+    (viewMode === "original" && lessonUseOriginal && lessonHasFile);
+
+  // Reset khi đổi bài học: chọn view mặc định + reset TTS & slide index + reset chat
   useEffect(() => {
     if (!currentLesson) {
       setViewMode("original");
@@ -156,10 +220,21 @@ export default function CoursePlayer() {
     setActiveSlide(0);
     setTtsText("");
     stopTts();
+
+    // reset chat cho lesson mới
+    setChatMessages([
+      {
+        from: "ai",
+        text:
+          "Hi, I'm BrainBoost Assistant. Ask me about this lesson and I will answer based on the uploaded content.",
+      },
+    ]);
+    setChatInput("");
+    setChatLoading(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSec, activeLesson, courseId]);
 
-  // ===== TTS (đọc tài liệu gốc) =====
+  // ===== TTS (doc gốc + AI slides) =====
   const loadLessonText = async () => {
     if (!currentLesson || !currentLesson.contentUrl) {
       alert("No document to read.");
@@ -226,15 +301,14 @@ export default function CoursePlayer() {
   };
 
   const handlePlayPause = async () => {
-    if (!currentLesson || !currentLesson.contentUrl || !lessonUseOriginal) {
-      return;
-    }
+    if (!currentLesson) return;
 
     if (typeof window === "undefined" || !("speechSynthesis" in window)) {
       alert("Your browser does not support text-to-speech.");
       return;
     }
 
+    // Toggle pause/resume
     if (ttsStatus === "speaking") {
       window.speechSynthesis.pause();
       setTtsStatus("paused");
@@ -248,9 +322,33 @@ export default function CoursePlayer() {
     }
 
     let text = ttsText;
+
     if (!text) {
-      text = await loadLessonText();
-      if (!text) return;
+      // 1) Nếu đang ở AI view → đọc từ aiSlides
+      if (viewMode === "ai" && lessonUseAiSlides) {
+        const slides = Array.isArray(currentLesson.aiSlides)
+          ? currentLesson.aiSlides
+          : [];
+        if (!slides.length) {
+          alert("No AI slides available for this lesson.");
+          return;
+        }
+        const built = buildSlidesTts(slides);
+        if (!built) {
+          alert("Cannot build readable text from AI slides.");
+          return;
+        }
+        text = built;
+        setTtsText(built);
+      }
+      // 2) Nếu ở Original view → đọc từ tài liệu gốc
+      else if (lessonUseOriginal && lessonHasFile) {
+        text = await loadLessonText();
+        if (!text) return;
+      } else {
+        alert("This view has no content that can be read aloud.");
+        return;
+      }
     }
 
     const u = new SpeechSynthesisUtterance(text);
@@ -271,8 +369,9 @@ export default function CoursePlayer() {
       return (
         <div className="doc-empty">
           <p>
-            This lesson does not provide the original document to students.  
-            If you are the teacher, enable “Show original document” in the editor.
+            This lesson does not provide the original document to students.
+            If you are the teacher, enable “Show original document” in the
+            editor.
           </p>
         </div>
       );
@@ -343,9 +442,9 @@ export default function CoursePlayer() {
       return (
         <div className="doc-empty">
           <p>
-            AI slides are not enabled for this lesson.  
-            If you are the teacher, tick “Allow BrainBoost to generate AI slides”
-            and save the course.
+            AI slides are not enabled for this lesson.
+            If you are the teacher, tick “Allow BrainBoost to generate AI
+            slides” and save the course.
           </p>
         </div>
       );
@@ -355,7 +454,7 @@ export default function CoursePlayer() {
       return (
         <div className="doc-empty">
           <p>
-            No AI slides were saved for this lesson.  
+            No AI slides were saved for this lesson.
             Please regenerate slides in the instructor editor.
           </p>
         </div>
@@ -372,7 +471,13 @@ export default function CoursePlayer() {
     return (
       <div className="ai-slide-container">
         <div className="ai-slide">
-          <h2 className="ai-slide-title">{slide.title || "Slide"}</h2>
+          <div className="ai-slide-header">
+            <span className="ai-slide-chip">
+              Lesson {activeLesson + 1} • Slide {safeIndex + 1}
+            </span>
+            <h2 className="ai-slide-title">{slide.title || "Slide"}</h2>
+          </div>
+
           {bullets.length > 0 ? (
             <ul className="ai-slide-list">
               {bullets.map((b, idx) => (
@@ -389,7 +494,7 @@ export default function CoursePlayer() {
         <div className="ai-slide-footer">
           <button
             type="button"
-            className="btn-outline"
+            className="btn-outline ai-slide-nav"
             onClick={() => setActiveSlide((s) => Math.max(0, s - 1))}
             disabled={safeIndex === 0}
           >
@@ -400,7 +505,7 @@ export default function CoursePlayer() {
           </span>
           <button
             type="button"
-            className="btn-outline"
+            className="btn-outline ai-slide-nav"
             onClick={() =>
               setActiveSlide((s) =>
                 Math.min(slides.length - 1, s + 1)
@@ -451,36 +556,112 @@ export default function CoursePlayer() {
     );
   };
 
-  // ===== Chat demo =====
-  const handleSendChat = (e) => {
+  // ===== Chat with AI (real) =====
+  const handleSendChat = async (e) => {
     e.preventDefault();
     const text = chatInput.trim();
-    if (!text) return;
-    setChatMessages((prev) => [
-      ...prev,
-      { from: "user", text },
-      {
-        from: "ai",
-        text:
-          "(Demo) Later the AI will answer based on this lesson. For now this is just a placeholder response.",
-      },
-    ]);
+    if (!text || chatLoading || !currentLesson) return;
+
+    // Nếu vì lý do nào đó vẫn mở được modal nhưng chưa login
+    if (!isLoggedIn) {
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          from: "ai",
+          text:
+            "You need to sign in to your BrainBoost account to chat with the AI assistant for this lesson.",
+        },
+      ]);
+      return;
+    }
+
+    // Push user message lên UI ngay
+    setChatMessages((prev) => [...prev, { from: "user", text }]);
     setChatInput("");
+
+    try {
+      setChatLoading(true);
+
+      const lessonKey =
+        currentLesson._id ||
+        currentLesson.id ||
+        `${activeSec}-${activeLesson}`;
+
+      const payload = {
+        courseId,
+        lessonKey,
+        lessonTitle: currentLesson.title || "",
+        userMessage: text,
+        docUrl:
+          lessonUseOriginal && currentLesson.contentUrl
+            ? currentLesson.contentUrl
+            : null,
+        aiSlides:
+          lessonUseAiSlides && Array.isArray(currentLesson.aiSlides)
+            ? currentLesson.aiSlides
+            : [],
+      };
+
+      const res = await fetch(toAbsolute("/api/lesson-chat"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        const msg =
+          body.message || "The AI assistant is not available right now.";
+        setChatMessages((prev) => [
+          ...prev,
+          {
+            from: "ai",
+            text:
+              "Sorry, I could not answer this question at the moment. " +
+              msg,
+          },
+        ]);
+        return;
+      }
+
+      const data = await res.json().catch(() => ({}));
+      const answer = data.answer || "(No answer returned from AI.)";
+
+      setChatMessages((prev) => [...prev, { from: "ai", text: answer }]);
+    } catch (err) {
+      console.error("[LessonChat] failed:", err);
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          from: "ai",
+          text:
+            "Sorry, something went wrong while contacting the AI assistant. Please try again later.",
+        },
+      ]);
+    } finally {
+      setChatLoading(false);
+    }
   };
 
   // ===== Audio bar text =====
   const audioStatusText =
     ttsStatus === "loading"
-      ? "Preparing audio from this document…"
+      ? "Preparing audio for this lesson…"
       : ttsStatus === "speaking"
       ? "Reading aloud – press Pause to stop."
       : ttsStatus === "paused"
       ? "Audio paused – press Resume."
       : ttsStatus === "ready" && ttsText
       ? "Audio ready – press Play to listen again."
+      : viewMode === "ai" && lessonUseAiSlides
+      ? "Press Play to listen to the AI slides for this lesson."
       : lessonUseOriginal && lessonHasFile
-      ? "Press Play to listen to this lesson."
-      : "Audio is only available for the original document view.";
+      ? "Press Play to listen to the original document."
+      : "Audio is not available for this lesson yet.";
+
+  const chatDisabled =
+    !currentLesson || !authChecked || !isLoggedIn;
 
   // ======= EARLY RETURNS (sau tất cả hooks) =======
   if (loading) {
@@ -588,27 +769,38 @@ export default function CoursePlayer() {
 
           {/* Main learning area */}
           <section className="learning-main">
-            {/* View mode toggle */}
-            <div className="view-toggle">
+            {/* View mode tabs (Original / AI) */}
+            <div className="viewer-mode-tabs">
               <button
                 type="button"
-                className={`view-toggle-btn ${
+                className={`viewer-mode-tab ${
                   viewMode === "original" ? "active" : ""
                 }`}
-                onClick={() => setViewMode("original")}
+                onClick={() => {
+                  stopTts();
+                  setTtsText("");
+                  setTtsStatus("idle");
+                  setViewMode("original");
+                }}
                 disabled={!lessonUseOriginal}
               >
                 Original document
               </button>
+
               <button
                 type="button"
-                className={`view-toggle-btn ${
+                className={`viewer-mode-tab ${
                   viewMode === "ai" ? "active" : ""
                 }`}
-                onClick={() => setViewMode("ai")}
+                onClick={() => {
+                  stopTts();
+                  setTtsText("");
+                  setTtsStatus("idle");
+                  setViewMode("ai");
+                }}
                 disabled={!lessonUseAiSlides}
               >
-                AI slides (beta)
+                AI slides
               </button>
             </div>
 
@@ -626,9 +818,7 @@ export default function CoursePlayer() {
                 type="button"
                 className="btn-primary"
                 onClick={handlePlayPause}
-                disabled={
-                  ttsStatus === "loading" || !lessonHasFile || !lessonUseOriginal
-                }
+                disabled={ttsStatus === "loading" || !canPlayAudio}
               >
                 {ttsStatus === "loading"
                   ? "Loading text…"
@@ -641,11 +831,22 @@ export default function CoursePlayer() {
               <button
                 type="button"
                 className="btn-outline"
-                onClick={() => setShowChat(true)}
+                onClick={() => {
+                  if (chatDisabled) return;
+                  setShowChat(true);
+                }}
+                disabled={chatDisabled}
               >
                 Ask AI
               </button>
             </div>
+
+            {authChecked && !isLoggedIn && (
+              <p className="ai-login-hint">
+                Sign in to your BrainBoost account to chat with the AI assistant
+                for this lesson.
+              </p>
+            )}
           </section>
         </div>
       </main>
@@ -693,9 +894,14 @@ export default function CoursePlayer() {
                 placeholder="Ask about this lesson..."
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value)}
+                disabled={chatLoading}
               />
-              <button type="submit" className="btn-primary">
-                Send
+              <button
+                type="submit"
+                className="btn-primary"
+                disabled={chatLoading}
+              >
+                {chatLoading ? "Thinking..." : "Send"}
               </button>
             </form>
           </div>

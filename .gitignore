@@ -37,3 +37,4 @@ Thumbs.db
 # Environment files
 # ========================
 backend/.env
+ai-agent/.env

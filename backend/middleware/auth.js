@@ -15,6 +15,7 @@ exports.auth = (req, res, next) => {
         const payload = jwt.verify(token, process.env.JWT_SECRET);
         req.userId = payload.userId;
         req.userRole = payload.role;
+        req.user = { id: payload.userId, role: payload.role };
         next();
     } catch (e) {
         return res.status(401).json({ message: 'Invalid token' });

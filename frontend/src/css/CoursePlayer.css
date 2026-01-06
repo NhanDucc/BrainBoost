@@ -16,6 +16,7 @@
   box-sizing: border-box;
 }
 
+/* ===== Layout 2 cột: sidebar + main ===== */
 .learning-layout {
   display: grid;
   grid-template-columns: 200px minmax(0, 1fr);
@@ -113,37 +114,55 @@
   font-size: 1rem;
 }
 
+/* ===== Breadcrumb ===== */
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: #6b7280;
+  margin-bottom: 0.75rem;
+}
+
+.breadcrumb a {
+  color: #2563eb;
+  text-decoration: none;
+}
+
+.breadcrumb a:hover {
+  text-decoration: underline;
+}
+
 /* ===== Tabs chọn chế độ xem: Original / AI slides ===== */
 .viewer-mode-tabs {
-  display:flex;
-  flex-wrap:wrap;
-  align-items:center;
-  gap:0.5rem;
-  margin-bottom:0.25rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
 }
+
 .viewer-mode-tab {
-  border-radius:999px;
-  border:1px solid #d0d7ff;
-  background:#f8fafc;
-  padding:0.35rem 0.9rem;
-  font-size:0.82rem;
-  font-weight:600;
-  color:#475569;
-  cursor:pointer;
+  border-radius: 999px;
+  border: 1px solid #d0d7ff;
+  background: #f8fafc;
+  padding: 0.35rem 0.9rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #475569;
+  cursor: pointer;
 }
+
 .viewer-mode-tab.active {
-  background:#0051ff;
-  border-color:#0051ff;
-  color:#ffffff;
-  box-shadow:0 4px 10px rgba(0,81,255,0.25);
+  background: #0051ff;
+  border-color: #0051ff;
+  color: #ffffff;
+  box-shadow: 0 4px 10px rgba(0, 81, 255, 0.25);
 }
-.viewer-mode-tab .badge-beta {
-  margin-left:6px;
-  padding:1px 6px;
-  border-radius:999px;
-  font-size:0.7rem;
-  background:#f97316;
-  color:#fff;
+
+.viewer-mode-tab:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 /* ===== Document container / iframe ===== */
@@ -183,70 +202,126 @@
   padding: 1rem;
 }
 
-/* ===== Panel AI slides ===== */
-.ai-slides-panel {
-  width:100%;
-  height: calc(100vh - 320px);
-  min-height:420px;
-  max-height:720px;
-  border-radius:12px;
-  border:1px dashed #d9e2ff;
-  background:#f5f7ff;
-  padding:10px 12px;
-  box-sizing:border-box;
-  overflow-y:auto;
+/* ===== AI slide viewer – single slide đẹp ===== */
+.ai-slide-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.75rem 0.9rem;
+  box-sizing: border-box;
 }
-.ai-slide-empty {
-  width:100%;
-  height:100%;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  color:#6b7280;
-  font-size:0.9rem;
-  text-align:center;
-  padding:1rem;
+
+.ai-slide {
+  position: relative;
+  flex: 1;
+  padding: 1.2rem 1.5rem 1.4rem;
+  border-radius: 18px;
+  border: 1px solid #d0d7ff;
+  background: radial-gradient(
+    circle at top left,
+    #eef3ff 0%,
+    #ffffff 55%,
+    #f6f8ff 100%
+  );
+  box-shadow: 0 12px 30px rgba(10, 45, 136, 0.12);
+  overflow: hidden;
 }
-.ai-slides-list {
-  display:flex;
-  flex-direction:column;
-  gap:8px;
+
+/* Layer decor nhẹ phía sau */
+.ai-slide::before {
+  content: "";
+  position: absolute;
+  right: -40px;
+  top: -40px;
+  width: 180px;
+  height: 180px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(0, 81, 255, 0.12), transparent 70%);
+  pointer-events: none;
 }
-.ai-slide-card {
-  background:#ffffff;
-  border-radius:12px;
-  border:1px solid #e0e7ff;
-  padding:8px 10px;
-  box-shadow:0 4px 10px rgba(15,23,42,0.04);
-}
+
+/* Header: chip + title */
 .ai-slide-header {
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:8px;
-  margin-bottom:4px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
 }
-.ai-slide-index {
-  font-size:0.78rem;
-  font-weight:700;
-  color:#0f172a;
-  background:#e0edff;
-  border-radius:999px;
-  padding:2px 8px;
+
+.ai-slide-chip {
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.25rem 0.7rem;
+  border-radius: 999px;
+  background: #e2ebff;
+  color: #0051ff;
+  border: 1px solid #c3d4ff;
+  white-space: nowrap;
 }
+
 .ai-slide-title {
-  font-size:0.9rem;
-  font-weight:700;
-  color:#0f172a;
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #0a2d88;
 }
-.ai-slide-bullets {
-  margin:0;
-  padding-left:18px;
-  font-size:0.86rem;
-  color:#374151;
+
+/* Bullets */
+.ai-slide-list {
+  margin: 0.4rem 0 0;
+  padding-left: 0;
+  list-style: none;
 }
-.ai-slide-bullets li {
-  margin-bottom:2px;
+
+.ai-slide-list li {
+  position: relative;
+  padding-left: 1.4rem;
+  margin-bottom: 0.35rem;
+  font-size: 0.95rem;
+  line-height: 1.4;
+  color: #1f2937;
+}
+
+.ai-slide-list li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.6rem;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #0051ff;
+  box-shadow: 0 0 0 3px rgba(0, 81, 255, 0.18);
+}
+
+/* Trường hợp dùng ttsText thay bullet */
+.ai-slide-body {
+  margin-top: 0.3rem;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: #1f2937;
+}
+
+/* Footer điều hướng slide */
+.ai-slide-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+}
+
+.ai-slide-index {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #4b5563;
+}
+
+.ai-slide-nav {
+  min-width: 120px;
+  padding-inline: 1.2rem;
 }
 
 /* ===== Audio bar + controls ===== */
@@ -429,6 +504,25 @@
     grid-template-columns: 1fr;
   }
   .learning-container {
-    padding-inline:1rem;
+    padding-inline: 1rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .ai-slide {
+    padding: 1rem 1.1rem 1.2rem;
+  }
+
+  .ai-slide-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .ai-slide-chip {
+    font-size: 0.75rem;
+  }
+
+  .ai-slide-title {
+    font-size: 1rem;
   }
 }

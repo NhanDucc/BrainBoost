@@ -3,7 +3,7 @@ const express = require("express");
 const router = express.Router();
 
 const { auth, authorize } = require("../middleware/auth");
-const { extractTextFromRemoteFile } = require("../services/docTextService");
+const { extractTextFromDocUrl } = require("../services/docTextService");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 // ===== Helper: tạo slide “fake” khi AI không hoạt động (dev mode) =====
@@ -11,12 +11,15 @@ function buildFallbackSlides(rawText, maxSlides) {
   const slides = [];
   if (!rawText) return slides;
 
+  const safeMax = maxSlides && maxSlides > 0 ? maxSlides : 8;
   const text = rawText.replace(/\s+/g, " ").trim();
-  const chunkSize = Math.max(300, Math.floor(text.length / maxSlides));
+  if (!text) return slides;
+
+  const chunkSize = Math.max(300, Math.floor(text.length / safeMax));
 
   let idx = 0;
   let i = 0;
-  while (i < text.length && idx < maxSlides) {
+  while (i < text.length && idx < safeMax) {
     const chunk = text.slice(i, i + chunkSize);
     const title = `Slide ${idx + 1}`;
     const bullets = chunk.split(/\. +/).filter(Boolean).slice(0, 4);
@@ -57,7 +60,7 @@ router.post(
 
     try {
       // 1) Trích text từ file
-      const rawText = await extractTextFromRemoteFile(docUrl);
+      const rawText = await extractTextFromDocUrl(docUrl);
       if (!rawText) {
         return res
           .status(400)
@@ -81,36 +84,47 @@ router.post(
       const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
       const prompt = `
-You are an instructional designer for high-school students.
+        You are an instructional designer for high-school students.
 
-From the lecture text below, create a clear slide deck with at most ${slideLimit} slides.
-Each slide should be short, focused, and suitable for reading on a screen.
+        Your job is to design an engaging slide deck that will later be rendered with attractive visual styles (colors, icons, layouts) by the frontend. In this JSON, you ONLY provide clean, well-structured TEXT that is easy to turn into beautiful slides.
 
-Return ONLY JSON with this exact structure:
+        From the lecture text below, create a clear slide deck with at most ${slideLimit} slides.
+        Each slide should be short, focused, and suitable for reading on a screen.
 
-{
-  "slides": [
-    {
-      "index": 1,
-      "title": "Short slide title",
-      "bullets": ["point 1", "point 2", "point 3"],
-      "ttsText": "One short paragraph (max 300 characters) that can be read aloud for this slide."
-    }
-  ]
-}
+        CONTENT RULES:
+        - Use ONLY information that is explicitly present in the lecture text.
+        - Do NOT invent new facts, examples, stories, analogies, formulas, or definitions.
+        - You may paraphrase and simplify, but the meaning must stay faithful to the source.
+        - Do NOT add your own opinions or extra ideas.
 
-Rules:
-- "index" starts from 1 and increases by 1.
-- "title" must be concise and descriptive (max 80 characters).
-- "bullets" is an array of 2–5 short bullet strings (no nested lists, no numbering).
-- "ttsText" MUST be plain text (no bullet marks, no markdown, no HTML).
-- "ttsText" ≤ 300 characters per slide.
-- Do NOT include any other top-level fields.
-- Do NOT wrap the JSON in backticks or a code block.
+        Return ONLY JSON with this exact structure:
 
-Lecture text:
-"""${text}"""
-`;
+        {
+          "slides": [
+            {
+              "index": 1,
+              "title": "Short slide title",
+              "bullets": ["point 1", "point 2", "point 3"],
+              "ttsText": "One short paragraph (max 300 characters) that can be read aloud for this slide."
+            }
+          ]
+        }
+
+        FORMAT RULES:
+        - "index" starts from 1 and increases by 1.
+        - "title" must be concise and descriptive (max 80 characters), and feel like a strong visual heading for the slide.
+        - "bullets" is an array of 2–5 short bullet strings (no nested lists, no numbering).
+          * Each bullet should highlight a single key idea, definition, example, or step.
+          * Write bullets so that they will look engaging when rendered on a slide (clear, concrete, not too long), but keep them as plain text here.
+        - "ttsText" MUST be plain text (no bullet marks, no markdown, no HTML, no emojis).
+          * "ttsText" is a natural-sounding spoken explanation for this slide (max 300 characters).
+          * It must only describe content that is actually in this slide and in the original lecture text.
+        - Do NOT include any other top-level fields.
+        - Do NOT wrap the JSON in backticks or a code block.
+
+        Lecture text:
+        """${text}"""
+        `;
 
       const result = await model.generateContent({
         contents: [{ role: "user", parts: [{ text: prompt }] }],
@@ -172,15 +186,15 @@ Lecture text:
         });
       }
 
-      // Nếu muốn: bật fallback slide tự cắt text khi AI hỏng
+      // Fallback: tự cắt text thành slide nếu bật cờ
       const enableFallback =
         process.env.AI_SLIDES_FALLBACK === "1" ||
         process.env.AI_SLIDES_FALLBACK === "true";
 
       if (enableFallback) {
         try {
-          const rawText = await extractTextFromRemoteFile(req.body.docUrl);
-          const slides = buildFallbackSlides(rawText, maxSlides || 8);
+          const rawText = await extractTextFromDocUrl(docUrl);
+          const slides = buildFallbackSlides(rawText, slideLimit || 8);
           return res.json({ slides, _fallback: true });
         } catch (e2) {
           console.error("[AI-SLIDES] fallback failed:", e2);

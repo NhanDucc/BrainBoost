@@ -5,10 +5,7 @@ const axios = require("axios");
 
 const { auth } = require("../middleware/auth");
 const LessonChatSession = require("../models/LessonChatSession");
-const {
-  extractTextFromDocUrl,
-  extractTextFromRemoteFile,
-} = require("../services/docTextService");
+const { extractTextFromDocUrl } = require("../services/docTextService");
 
 // URL của AI Agent (Python)
 const AI_AGENT_URL =
@@ -50,6 +47,9 @@ router.post("/", auth, async (req, res) => {
       return res.status(400).json({ message: "Message is empty." });
     }
 
+    // lessonId duy nhất để lưu vector DB và summary
+    const lessonId = `${courseId}::${lessonKey}`;
+
     // 1) Lấy / tạo session tóm tắt hội thoại
     let session = await LessonChatSession.findOne({
       userId,
@@ -69,25 +69,29 @@ router.post("/", auth, async (req, res) => {
 
     const prevSummary = session.summary || "";
 
-    // 2) Trích text từ tài liệu gốc (để gửi cho AI Agent)
+    // 2) Trích text từ tài liệu gốc (để gửi cho AI Agent lần đầu)
     let lessonText = "";
     if (docUrl) {
-    try {
-        const raw = await extractTextFromDocUrl(docUrl);
-        if (raw && raw.trim()) {
-        lessonText = raw.length > 12000 ? raw.slice(0, 12000) : raw;
+      try {
+        const extractor = extractTextFromDocUrl;
+        if (typeof extractor === "function") {
+          const raw = await extractor(docUrl);
+          if (raw && raw.trim()) {
+            // Giới hạn độ dài để tránh payload quá lớn
+            lessonText = raw.length > 16000 ? raw.slice(0, 16000) : raw;
+          }
         }
-    } catch (e) {
-        console.error("[LessonChat] error:", e.message || e);
-        return res.status(500).json({
-        message: "Failed to talk to the lesson tutor",
-        error: e.message,
-        });
-    }
+      } catch (e) {
+        console.warn(
+          "[LessonChat] doc extract failed, will rely on slides only:",
+          e.message || e
+        );
+      }
     }
 
-    // 3) Gọi Python AI Agent
+    // 3) Gọi Python AI Agent (RAG)
     const agentPayload = {
+      lesson_id: lessonId,
       lesson_text: lessonText,
       ai_slides: Array.isArray(aiSlides) ? aiSlides : [],
       prev_summary: prevSummary,

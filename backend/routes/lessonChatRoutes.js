@@ -8,8 +8,7 @@ const LessonChatSession = require("../models/LessonChatSession");
 const { extractTextFromDocUrl } = require("../services/docTextService");
 
 // URL của AI Agent (Python)
-const AI_AGENT_URL =
-  process.env.AI_AGENT_URL || "http://localhost:8001/lesson-chat";
+const AI_AGENT_URL = process.env.AI_AGENT_URL + "/lesson-chat";
 
 /**
  * POST /api/lesson-chat

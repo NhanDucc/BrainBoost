@@ -1,34 +1,37 @@
-# ai-agent/lesson_chat_agent.py
 from typing import Optional, List, Dict, Tuple
 import os
 import math
-
-import google.generativeai as genai
 from dotenv import load_dotenv
+
+from google import genai
+from google.genai import types
 
 from vector_store import save_lesson_vectors, load_lesson_vectors
 
-# Load env
+# ==== ENV & CLIENT SETUP ====
+
 load_dotenv()
 
 API_KEY = os.getenv("GEMINI_API_KEY")
 if not API_KEY:
     raise RuntimeError("GEMINI_API_KEY is not set in environment for ai-agent")
 
-genai.configure(api_key=API_KEY)
+# Main chat model & embedding model
+GENERATION_MODEL = os.getenv("GENERATION_MODEL")
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL")
 
-# Model sinh văn bản
-LLM_MODEL = genai.GenerativeModel("gemini-2.5-flash")
-# Model embedding dùng chung cho doc + query
-EMBED_MODEL = "models/text-embedding-004"
+print(f"[RAG] Using generation model: {GENERATION_MODEL}")
+print(f"[RAG] Using embedding model: {EMBEDDING_MODEL}")
 
+# Create a single global client
+client = genai.Client(api_key=API_KEY)
 
 # ========== Helper cho RAG ==========
 
 def chunk_text(text: str, max_chars: int = 800) -> List[str]:
     """
     Cắt text dài thành nhiều chunk ~max_chars để embed.
-    Chia theo độ dài, đã normalize whitespace.
+    Giữ đơn giản: chia theo độ dài, đã normalize whitespace.
     """
     if not text:
         return []
@@ -46,64 +49,42 @@ def chunk_text(text: str, max_chars: int = 800) -> List[str]:
         start = end
     return chunks
 
+def embed_text(text: str) -> list[float]:
+    text = (text or "").strip()
+    if not text:
+        return []
 
-def _extract_embedding(resp) -> List[float]:
-    """
-    Trích embedding từ response của genai.embed_content
-    (hỗ trợ cả dict lẫn object).
-    """
-    emb = None
+    resp = client.models.embed_content(
+        model=EMBEDDING_MODEL,
+        contents=text,
+    )
 
-    # Trường hợp phổ biến: resp là dict
-    if isinstance(resp, dict):
-        # {"embedding": [...]} hoặc {"embedding": {"values": [...]} }
-        emb = resp.get("embedding")
-        if isinstance(emb, dict):
-            emb = emb.get("values")
-    else:
-        # Trường hợp resp là object có thuộc tính .embedding
-        emb = getattr(resp, "embedding", None)
-        # Một số version dùng .embedding.values
-        if hasattr(emb, "values"):
-            emb = emb.values
-
-    if not emb:
-        raise RuntimeError("Embedding API did not return 'embedding' values")
+    # resp.embeddings[0].values: theo docs google.genai
+    try:
+        emb = resp.embeddings[0].values
+    except Exception as e:
+        print("[RAG] embed_text error:", e, "resp=", resp)
+        return []
 
     return list(emb)
 
-
-def embed_text(text: str) -> List[float]:
-    """
-    Gọi Gemini embedding cho tài liệu (document chunk).
-    """
+def embed_query(text: str) -> list[float]:
     text = (text or "").strip()
     if not text:
         return []
 
-    resp = genai.embed_content(
-        model=EMBED_MODEL,
-        content=text,
-        task_type="retrieval_document",
+    resp = client.models.embed_content(
+        model=EMBEDDING_MODEL,
+        contents=text,
     )
-    return _extract_embedding(resp)
 
-
-def embed_query(text: str) -> List[float]:
-    """
-    Gọi Gemini embedding cho câu hỏi (query).
-    """
-    text = (text or "").strip()
-    if not text:
+    try:
+        emb = resp.embeddings[0].values
+    except Exception as e:
+        print("[RAG] embed_query error:", e, "resp=", resp)
         return []
 
-    resp = genai.embed_content(
-        model=EMBED_MODEL,
-        content=text,
-        task_type="retrieval_query",
-    )
-    return _extract_embedding(resp)
-
+    return list(emb)
 
 def cosine_similarity(a: List[float], b: List[float]) -> float:
     """
@@ -133,28 +114,21 @@ def prepare_lesson_vectors(
 ) -> List[Dict]:
     """
     Ingest 1 bài học:
-    - CHỈ dùng text trích từ TÀI LIỆU GỐC do giáo viên upload
-    - Chunk -> embedding -> lưu xuống vector_store
+    - Dùng CHỈ tài liệu gốc (lesson_text)
+    - Chunk -> embedding -> lưu xuống vector_store (ChromaDB)
 
     Trả về danh sách chunk đã embed.
     """
     if not lesson_text:
-        # Không có file gốc thì không ingest gì cả
         return []
 
-    # Normalize whitespace
-    normalized = " ".join(lesson_text.split())
-    if not normalized:
-        return []
+    combined = " ".join(lesson_text.split())
+    if len(combined) > max_total_chars:
+        combined = combined[:max_total_chars]
 
-    # Giới hạn tổng chiều dài
-    if len(normalized) > max_total_chars:
-        normalized = normalized[:max_total_chars]
-
-    # Cắt thành nhiều chunk
-    chunks_text = chunk_text(normalized)
-
+    chunks_text = chunk_text(combined)
     chunks: List[Dict] = []
+
     for idx, ch in enumerate(chunks_text):
         emb = embed_text(ch)
         if not emb:
@@ -181,7 +155,7 @@ def retrieve_relevant_context(
 ) -> str:
     """
     Lấy top-k đoạn text liên quan nhất tới câu hỏi:
-    1. Thử load vectors từ vector_store.
+    1. Thử load vectors từ vector_store (ChromaDB).
     2. Nếu chưa có -> ingest từ lesson_text rồi lưu.
     3. Embed query + tính similarity -> chọn top_k -> ghép thành context.
     """
@@ -194,13 +168,16 @@ def retrieve_relevant_context(
 
     if not chunks:
         # Không có gì để retrieve
+        print("[RAG] No chunks found for lesson_id:", lesson_id)
         return ""
 
     # 3) Embed câu hỏi
     q_emb = embed_query(user_message)
     if not q_emb:
+        print("[RAG] embed_query returned empty vector")
         return ""
 
+    # 4) Tính similarity và chọn top_k
     scored: List[Tuple[float, str]] = []
     for ch in chunks:
         emb = ch.get("embedding") or []
@@ -224,7 +201,7 @@ def retrieve_relevant_context(
 def build_system_prompt() -> str:
     """
     Prompt hệ thống – đúng các yêu cầu:
-    - Chỉ dùng thông tin trong bài (từ RAG context)
+    - Chỉ dùng thông tin trong bài (trong RAG context)
     - Câu hỏi ngoài phạm vi thì nói ngoài phạm vi
     - Có thể giải thích kỹ hơn khái niệm đã xuất hiện
     - Lịch sự với câu chào / yes/no
@@ -273,12 +250,10 @@ def call_lesson_tutor(
 ) -> tuple[str, str]:
     """
     Gọi Gemini để trả lời học sinh + cập nhật summary hội thoại.
-    RAG chỉ dựa trên lesson_text (file gốc giáo viên upload).
     Trả về: (answer, new_summary)
     """
 
     system_prompt = build_system_prompt()
-
     title_line = f"Lesson title: {lesson_title}\n" if lesson_title else ""
 
     # RAG: lấy context từ vector store (hoặc ingest mới nếu chưa có)
@@ -289,7 +264,7 @@ def call_lesson_tutor(
     )
 
     if not rag_context:
-        rag_context = "(No lesson context available from the original document. Answer briefly and politely explain that the material was not found.)"
+        rag_context = "(No lesson context available. Answer briefly and politely explain that the material was not found.)"
 
     context_block = (
         f"--- SELECTED LESSON CONTEXT START ---\n"
@@ -318,7 +293,15 @@ Now write your reply to the student following all the rules above.
 """.strip()
 
     # 1) Gọi model để trả lời
-    resp = LLM_MODEL.generate_content(final_prompt)
+    try:
+        resp = client.models.generate_content(
+            model=GENERATION_MODEL,
+            contents=final_prompt,
+        )
+    except Exception as e:
+        print("[Tutor] generate_content failed:", repr(e))
+        raise
+
     answer = (resp.text or "").strip()
     if not answer:
         raise RuntimeError("Model returned empty answer")
@@ -351,9 +334,13 @@ Return ONLY the updated summary as plain text.
 """.strip()
 
     try:
-        sum_resp = LLM_MODEL.generate_content(summarise_prompt)
-        new_summary = (sum_resp.text or "").strip() or prev_summary
-    except Exception:
+        sum_resp = client.models.generate_content(
+            model=GENERATION_MODEL,
+            contents=summarise_prompt,
+        )
+        new_summary = (getattr(sum_resp, "text", "") or "").strip() or prev_summary
+    except Exception as e:
+        print("[Tutor] summarisation failed:", repr(e))
         new_summary = prev_summary
 
     return answer, new_summary

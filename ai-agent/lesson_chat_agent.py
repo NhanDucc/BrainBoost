@@ -1,54 +1,207 @@
-# ai-agent/lesson_chat_agent.py
-from typing import Optional
+from typing import Optional, List, Dict, Tuple
 import os
-import google.generativeai as genai
+import math
 from dotenv import load_dotenv
 
-# Load environment variables
+from google import genai
+from google.genai import types
+
+from vector_store import save_lesson_vectors, load_lesson_vectors
+
+# ==== ENV & CLIENT SETUP ====
+
 load_dotenv()
 
-# Khởi tạo Gemini
 API_KEY = os.getenv("GEMINI_API_KEY")
 if not API_KEY:
     raise RuntimeError("GEMINI_API_KEY is not set in environment for ai-agent")
 
-genai.configure(api_key=API_KEY)
-model = genai.GenerativeModel("gemini-2.5-flash")
+# Main chat model & embedding model
+GENERATION_MODEL = os.getenv("GENERATION_MODEL")
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL")
+
+print(f"[RAG] Using generation model: {GENERATION_MODEL}")
+print(f"[RAG] Using embedding model: {EMBEDDING_MODEL}")
+
+# Create a single global client
+client = genai.Client(api_key=API_KEY)
+
+# ========== Helper cho RAG ==========
+
+def chunk_text(text: str, max_chars: int = 800) -> List[str]:
+    """
+    Cắt text dài thành nhiều chunk ~max_chars để embed.
+    Giữ đơn giản: chia theo độ dài, đã normalize whitespace.
+    """
+    if not text:
+        return []
+
+    normalized = " ".join(text.split())
+    if not normalized:
+        return []
+
+    chunks: List[str] = []
+    start = 0
+    n = len(normalized)
+    while start < n:
+        end = min(start + max_chars, n)
+        chunks.append(normalized[start:end])
+        start = end
+    return chunks
+
+def embed_text(text: str) -> list[float]:
+    text = (text or "").strip()
+    if not text:
+        return []
+
+    resp = client.models.embed_content(
+        model=EMBEDDING_MODEL,
+        contents=text,
+    )
+
+    # resp.embeddings[0].values: theo docs google.genai
+    try:
+        emb = resp.embeddings[0].values
+    except Exception as e:
+        print("[RAG] embed_text error:", e, "resp=", resp)
+        return []
+
+    return list(emb)
+
+def embed_query(text: str) -> list[float]:
+    text = (text or "").strip()
+    if not text:
+        return []
+
+    resp = client.models.embed_content(
+        model=EMBEDDING_MODEL,
+        contents=text,
+    )
+
+    try:
+        emb = resp.embeddings[0].values
+    except Exception as e:
+        print("[RAG] embed_query error:", e, "resp=", resp)
+        return []
+
+    return list(emb)
+
+def cosine_similarity(a: List[float], b: List[float]) -> float:
+    """
+    Tính cosine similarity giữa 2 vector.
+    """
+    if not a or not b or len(a) != len(b):
+        return 0.0
+
+    dot = 0.0
+    na = 0.0
+    nb = 0.0
+    for x, y in zip(a, b):
+        dot += x * y
+        na += x * x
+        nb += y * y
+
+    if na <= 0.0 or nb <= 0.0:
+        return 0.0
+
+    return dot / (math.sqrt(na) * math.sqrt(nb))
 
 
-def build_lesson_context_from_slides(slides: list[dict]) -> str:
+def prepare_lesson_vectors(
+    lesson_id: str,
+    lesson_text: str,
+    max_total_chars: int = 16000,
+) -> List[Dict]:
     """
-    Ghép nội dung từ AI slides thành 1 đoạn text để làm context.
-    slides: [{title, bullets, ttsText}, ...]
+    Ingest 1 bài học:
+    - Dùng CHỈ tài liệu gốc (lesson_text)
+    - Chunk -> embedding -> lưu xuống vector_store (ChromaDB)
+
+    Trả về danh sách chunk đã embed.
     """
-    if not slides:
+    if not lesson_text:
+        return []
+
+    combined = " ".join(lesson_text.split())
+    if len(combined) > max_total_chars:
+        combined = combined[:max_total_chars]
+
+    chunks_text = chunk_text(combined)
+    chunks: List[Dict] = []
+
+    for idx, ch in enumerate(chunks_text):
+        emb = embed_text(ch)
+        if not emb:
+            continue
+        chunks.append(
+            {
+                "index": idx,
+                "text": ch,
+                "embedding": emb,
+            }
+        )
+
+    if chunks:
+        save_lesson_vectors(lesson_id, chunks)
+
+    return chunks
+
+
+def retrieve_relevant_context(
+    lesson_id: str,
+    user_message: str,
+    lesson_text: str,
+    top_k: int = 5,
+) -> str:
+    """
+    Lấy top-k đoạn text liên quan nhất tới câu hỏi:
+    1. Thử load vectors từ vector_store (ChromaDB).
+    2. Nếu chưa có -> ingest từ lesson_text rồi lưu.
+    3. Embed query + tính similarity -> chọn top_k -> ghép thành context.
+    """
+    # 1) Thử load từ vector store
+    chunks = load_lesson_vectors(lesson_id)
+
+    # 2) Nếu chưa có vector -> ingest mới
+    if not chunks:
+        chunks = prepare_lesson_vectors(lesson_id, lesson_text)
+
+    if not chunks:
+        # Không có gì để retrieve
+        print("[RAG] No chunks found for lesson_id:", lesson_id)
         return ""
 
-    pieces: list[str] = []
-    for idx, s in enumerate(slides):
-        title = str(s.get("title", "")).strip()
-        bullets = s.get("bullets") or []
-        bullets = [str(b or "").strip() for b in bullets if str(b or "").strip()]
-        tts = str(s.get("ttsText", "")).strip()
+    # 3) Embed câu hỏi
+    q_emb = embed_query(user_message)
+    if not q_emb:
+        print("[RAG] embed_query returned empty vector")
+        return ""
 
-        parts = []
-        if title:
-            parts.append(f"Slide {idx+1}: {title}")
-        if bullets:
-            parts.append(" • ".join(bullets))
-        if tts:
-            parts.append(f"Narration: {tts}")
+    # 4) Tính similarity và chọn top_k
+    scored: List[Tuple[float, str]] = []
+    for ch in chunks:
+        emb = ch.get("embedding") or []
+        text = ch.get("text") or ""
+        if not emb or not text:
+            continue
+        sim = cosine_similarity(q_emb, emb)
+        scored.append((sim, text))
 
-        if parts:
-            pieces.append(" | ".join(parts))
+    if not scored:
+        return ""
 
-    return "\n".join(pieces)
+    scored.sort(key=lambda x: x[0], reverse=True)
+    selected_texts = [t for _, t in scored[:top_k] if t]
 
+    return "\n\n---\n\n".join(selected_texts)
+
+
+# ========== System prompt ==========
 
 def build_system_prompt() -> str:
     """
     Prompt hệ thống – đúng các yêu cầu:
-    - Chỉ dùng thông tin trong bài/slide
+    - Chỉ dùng thông tin trong bài (trong RAG context)
     - Câu hỏi ngoài phạm vi thì nói ngoài phạm vi
     - Có thể giải thích kỹ hơn khái niệm đã xuất hiện
     - Lịch sự với câu chào / yes/no
@@ -58,7 +211,7 @@ You are "BrainBoost Lesson Tutor", a polite AI teaching assistant for secondary-
 
 Your job:
 - Answer ONLY questions that are covered by the current lesson content.
-- The lesson content is provided below in the LESSON CONTEXT (from the teacher's uploaded document and/or AI-generated slides).
+- The lesson content is provided below as SELECTED LESSON CONTEXT.
 
 Scope rules:
 - Use ONLY information that appears in the lesson context.
@@ -86,9 +239,11 @@ Language:
 """.strip()
 
 
+# ========== Hàm chính gọi tutor ==========
+
 def call_lesson_tutor(
+    lesson_id: str,
     lesson_text: str,
-    slides_text: str,
     prev_summary: str,
     user_message: str,
     lesson_title: Optional[str] = None,
@@ -99,24 +254,22 @@ def call_lesson_tutor(
     """
 
     system_prompt = build_system_prompt()
-
     title_line = f"Lesson title: {lesson_title}\n" if lesson_title else ""
 
-    # Ghép context bài giảng
-    context_parts = []
-    if slides_text:
-        context_parts.append(slides_text)
-    if lesson_text:
-        context_parts.append(lesson_text)
+    # RAG: lấy context từ vector store (hoặc ingest mới nếu chưa có)
+    rag_context = retrieve_relevant_context(
+        lesson_id=lesson_id,
+        user_message=user_message,
+        lesson_text=lesson_text,
+    )
 
-    if context_parts:
-        lesson_context = "\n\n".join(context_parts)
-    else:
-        lesson_context = "(No extracted lesson text available.)"
+    if not rag_context:
+        rag_context = "(No lesson context available. Answer briefly and politely explain that the material was not found.)"
 
-    lesson_block = (
-        f"--- LESSON CONTEXT START ---\n{title_line}{lesson_context}\n"
-        f"--- LESSON CONTEXT END ---"
+    context_block = (
+        f"--- SELECTED LESSON CONTEXT START ---\n"
+        f"{title_line}{rag_context}\n"
+        f"--- SELECTED LESSON CONTEXT END ---"
     )
 
     summary_block = (
@@ -128,18 +281,27 @@ def call_lesson_tutor(
     final_prompt = f"""
 {system_prompt}
 
-{lesson_block}
+{context_block}
 
 {summary_block}
 
 Student's latest message:
 \"\"\"{user_message}\"\"\"
 
+
 Now write your reply to the student following all the rules above.
 """.strip()
 
     # 1) Gọi model để trả lời
-    resp = model.generate_content(final_prompt)
+    try:
+        resp = client.models.generate_content(
+            model=GENERATION_MODEL,
+            contents=final_prompt,
+        )
+    except Exception as e:
+        print("[Tutor] generate_content failed:", repr(e))
+        raise
+
     answer = (resp.text or "").strip()
     if not answer:
         raise RuntimeError("Model returned empty answer")
@@ -159,20 +321,26 @@ Constraints:
 Previous summary (may be empty):
 \"\"\"{prev_summary or ""}\"\"\"
 
+
 New student message:
 \"\"\"{user_message}\"\"\"
 
+
 New assistant reply:
 \"\"\"{answer}\"\"\"
+
 
 Return ONLY the updated summary as plain text.
 """.strip()
 
     try:
-        sum_resp = model.generate_content(summarise_prompt)
-        new_summary = (sum_resp.text or "").strip() or prev_summary
-    except Exception:
-        # Nếu tóm tắt lỗi thì giữ summary cũ
+        sum_resp = client.models.generate_content(
+            model=GENERATION_MODEL,
+            contents=summarise_prompt,
+        )
+        new_summary = (getattr(sum_resp, "text", "") or "").strip() or prev_summary
+    except Exception as e:
+        print("[Tutor] summarisation failed:", repr(e))
         new_summary = prev_summary
 
     return answer, new_summary

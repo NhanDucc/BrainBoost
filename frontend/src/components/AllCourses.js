@@ -1,8 +1,8 @@
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import "../css/AllCourses.css";
 import SiteHeader from "./Header";
 import SiteFooter from "./Footer";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { toAbsolute } from "../utils/url";
 
 const SUBJECTS = [
@@ -15,7 +15,11 @@ const SUBJECTS = [
 const TABS = [{ key: "all", name: "All" }, ...SUBJECTS];
 
 export default function AllCourses() {
-  const [tab, setTab] = useState("all");
+  const [searchParams] = useSearchParams();
+  const urlSubject = searchParams.get("subject");
+  const initialTab = SUBJECTS.find(s => s.key === urlSubject) ? urlSubject : "all";
+
+  const [tab, setTab] = useState(initialTab);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");

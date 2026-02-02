@@ -3,8 +3,6 @@ const axios = require("axios");
 const mongoose = require("mongoose");
 const { extractTextFromDocUrl } = require("../services/docTextService");
 
-const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-1.5-flash";
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const AI_AGENT_URL = process.env.AI_AGENT_URL
 
 // POST /api/courses
@@ -329,6 +327,51 @@ async function generateLessonSlides(req, res) {
   }
 };
 
+// POST /api/courses/learning-path
+async function createLearningPath (req, res) {
+    try {
+        const { goal } = req.body;
+        if (!goal) return res.status(400).json({ message: "Please tell us your goal." });
+
+        // 1. Lấy danh sách khóa học (chỉ lấy field cần thiết để nhẹ payload)
+        const courses = await Course.find({ visibility: 'published' })
+            .select('_id title subject grade description')
+            .lean();
+
+        // Map _id thành id string cho gọn
+        const availableCourses = courses.map(c => ({
+            id: c._id.toString(),
+            title: c.title,
+            subject: c.subject,
+            grade: c.grade,
+            description: c.description || ""
+        }));
+
+        // 2. Gọi AI Agent
+        const aiResponse = await axios.post(`${AI_AGENT_URL}/generate-learning-path`, {
+            user_goal: goal,
+            available_courses: availableCourses
+        });
+
+        const { advice, recommended_courses } = aiResponse.data;
+
+        // 3. (Optional) Map lại thông tin chi tiết khóa học từ DB để trả về Frontend hiển thị đẹp hơn
+        const resultCourses = recommended_courses.map(rc => {
+            const fullInfo = availableCourses.find(c => c.id === rc.course_id);
+            return {
+                ...fullInfo,
+                reason: rc.reason
+            };
+        }).filter(item => item.id); // Lọc bỏ nếu AI bịa ra ID không tồn tại
+
+        res.json({ advice, path: resultCourses });
+
+    } catch (err) {
+        console.error("Learning Path Error:", err.message);
+        res.status(500).json({ message: "Failed to generate path" });
+    }
+};
+
 module.exports = {
   createCourse,
   getCourse,
@@ -338,4 +381,5 @@ module.exports = {
   getPublicCourseById,
   deleteCourse,
   generateLessonSlides,
+  createLearningPath,
 };

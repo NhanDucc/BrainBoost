@@ -1,11 +1,11 @@
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 import SiteHeader from "./Header";
 import SiteFooter from "./Footer";
 import "../css/Profile.css";
 import defaultAvatar from "../images/defaultAvatar.png";
 import { useNavigate } from "react-router-dom";
-import { toAbsolute, withBust } from "../utils/url";
+import { toAbsolute } from "../utils/url";
 
 /* Student Dashboard (mock) */
 const SUBJECTS = ["Mathematics", "Physics", "Chemistry", "English"];

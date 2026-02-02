@@ -7,6 +7,7 @@ from slides_agent import generate_slides_for_lesson
 
 app = FastAPI(title="BrainBoost AI Agent")
 
+# ==== Create slide based on lesson content ====
 class SlidesRequest(BaseModel):
     lesson_id: str
     lesson_title: str
@@ -16,7 +17,8 @@ class SlidesRequest(BaseModel):
 class SlidesResponse(BaseModel):
     slides: list[dict]
 
-# Pydantic models
+
+# ==== Lesson chat model ====
 class LessonChatRequest(BaseModel):
     lesson_id: str
     lesson_text: Optional[str] = ""
@@ -24,9 +26,18 @@ class LessonChatRequest(BaseModel):
     user_message: str
     lesson_title: Optional[str] = None
 
-# Response model
 class LessonChatResponse(BaseModel):
     answer: str
+
+# ==== Create learning path model ====
+class LearningPathRequest(BaseModel):
+    user_goal: str
+    available_courses: list[dict] # Danh sách gồm {id, title, subject, grade, description}
+
+class LearningPathResponse(BaseModel):
+    advice: str # Lời khuyên chung
+    recommended_courses: list[dict] # Danh sách course_id và lý do recommend
+
 
 @app.post("/generate-slides", response_model=SlidesResponse)
 def generate_slides(req: SlidesRequest):
@@ -54,3 +65,11 @@ def lesson_chat(req: LessonChatRequest):
     )
 
     return LessonChatResponse(answer=answer)
+
+@app.post("/generate-learning-path", response_model=LearningPathResponse)
+def generate_learning_path_api(req: LearningPathRequest):
+    """
+    Tạo lộ trình học dựa trên mục tiêu người dùng và danh sách khóa học
+    """
+    from learning_path_agent import generate_path # Chúng ta sẽ tạo file này sau
+    return generate_path(req.user_goal, req.available_courses)

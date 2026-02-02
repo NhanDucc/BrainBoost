@@ -254,43 +254,6 @@ const deleteCourse = async (req, res) => {
   }
 };
 
-function buildSlidePrompt({ text, subject, grade, maxSlides }) {
-  const trimmed = text.replace(/\s+/g, " ").trim();
-  const MAX_CHARS = 12000;
-  const clipped = trimmed.length > MAX_CHARS
-    ? trimmed.slice(0, MAX_CHARS) + "..."
-    : trimmed;
-
-  const subjLabel = subject || "school";
-  const gradeLabel = grade || "secondary";
-
-  return `
-You are an expert ${subjLabel} teacher. Create clear, concise teaching slides for students at level "${gradeLabel}".
-
-Requirements:
-- Output MUST be valid JSON ONLY, no markdown, no explanation.
-- Use exactly this JSON shape:
-
-{
-  "slides": [
-    {
-      "title": "Slide title",
-      "bullets": ["First bullet", "Second bullet", "..."]
-    }
-  ]
-}
-
-- Maximum ${maxSlides} slides.
-- Each slide should have 3–6 short bullet points.
-- Focus on key concepts, definitions, simple examples and important formulas.
-- Do NOT include any code fences or backticks.
-- Language: keep the same language as the original text.
-
-Lesson text:
-"""${clipped}"""
-`;
-}
-
 // POST /api/courses/:courseId/sections/:secIndex/lessons/:lessonIndex/gen-slides
 async function generateLessonSlides(req, res) {
   try {

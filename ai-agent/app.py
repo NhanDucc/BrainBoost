@@ -16,18 +16,17 @@ class SlidesRequest(BaseModel):
 class SlidesResponse(BaseModel):
     slides: list[dict]
 
-# Pydantic models for request and response validation
+# Pydantic models
 class LessonChatRequest(BaseModel):
     lesson_id: str
     lesson_text: Optional[str] = ""
-    prev_summary: Optional[str] = ""
+    history: list[dict] = []          # List các object {role, content}
     user_message: str
     lesson_title: Optional[str] = None
 
 # Response model
 class LessonChatResponse(BaseModel):
     answer: str
-    new_summary: str
 
 @app.post("/generate-slides", response_model=SlidesResponse)
 def generate_slides(req: SlidesRequest):
@@ -43,17 +42,15 @@ def generate_slides(req: SlidesRequest):
     )
     return {"slides": slides}
 
-# Endpoint for lesson chat
 @app.post("/lesson-chat", response_model=LessonChatResponse)
-# Handle POST requests to /lesson-chat
 def lesson_chat(req: LessonChatRequest):
-    answer, new_summary = call_lesson_tutor(
+    # Gọi hàm xử lý mới, truyền history thay vì summary
+    answer = call_lesson_tutor(
         lesson_id=req.lesson_id,
         lesson_text=req.lesson_text or "",
-        prev_summary=req.prev_summary or "",
+        history=req.history,       # <-- Truyền list
         user_message=req.user_message,
         lesson_title=req.lesson_title,
     )
 
-    # Return structured response matching `LessonChatResponse` model.
-    return LessonChatResponse(answer=answer, new_summary=new_summary)
+    return LessonChatResponse(answer=answer)

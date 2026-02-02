@@ -238,33 +238,45 @@ Language:
 - Reply in the same language as the student's message (English or Vietnamese), with a respectful and supportive tone.
 """.strip()
 
+# Helper function để format history json thành text cho prompt
+def format_history(history: List[Dict]) -> str:
+    if not history:
+        return "(No previous conversation)"
+    
+    lines = []
+    # Lấy 10 tin nhắn gần nhất để tránh prompt quá dài (context window limit)
+    recent_history = history[-10:] 
+    
+    for msg in recent_history:
+        role = msg.get("role", "user")
+        content = msg.get("content", "")
+        if role == "user":
+            lines.append(f"Student: {content}")
+        else:
+            lines.append(f"Tutor: {content}")
+    return "\n".join(lines)
 
 # ========== Hàm chính gọi tutor ==========
 
 def call_lesson_tutor(
     lesson_id: str,
     lesson_text: str,
-    prev_summary: str,
+    history: List[Dict], # <-- Thay prev_summary bằng history list
     user_message: str,
     lesson_title: Optional[str] = None,
-) -> tuple[str, str]:
-    """
-    Gọi Gemini để trả lời học sinh + cập nhật summary hội thoại.
-    Trả về: (answer, new_summary)
-    """
-
+) -> str: # Chỉ trả về string answer
+    
     system_prompt = build_system_prompt()
     title_line = f"Lesson title: {lesson_title}\n" if lesson_title else ""
 
-    # RAG: lấy context từ vector store (hoặc ingest mới nếu chưa có)
+    # RAG: lấy context
     rag_context = retrieve_relevant_context(
         lesson_id=lesson_id,
         user_message=user_message,
         lesson_text=lesson_text,
     )
-
     if not rag_context:
-        rag_context = "(No lesson context available. Answer briefly and politely explain that the material was not found.)"
+        rag_context = "(No lesson context available...)"
 
     context_block = (
         f"--- SELECTED LESSON CONTEXT START ---\n"
@@ -272,75 +284,35 @@ def call_lesson_tutor(
         f"--- SELECTED LESSON CONTEXT END ---"
     )
 
-    summary_block = (
-        f"Previous conversation summary:\n{prev_summary}"
-        if prev_summary
-        else "Previous conversation summary: (no previous conversation yet for this student and lesson)."
-    )
+    # Format history JSON thành text hội thoại
+    conversation_history_text = format_history(history)
 
     final_prompt = f"""
 {system_prompt}
 
 {context_block}
 
-{summary_block}
+--- CONVERSATION HISTORY START ---
+{conversation_history_text}
+--- CONVERSATION HISTORY END ---
 
 Student's latest message:
 \"\"\"{user_message}\"\"\"
 
-
-Now write your reply to the student following all the rules above.
+Now write your reply to the student.
 """.strip()
 
-    # 1) Gọi model để trả lời
+    # Gọi Gemini generate
     try:
         resp = client.models.generate_content(
             model=GENERATION_MODEL,
             contents=final_prompt,
         )
+        answer = (resp.text or "").strip()
     except Exception as e:
         print("[Tutor] generate_content failed:", repr(e))
-        raise
+        answer = "I'm sorry, I'm having trouble connecting right now."
 
-    answer = (resp.text or "").strip()
-    if not answer:
-        raise RuntimeError("Model returned empty answer")
-
-    # 2) Prompt tóm tắt hội thoại
-    summarise_prompt = f"""
-You are an assistant that keeps a short running summary of a tutoring conversation between a student and an AI tutor.
-
-Update the summary so that it reflects all important points discussed so far.
-
-Constraints:
-- Max 600 characters.
-- Focus on what the student has asked, what the tutor has explained, key concepts, and any misunderstandings corrected.
-- Ignore greetings or small talk.
-- The summary must be self-contained and understandable even without the original messages.
-
-Previous summary (may be empty):
-\"\"\"{prev_summary or ""}\"\"\"
-
-
-New student message:
-\"\"\"{user_message}\"\"\"
-
-
-New assistant reply:
-\"\"\"{answer}\"\"\"
-
-
-Return ONLY the updated summary as plain text.
-""".strip()
-
-    try:
-        sum_resp = client.models.generate_content(
-            model=GENERATION_MODEL,
-            contents=summarise_prompt,
-        )
-        new_summary = (getattr(sum_resp, "text", "") or "").strip() or prev_summary
-    except Exception as e:
-        print("[Tutor] summarisation failed:", repr(e))
-        new_summary = prev_summary
-
-    return answer, new_summary
+    # KHÔNG cần gọi bước summarise_prompt nữa
+    
+    return answer

@@ -1,13 +1,19 @@
-import React, {use, useEffect, useState} from "react";
+import { useState } from "react";
 import SiteHeader from "./Header"
 import SiteFooter from "./Footer"
 import "../css/HomePage.css";
 import defaultAvatar from "../images/defaultAvatar.png";
 import skillsPlaceholder from "../images/skills-placeholder.png";
 import { useNavigate } from "react-router-dom";
+import { api } from "../api.js";
 
 const HomePage = () => {
   const navigate = useNavigate();
+
+  // State cho Learning Path
+  const [goal, setGoal] = useState("");
+  const [pathResult, setPathResult] = useState(null);
+  const [loadingPath, setLoadingPath] = useState(false);
 
   const CourseCard = ({ img, title, lessons, hours, price = "$40" }) => (
   <article className="fc-card">
@@ -33,6 +39,20 @@ const HomePage = () => {
   </article>
   );
 
+  const handleGeneratePath = async () => {
+      if (!goal.trim()) return;
+      setLoadingPath(true);
+      try {
+          // Gọi API Backend
+          const res = await api.post('/courses/learning-path', { goal });
+          setPathResult(res.data);
+      } catch (err) {
+          alert("Sorry, AI is busy right now. Please try again.");
+      } finally {
+          setLoadingPath(false);
+      }
+  };
+
   return (
     <div className="homepage">
       {/* HEADER */}
@@ -46,44 +66,57 @@ const HomePage = () => {
         </p>
       </section>
 
-      {/* LEARNING PATH */}
-      <section className="learning-path" id="learning-path">
-        <h2 className="lp-title">Learning Path</h2>
-        <p className="lp-sub">
-          Choose a learning path for Math, English, Physics, Chemistry or let AI suggest a personalized plan.
-        </p>
-
-        <div className="lp-grid">
-          <div className="subject-card">
-            <div className="subject-title">Mathematics</div>
-            <div className="subject-desc">
-              From basic to advanced: Algebra, Geometry, Calculus.
-            </div>
+      {/* --- NEW SECTION: AI LEARNING PATH --- */}
+      <section className="lp-section">
+          <h2 className="lp-title">Not sure where to start?</h2>
+          <p className="lp-sub">Tell our AI Advisor your goals (e.g., "I want to master Grade 10 Math"), and we'll build a path for you.</p>
+          
+          <div className="lp-input-box">
+              <textarea 
+                  rows="3" 
+                  placeholder="Ex: I am weak at Chemistry and want to prepare for the upcoming mid-term exam..." 
+                  value={goal}
+                  onChange={(e) => setGoal(e.target.value)}
+              />
+              <button 
+                  className="lp-btn" 
+                  onClick={handleGeneratePath}
+                  disabled={loadingPath}
+              >
+                  {loadingPath ? "Generating Path..." : "Get My Learning Path"}
+              </button>
           </div>
 
-          <div className="subject-card">
-            <div className="subject-title">English</div>
-            <div className="subject-desc">
-              Grammar, Vocabulary, Reading and Writing Skills.
-            </div>
-          </div>
+          {/* Hiển thị kết quả */}
+          {pathResult && (
+              <div className="lp-result">
+                  <div className="lp-advice">
+                      <i className="bi bi-chat-quote-fill" style={{marginRight:'10px'}}></i>
+                      {pathResult.advice}
+                  </div>
 
-          <div className="subject-card">
-            <div className="subject-title">Physics</div>
-            <div className="subject-desc">
-              Mechanics, Electricity, Optics and Applied Exercises.
-            </div>
-          </div>
-
-          <div className="subject-card">
-            <div className="subject-title">Chemistry</div>
-            <div className="subject-desc">
-              Inorganic & Organic Chemistry, Reactions and Calculations.
-            </div>
-          </div>
-        </div>
-
-        <button className="ai-button">Use AI to Design Custom Itineraries</button>
+                  <div className="path-list">
+                      {pathResult.path.map((item, index) => (
+                          <div key={item.id} className="path-item">
+                              <div className="path-step">{index + 1}</div>
+                              <div className="path-content">
+                                  <h4>{item.title}</h4>
+                                  <p className="path-reason">💡 AI Suggestion: {item.reason}</p>
+                                  <div style={{fontSize:'14px', color:'#888', marginBottom:'8px'}}>
+                                      {item.subject} • Grade {item.grade}
+                                  </div>
+                                  <button 
+                                      className="path-go-btn" 
+                                      onClick={() => navigate(`/courses/${item.id}`)}
+                                  >
+                                      Start Learning →
+                                  </button>
+                              </div>
+                          </div>
+                      ))}
+                  </div>
+              </div>
+          )}
       </section>
 
       {/* FEATURED COURSES */}
@@ -96,7 +129,7 @@ const HomePage = () => {
         {/* Mathematics */}
         <div className="fc-subject">
           <h3>Mathematics</h3>
-          <a className="fc-more" href="/courses/math">More <span>›</span></a>
+          <button className="fc-more" onClick={() => navigate("/courses?subject=math")}>More <i class="bi bi-caret-right-fill"></i></button>
         </div>
         <div className="fc-grid">
           <CourseCard
@@ -118,7 +151,7 @@ const HomePage = () => {
         {/* English */}
         <div className="fc-subject">
           <h3>English</h3>
-          <a className="fc-more" href="/courses/english">More <span>›</span></a>
+          <button className="fc-more" onClick={() => navigate("/courses?subject=english")}>More <i class="bi bi-caret-right-fill"></i></button>
         </div>
         <div className="fc-grid">
           <CourseCard
@@ -138,7 +171,7 @@ const HomePage = () => {
         {/* Physics */}
         <div className="fc-subject">
           <h3>Physics</h3>
-          <a className="fc-more" href="/courses/physics">More <span>›</span></a>
+          <button className="fc-more" onClick={() => navigate("/courses?subject=physics")}>More <i class="bi bi-caret-right-fill"></i></button>
         </div>
         <div className="fc-grid">
           <CourseCard
@@ -158,7 +191,7 @@ const HomePage = () => {
         {/* Chemistry */}
         <div className="fc-subject">
           <h3>Chemistry</h3>
-          <a className="fc-more" href="/courses/chemistry">More <span>›</span></a>
+          <button className="fc-more" onClick={() => navigate("/courses?subject=chemistry")}>More <i class="bi bi-caret-right-fill"></i></button>
         </div>
         <div className="fc-grid">
           <CourseCard

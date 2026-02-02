@@ -108,7 +108,7 @@ export default function AboutUs() {
                     </div>
                     
                     <div className="fs-grid">
-                        <a className="fs-card free" href="/practice">
+                        <a className="fs-card free" href="/tests">
                             <div className="fs-badge">Free practice</div>
                             <h3>
                                 <span>Practice</span>

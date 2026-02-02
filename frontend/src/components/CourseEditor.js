@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import SiteHeader from "./Header";
 import SiteFooter from "./Footer";
@@ -22,6 +22,10 @@ const LESSON_TYPES = [
 
 // Các đuôi file được phép upload cho lesson (document + slide)
 const LESSON_FILE_EXTS = [".pdf", ".doc", ".docx", ".txt", ".ppt", ".pptx"];
+
+// helper: check Mongo ObjectId format
+const isMongoId = (val) =>
+  typeof val === "string" && /^[0-9a-fA-F]{24}$/.test(val);
 
 // lesson “rỗng” cho builder
 const emptyLesson = () => ({
@@ -217,10 +221,7 @@ export default function CourseEditor() {
         mime.includes("officedocument.wordprocessingml.document")
       )
         docType = "docx";
-      else if (
-        mime.includes("presentation") ||
-        mime.includes("powerpoint")
-      )
+      else if (mime.includes("presentation") || mime.includes("powerpoint"))
         docType = "pptx";
 
       setLesson(si, li, {
@@ -242,6 +243,17 @@ export default function CourseEditor() {
 
   // ====== Generate AI slides for a lesson ====== //
   const handleGenerateSlides = async (si, li, lesson) => {
+    // Phải bật "Allow BrainBoost to generate AI slides"
+    if (!lesson.useAiSlides) {
+      setToast({
+        type: "error",
+        msg: "Please tick 'Allow BrainBoost to generate AI slides' first.",
+      });
+      setTimeout(() => setToast(null), 3000);
+      return;
+    }
+
+    // Vẫn cần tài liệu gốc
     if (!lesson.originalDocUrl) {
       setToast({
         type: "error",
@@ -251,17 +263,36 @@ export default function CourseEditor() {
       return;
     }
 
+    const hasValidCourseId = isEdit && id && isMongoId(id);
+
     try {
       setAiGeneratingLesson(`${si}-${li}`);
 
-      const res = await fetch(toAbsolute("/api/ai-slides/generate"), {
+      let endpoint;
+      let body;
+
+      if (hasValidCourseId) {
+        // Đang edit course đã lưu trong Mongo → dùng route có courseId
+        endpoint = toAbsolute(
+          `/api/courses/${id}/sections/${si}/lessons/${li}/gen-slides`
+        );
+        body = JSON.stringify({
+          numSlides: 10,
+        });
+      } else {
+        // Đang tạo course mới (chưa có id) → fallback route cũ /api/ai-slides/generate
+        endpoint = toAbsolute("/api/ai-slides/generate");
+        body = JSON.stringify({
+          docUrl: lesson.originalDocUrl,
+          maxSlides: 10,
+        });
+      }
+
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({
-          docUrl: lesson.originalDocUrl,
-          maxSlides: 10,
-        }),
+        body,
       });
 
       const data = await res.json().catch(() => ({}));
@@ -645,7 +676,9 @@ export default function CourseEditor() {
                                     })
                                   }
                                 />
-                                <span>Let students open the original document</span>
+                                <span>
+                                  Let students open the original document
+                                </span>
                               </label>
 
                               <label className="lesson-switch-label">
@@ -658,7 +691,9 @@ export default function CourseEditor() {
                                     })
                                   }
                                 />
-                                <span>Allow BrainBoost to generate AI slides (beta)</span>
+                                <span>
+                                  Allow BrainBoost to generate AI slides
+                                </span>
                               </label>
                             </div>
 
@@ -671,7 +706,8 @@ export default function CourseEditor() {
                                   accept=".pdf,.doc,.docx,.txt,.ppt,.pptx"
                                   style={{ display: "none" }}
                                   onChange={(e) => {
-                                    const file = e.target.files && e.target.files[0];
+                                    const file =
+                                      e.target.files && e.target.files[0];
                                     if (file) {
                                       handleLessonFileChange(si, li, file);
                                       e.target.value = "";
@@ -709,9 +745,12 @@ export default function CourseEditor() {
                                 className="mini primary"
                                 disabled={
                                   !ls.originalDocUrl ||
+                                  !ls.useAiSlides ||
                                   aiGeneratingLesson === `${si}-${li}`
                                 }
-                                onClick={() => handleGenerateSlides(si, li, ls)}
+                                onClick={() =>
+                                  handleGenerateSlides(si, li, ls)
+                                }
                               >
                                 {aiGeneratingLesson === `${si}-${li}`
                                   ? "Generating slides…"
@@ -724,16 +763,20 @@ export default function CourseEditor() {
                                 </span>
                               )}
 
-                              {Array.isArray(ls.aiSlides) && ls.aiSlides.length > 0 && (
-                                <span className="lesson-hint">
-                                  AI slides ready: {ls.aiSlides.length} slide(s).
-                                </span>
-                              )}
+                              {Array.isArray(ls.aiSlides) &&
+                                ls.aiSlides.length > 0 && (
+                                  <span className="lesson-hint">
+                                    AI slides ready: {ls.aiSlides.length} slide
+                                    (s).
+                                  </span>
+                                )}
                             </div>
 
                             {(ls.originalDocUrl || ls.aiSlides?.length) && (
                               <div className="lesson-ai-preview">
-                                <div className="lesson-ai-preview-title">Lesson display modes</div>
+                                <div className="lesson-ai-preview-title">
+                                  Lesson display modes
+                                </div>
                                 <p>
                                   {ls.originalDocUrl
                                     ? "• Original document will be available in the player."
@@ -741,7 +784,9 @@ export default function CourseEditor() {
                                   <br />
                                   {ls.useAiSlides
                                     ? `• AI slides ${
-                                        ls.aiSlides?.length ? `(${ls.aiSlides.length}) ` : ""
+                                        ls.aiSlides?.length
+                                          ? `(${ls.aiSlides.length}) `
+                                          : ""
                                       }will be used when students choose the AI slide mode.`
                                     : "• AI slides are currently disabled for this lesson."}
                                 </p>

@@ -10,6 +10,7 @@ const {
     getPublicCourseById,
     deleteCourse,
     generateLessonSlides,
+    createLearningPath,
 } = require("../controllers/courseController");
 const { uploadDoc, toCloudinaryDoc } = require("../middleware/uploadDoc");
 
@@ -57,6 +58,7 @@ router.post(
 // --- Public routes ---
 router.get("/public", listPublicCourses);
 router.get("/public/:id", getPublicCourseById);
+router.post('/learning-path', createLearningPath);
 
 // --- Private routes ---
 router.get("/", auth, listCourses);

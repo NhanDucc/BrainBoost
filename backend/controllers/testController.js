@@ -1,4 +1,8 @@
+const axios = require("axios");
 const Test = require("../models/Test");
+const TestResult = require("../models/TestResult");
+
+const AI_AGENT_URL = process.env.AI_AGENT_URL;
 
 // Normalizes and validates question data to ensure consistent format
 function normalizeQuestion(q) {
@@ -211,4 +215,86 @@ const getPublicTestById = async (req, res) => {
   }
 };
 
-module.exports = { createTest, getMyTests, getOneTest, updateTest, deleteTest, listPublicTests, getPublicTestById };
+const gradeEssay = async (req, res) => {
+  try {
+    const { question, student_answer, model_answer } = req.body;
+
+    if (!question || !student_answer) {
+      return res.status(400).json({ message: "Missing info" });
+    }
+
+    // Gọi sang Python Agent
+    const aiRes = await axios.post(`${AI_AGENT_URL}/grade-essay`, {
+      question,
+      student_answer,
+      model_answer: model_answer || ""
+    });
+
+    return res.json(aiRes.data);
+
+  } catch (err) {
+    console.error("Grade Essay Error:", err.message);
+    res.status(500).json({ message: "AI Grading Failed" });
+  }
+};
+
+// 1. Lưu kết quả bài thi khi học sinh bấm Submit
+const submitTest = async (req, res) => {
+  try {
+    const { testId, answers, resultSummary } = req.body;
+    // answers: Mảng chi tiết các câu trả lời từ Frontend gửi xuống
+    // resultSummary: { correctCount, totalScore... }
+
+    const newResult = await TestResult.create({
+      student: req.userId, // Lấy từ token đăng nhập
+      test: testId,
+      answers: answers,
+      totalScore: resultSummary.correctCount, // Tạm thời lưu số câu đúng làm điểm
+      maxScore: resultSummary.gradableTotal,
+      finalPercent: resultSummary.percent
+    });
+
+    res.status(201).json(newResult);
+  } catch (error) {
+    console.error("Submit Test Error:", error);
+    res.status(500).json({ message: "Failed to save result" });
+  }
+};
+
+// 2. Cập nhật điểm chấm AI cho 1 câu hỏi cụ thể
+const updateEssayGrade = async (req, res) => {
+  try {
+    const { resultId, questionIdx, aiData } = req.body;
+    // aiData: { score, feedback, suggestion }
+
+    const result = await TestResult.findById(resultId);
+    if (!result) return res.status(404).json({ message: "Result not found" });
+
+    // Tìm câu trả lời trong mảng answers dựa vào index (idx) hoặc questionId
+    // Ở frontend đang dùng idx (1, 2, 3...), ta trừ 1 để ra index mảng
+    const answerIndex = result.answers.findIndex(a => a.questionId === `q${questionIdx}` || a._id?.toString() === questionIdx); 
+    
+    // Nếu không tìm thấy bằng ID, thử tìm theo thứ tự (cách đơn giản nhất cho project này)
+    const targetAnswer = result.answers[questionIdx - 1]; // Giả sử thứ tự không đổi
+
+    if (targetAnswer) {
+      targetAnswer.score = aiData.score;
+      targetAnswer.aiFeedback = aiData.feedback;
+      targetAnswer.aiSuggestion = aiData.suggestion;
+      
+      // Lưu đè lại mảng answers
+      result.markModified('answers'); 
+      await result.save();
+    }
+
+    res.json({ message: "Grade updated" });
+  } catch (error) {
+    console.error("Update Grade Error:", error);
+    res.status(500).json({ message: "Failed to update grade" });
+  }
+};
+
+module.exports = { 
+  createTest, getMyTests, getOneTest, updateTest, deleteTest, 
+  listPublicTests, getPublicTestById, gradeEssay, submitTest, updateEssayGrade 
+};

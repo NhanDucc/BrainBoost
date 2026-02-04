@@ -1,9 +1,10 @@
-// src/components/TestPlayer.js
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import SiteHeader from "./Header";
 import SiteFooter from "./Footer";
 import { toAbsolute } from "../utils/url";
+import { api } from "../api";
+import FormulaDisplay from "./FormulaDisplay";
 import "../css/TestPlayer.css";
 
 /* Helpers */
@@ -36,8 +37,8 @@ export default function TestPlayer() {
     const [highlight, setHighlight] = useState(true);
 
     /** answers:
-     *  - MCQ / Boolean: number (index)
-     *  - Essay: string (free text)
+     * - MCQ / Boolean: number (index)
+     * - Essay: string (free text)
      */
     const [answers, setAnswers] = useState({});
     const [reviewSet, setReviewSet] = useState(() => new Set());
@@ -51,6 +52,11 @@ export default function TestPlayer() {
     const [result, setResult] = useState(null);
 
     const LS_KEY = `test-session:${id}`;
+
+    const [essayGrades, setEssayGrades] = useState({});
+    const [gradingLoading, setGradingLoading] = useState({});
+
+    const [submissionId, setSubmissionId] = useState(null);
 
     // Load test from API
     useEffect(() => {
@@ -128,7 +134,7 @@ export default function TestPlayer() {
         }
         load();
         return () => {
-            ignore = true;
+        ignore = true;
         };
         // eslint-disable-next-line
     }, [id]);
@@ -137,8 +143,8 @@ export default function TestPlayer() {
     useEffect(() => {
         if (secondsLeft == null || secondsLeft <= 0) return;
         timerRef.current = setInterval(
-            () => setSecondsLeft((s) => (s == null ? null : s - 1)),
-            1000
+        () => setSecondsLeft((s) => (s == null ? null : s - 1)),
+        1000
         );
         return () => clearInterval(timerRef.current);
     }, [secondsLeft]);
@@ -153,10 +159,10 @@ export default function TestPlayer() {
     useEffect(() => {
         if (result) return; // don't persist after submit
         const payload = {
-            answers,
-            reviewIds: Array.from(reviewSet),
-            pointer: { pi, qi },
-            secondsLeft,
+        answers,
+        reviewIds: Array.from(reviewSet),
+        pointer: { pi, qi },
+        secondsLeft,
         };
         localStorage.setItem(LS_KEY, JSON.stringify(payload));
     }, [answers, reviewSet, pi, qi, secondsLeft, result]);
@@ -207,56 +213,90 @@ export default function TestPlayer() {
         return ns;
         });
 
-    // Build result and show review screen
-    const handleSubmit = (auto = false) => {
-        const items = flatQuestions.map((q, i) => {
-            const chosen = answers[q.id];
-            if (q.type === "essay") {
-                return {
-                idx: i + 1,
-                type: q.type,
-                stem: q.stem,
-                essayAnswer: typeof chosen === "string" ? chosen : "",
-                isCorrect: null, // không chấm
-                };
-            }
-            // mcq/boolean
-            const correct = typeof q.answer === "number" ? q.answer : null;
-            const isCorrect = correct != null && chosen === correct;
-            return {
-                idx: i + 1,
-                type: q.type,
-                stem: q.stem,
-                choices: q.choices,
-                chosen,
-                correct,
-                isCorrect,
-            };
+    const handleGradeEssay = async (item) => {
+        // item là object câu hỏi trong mảng result.items
+        const { idx, stem, essayAnswer, modelAnswer } = item; // Lưu ý: cần đảm bảo modelAnswer được truyền xuống từ result (xem bước sửa logic bên dưới)
+        
+        setGradingLoading(prev => ({ ...prev, [idx]: true }));
+        try {
+            // 1. Gọi AI chấm điểm
+            const res = await api.post("/tests/grade-essay", {
+                question: stem,
+                student_answer: essayAnswer,
+                model_answer: modelAnswer || ""
             });
+            
+            const aiResult = res.data;
+            setEssayGrades(prev => ({ ...prev, [idx]: aiResult }));
+
+            // 2. PHẦN THÊM MỚI: Lưu kết quả chấm vào Database (nếu đã nộp bài)
+            if (submissionId) {
+                await api.post("/tests/update-grade", {
+                    resultId: submissionId,
+                    questionIdx: idx, // Gửi số thứ tự câu (1, 2, 3...)
+                    aiData: aiResult
+                });
+            }
+
+        } catch (err) {
+            alert("AI Grading failed. Please try again.");
+            console.error(err);
+        } finally {
+            setGradingLoading(prev => ({ ...prev, [idx]: false }));
+        }
+    };
+
+    // Build result and show review screen
+    const handleSubmit = async (auto = false) => {
+        const items = flatQuestions.map((q, i) => {
+        const chosen = answers[q.id];
+        if (q.type === "essay") {
+            return {
+            idx: i + 1,
+            type: q.type,
+            stem: q.stem,
+            modelAnswer: q.modelAnswer,
+            essayAnswer: typeof chosen === "string" ? chosen : "",
+            isCorrect: null,
+            };
+        }
+        // mcq/boolean
+        const correct = typeof q.answer === "number" ? q.answer : null;
+        const isCorrect = correct != null && chosen === correct;
+        return {
+            idx: i + 1,
+            type: q.type,
+            stem: q.stem,
+            choices: q.choices,
+            chosen,
+            correct,
+            isCorrect,
+        };
+        });
 
         const gradableItems = items.filter(
-            (it) => it.type === "mcq" || it.type === "boolean"
+        (it) => it.type === "mcq" || it.type === "boolean"
         );
         const correctCount = gradableItems.filter((x) => x.isCorrect).length;
         const gradableTotal = gradableItems.length;
 
         const attemptedCount =
-            Object.keys(answers).filter((qid) => {
-                const q = flatQuestions.find((x) => x.id === qid);
-                if (!q) return false;
-                if (q.type === "essay") return (answers[qid] || "").trim().length > 0;
-                return typeof answers[qid] === "number";
+        Object.keys(answers).filter((qid) => {
+            const q = flatQuestions.find((x) => x.id === qid);
+            if (!q) return false;
+            if (q.type === "essay") return (answers[qid] || "").trim().length > 0;
+            return typeof answers[qid] === "number";
         }).length;
 
         const incorrectCount =
-            gradableItems.filter(
-                (x) => x.chosen != null && x.isCorrect === false
+        gradableItems.filter(
+            (x) => x.chosen != null && x.isCorrect === false
         ).length;
 
         const unansweredCount = total - attemptedCount;
         const percent = gradableTotal
-            ? Math.round((correctCount / gradableTotal) * 100)
-            : 0;
+        ? Math.round((correctCount / gradableTotal) * 100)
+        : 0;
 
         // stop timer + clear saved session
         clearInterval(timerRef.current);
@@ -273,6 +313,35 @@ export default function TestPlayer() {
             auto,
             items,
         });
+
+        try {
+        // Chuẩn bị dữ liệu gửi về server
+        const payload = {
+            testId: id, // ID của đề thi
+            resultSummary: {
+                correctCount,
+                gradableTotal,
+                percent
+            },
+            answers: items.map(it => ({
+                questionId: `q${it.idx}`, // Lưu ID dạng q1, q2 để dễ tìm
+                type: it.type,
+                studentAnswer: it.type === 'essay' ? it.essayAnswer : it.chosen,
+                isCorrect: it.isCorrect,
+                // AI score sẽ cập nhật sau
+            }))
+        };
+
+        const res = await api.post("/tests/submit", payload);
+        if (res.data && res.data._id) {
+            setSubmissionId(res.data._id); // Lưu lại ID bài làm để dùng cho chấm AI
+            // Xóa local storage khi đã lưu DB thành công
+            localStorage.removeItem(LS_KEY); 
+        }
+        } catch (err) {
+            console.error("Failed to save result to DB", err);
+            // Có thể hiện thông báo lỗi nhẹ nếu muốn
+        }
 
         try {
         window.scrollTo({ top: 0, behavior: "smooth" });
@@ -365,7 +434,10 @@ export default function TestPlayer() {
                         </span>
                     </div>
 
-                    <div className="rv-stem">{it.stem}</div>
+                    {/* SỬ DỤNG MATH DISPLAY CHO NỘI DUNG CÂU HỎI */}
+                    <div className="rv-stem">
+                        <FormulaDisplay content={it.stem} />
+                    </div>
 
                     {it.type === "essay" ? (
                         <div className="rv-essay">
@@ -373,6 +445,61 @@ export default function TestPlayer() {
                         <div className="rv-essay-text">
                             {(it.essayAnswer || "").trim() || "— (empty) —"}
                         </div>
+                        
+                        {/* --- TÍNH NĂNG AI GRADING --- */}
+                        {(it.essayAnswer || "").trim().length > 0 && (
+                            <div style={{ marginTop: '16px' }}>
+                                {!essayGrades[it.idx] ? (
+                                    <button 
+                                        className={`ai-grade-btn ${gradingLoading[it.idx] ? 'loading' : ''}`}
+                                        onClick={() => handleGradeEssay(it)}
+                                        disabled={gradingLoading[it.idx]}
+                                    >
+                                        {gradingLoading[it.idx] ? (
+                                            <>
+                                                <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                                                AI is analyzing...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <i className="bi bi-stars"></i> Grade with AI
+                                            </>
+                                        )}
+                                    </button>
+                                ) : (
+                                    <div className="ai-result-box">
+                                        <div className="ai-result-header">
+                                            <div className="ai-title">
+                                                <i className="bi bi-robot"></i> AI Assessment
+                                            </div>
+                                            <span 
+                                                className={`ai-score-badge ${
+                                                    essayGrades[it.idx].score >= 8 ? 'ai-score-high' : 
+                                                    essayGrades[it.idx].score >= 5 ? 'ai-score-med' : 'ai-score-low'
+                                                }`}
+                                            >
+                                                Score: {essayGrades[it.idx].score}/10
+                                            </span>
+                                        </div>
+                                        
+                                        <div className="ai-feedback">
+                                            <strong>Feedback: </strong> 
+                                            {essayGrades[it.idx].feedback}
+                                        </div>
+                                        
+                                        {essayGrades[it.idx].suggestion && (
+                                            <div className="ai-suggestion">
+                                                <i className="bi bi-lightbulb-fill"></i>
+                                                <div>
+                                                    <strong>Suggestion: </strong>
+                                                    {essayGrades[it.idx].suggestion}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        )}
                         </div>
                     ) : (
                         <ul className="rv-choices">
@@ -391,7 +518,11 @@ export default function TestPlayer() {
                                 <span className="rv-index">
                                 {ABC[ci] ?? (ci === 0 ? "T" : "F")}.
                                 </span>
-                                <span className="rv-text">{c}</span>
+                                {/* SỬ DỤNG MATH DISPLAY CHO ĐÁP ÁN */}
+                                <span className="rv-text">
+                                    <FormulaDisplay content={c} />
+                                </span>
+                                
                                 {isCorrect && <span className="rv-tag">Correct</span>}
                                 {isChosen && !isCorrect && (
                                 <span className="rv-tag wrong">Your choice</span>
@@ -458,7 +589,10 @@ export default function TestPlayer() {
 
                     {current && (
                         <>
-                        <div className="tp-stem">{current.stem}</div>
+                        {/* SỬ DỤNG MATH DISPLAY CHO ĐỀ BÀI */}
+                        <div className="tp-stem">
+                            <FormulaDisplay content={current.stem} />
+                        </div>
 
                         {/* MCQ */}
                         {current.type === "mcq" && (
@@ -477,7 +611,10 @@ export default function TestPlayer() {
                                     <span className="choice-index">
                                         {String.fromCharCode(65 + idx)}.
                                     </span>
-                                    <span className="choice-text">{c}</span>
+                                    {/* SỬ DỤNG MATH DISPLAY CHO LỰA CHỌN */}
+                                    <span className="choice-text">
+                                        <FormulaDisplay content={c} />
+                                    </span>
                                     </label>
                                 </li>
                                 );

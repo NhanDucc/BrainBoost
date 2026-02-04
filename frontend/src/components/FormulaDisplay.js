@@ -18,7 +18,7 @@ const FormulaDisplay = ({ content }) => {
         if (part.startsWith('$') && part.endsWith('$')) {
           const latex = part.slice(1, -1); // Bỏ 2 dấu $
           return (
-            <formula-field
+            <math-field
               key={index}
               read-only
               style={{
@@ -35,7 +35,7 @@ const FormulaDisplay = ({ content }) => {
               }}
             >
               {latex}
-            </formula-field>
+            </math-field>
           );
         }
 

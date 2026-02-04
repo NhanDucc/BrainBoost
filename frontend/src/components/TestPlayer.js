@@ -56,6 +56,8 @@ export default function TestPlayer() {
     const [essayGrades, setEssayGrades] = useState({});
     const [gradingLoading, setGradingLoading] = useState({});
 
+    const [submissionId, setSubmissionId] = useState(null);
+
     // Load test from API
     useEffect(() => {
         let ignore = false;
@@ -217,22 +219,35 @@ export default function TestPlayer() {
         
         setGradingLoading(prev => ({ ...prev, [idx]: true }));
         try {
+            // 1. Gọi AI chấm điểm
             const res = await api.post("/tests/grade-essay", {
                 question: stem,
                 student_answer: essayAnswer,
-                model_answer: modelAnswer || "" // Cần sửa handleSubmit để truyền cái này vào items
+                model_answer: modelAnswer || ""
             });
             
-            setEssayGrades(prev => ({ ...prev, [idx]: res.data }));
+            const aiResult = res.data;
+            setEssayGrades(prev => ({ ...prev, [idx]: aiResult }));
+
+            // 2. PHẦN THÊM MỚI: Lưu kết quả chấm vào Database (nếu đã nộp bài)
+            if (submissionId) {
+                await api.post("/tests/update-grade", {
+                    resultId: submissionId,
+                    questionIdx: idx, // Gửi số thứ tự câu (1, 2, 3...)
+                    aiData: aiResult
+                });
+            }
+
         } catch (err) {
             alert("AI Grading failed. Please try again.");
+            console.error(err);
         } finally {
             setGradingLoading(prev => ({ ...prev, [idx]: false }));
         }
     };
 
     // Build result and show review screen
-    const handleSubmit = (auto = false) => {
+    const handleSubmit = async (auto = false) => {
         const items = flatQuestions.map((q, i) => {
         const chosen = answers[q.id];
         if (q.type === "essay") {
@@ -288,16 +303,45 @@ export default function TestPlayer() {
         localStorage.removeItem(LS_KEY);
 
         setResult({
-        correctCount,
-        incorrectCount,
-        unansweredCount,
-        attemptedCount,
-        total,
-        gradableTotal,
-        percent,
-        auto,
-        items,
+            correctCount,
+            incorrectCount,
+            unansweredCount,
+            attemptedCount,
+            total,
+            gradableTotal,
+            percent,
+            auto,
+            items,
         });
+
+        try {
+        // Chuẩn bị dữ liệu gửi về server
+        const payload = {
+            testId: id, // ID của đề thi
+            resultSummary: {
+                correctCount,
+                gradableTotal,
+                percent
+            },
+            answers: items.map(it => ({
+                questionId: `q${it.idx}`, // Lưu ID dạng q1, q2 để dễ tìm
+                type: it.type,
+                studentAnswer: it.type === 'essay' ? it.essayAnswer : it.chosen,
+                isCorrect: it.isCorrect,
+                // AI score sẽ cập nhật sau
+            }))
+        };
+
+        const res = await api.post("/tests/submit", payload);
+        if (res.data && res.data._id) {
+            setSubmissionId(res.data._id); // Lưu lại ID bài làm để dùng cho chấm AI
+            // Xóa local storage khi đã lưu DB thành công
+            localStorage.removeItem(LS_KEY); 
+        }
+        } catch (err) {
+            console.error("Failed to save result to DB", err);
+            // Có thể hiện thông báo lỗi nhẹ nếu muốn
+        }
 
         try {
         window.scrollTo({ top: 0, behavior: "smooth" });

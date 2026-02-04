@@ -8,7 +8,9 @@ const {
     deleteTest, 
     listPublicTests, 
     getPublicTestById, 
-    gradeEssay 
+    gradeEssay,
+    submitTest,
+    updateEssayGrade, 
 } = require("../controllers/testController");
 const { auth, authorize } = require("../middleware/auth");
 
@@ -23,5 +25,7 @@ router.get("/:id", auth, authorize("instructor"), getOneTest);
 router.patch("/:id", auth, authorize("instructor"), updateTest);
 router.delete("/:id", auth, authorize("instructor"), deleteTest);
 router.post("/grade-essay", auth, gradeEssay);
+router.post("/submit", auth, submitTest);
+router.post("/update-grade", auth, updateEssayGrade);
 
 module.exports = router;

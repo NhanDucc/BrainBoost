@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import SiteHeader from "./Header";
 import SiteFooter from "./Footer";
 import { toAbsolute } from "../utils/url";
+import FormulaEditor from "./FormulaEditor";
 import "../css/TestEditor.css";
 
 const SUBJECTS = [
@@ -51,6 +52,8 @@ export default function TestEditor() {
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
   const [loading, setLoading] = useState(false);
+
+  // Đã xóa state currentMath, activeQIndex vì không còn cần thiết với FormulaEditor
 
   useEffect(() => { window.scrollTo(0, 0); }, []);
 
@@ -440,28 +443,28 @@ export default function TestEditor() {
                       </select>
                     </div>
 
-                    <label className="q-row">
-                      <span>Question</span>
-                      <textarea
-                        rows={2}
+                    {/* --- CẬP NHẬT: DÙNG FormulaEditor CHO CÂU HỎI --- */}
+                    <div className="q-row">
+                      <span style={{ fontWeight: '800', marginBottom: '6px', display: 'block' }}>Question Content</span>
+                      <FormulaEditor
                         value={q.stem}
-                        onChange={(e) => onChangeStem(qi, e.target.value)}
-                        placeholder="Write your question..."
+                        onChange={(val) => onChangeStem(qi, val)}
+                        placeholder="Type question content (click Insert Formula for math)..."
                       />
-                    </label>
+                    </div>
 
                     {/* Nội dung đáp án theo loại */}
                     <QuestionBody q={q} qi={qi} />
 
-                    <label className="q-row">
-                      <span>Explanation (optional)</span>
-                      <textarea
-                        rows={2}
+                    {/* --- CẬP NHẬT: DÙNG FormulaEditor CHO GIẢI THÍCH --- */}
+                    <div className="q-row" style={{ marginTop: '15px' }}>
+                      <span style={{ fontWeight: '800', marginBottom: '6px', display: 'block' }}>Explanation (Optional)</span>
+                      <FormulaEditor
                         value={q.explanation}
-                        onChange={(e) => onChangeExplain(qi, e.target.value)}
-                        placeholder="Why is this answer correct? (or hints for essay)"
+                        onChange={(val) => onChangeExplain(qi, val)}
+                        placeholder="Explain with text or formulas..."
                       />
-                    </label>
+                    </div>
                   </div>
                 ))}
               </div>

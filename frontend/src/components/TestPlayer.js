@@ -1,9 +1,9 @@
-// src/components/TestPlayer.js
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import SiteHeader from "./Header";
 import SiteFooter from "./Footer";
 import { toAbsolute } from "../utils/url";
+import FormulaDisplay from "./FormulaDisplay";
 import "../css/TestPlayer.css";
 
 /* Helpers */
@@ -36,8 +36,8 @@ export default function TestPlayer() {
     const [highlight, setHighlight] = useState(true);
 
     /** answers:
-     *  - MCQ / Boolean: number (index)
-     *  - Essay: string (free text)
+     * - MCQ / Boolean: number (index)
+     * - Essay: string (free text)
      */
     const [answers, setAnswers] = useState({});
     const [reviewSet, setReviewSet] = useState(() => new Set());
@@ -128,7 +128,7 @@ export default function TestPlayer() {
         }
         load();
         return () => {
-            ignore = true;
+        ignore = true;
         };
         // eslint-disable-next-line
     }, [id]);
@@ -137,8 +137,8 @@ export default function TestPlayer() {
     useEffect(() => {
         if (secondsLeft == null || secondsLeft <= 0) return;
         timerRef.current = setInterval(
-            () => setSecondsLeft((s) => (s == null ? null : s - 1)),
-            1000
+        () => setSecondsLeft((s) => (s == null ? null : s - 1)),
+        1000
         );
         return () => clearInterval(timerRef.current);
     }, [secondsLeft]);
@@ -153,10 +153,10 @@ export default function TestPlayer() {
     useEffect(() => {
         if (result) return; // don't persist after submit
         const payload = {
-            answers,
-            reviewIds: Array.from(reviewSet),
-            pointer: { pi, qi },
-            secondsLeft,
+        answers,
+        reviewIds: Array.from(reviewSet),
+        pointer: { pi, qi },
+        secondsLeft,
         };
         localStorage.setItem(LS_KEY, JSON.stringify(payload));
     }, [answers, reviewSet, pi, qi, secondsLeft, result]);
@@ -210,68 +210,68 @@ export default function TestPlayer() {
     // Build result and show review screen
     const handleSubmit = (auto = false) => {
         const items = flatQuestions.map((q, i) => {
-            const chosen = answers[q.id];
-            if (q.type === "essay") {
-                return {
-                idx: i + 1,
-                type: q.type,
-                stem: q.stem,
-                essayAnswer: typeof chosen === "string" ? chosen : "",
-                isCorrect: null, // không chấm
-                };
-            }
-            // mcq/boolean
-            const correct = typeof q.answer === "number" ? q.answer : null;
-            const isCorrect = correct != null && chosen === correct;
+        const chosen = answers[q.id];
+        if (q.type === "essay") {
             return {
-                idx: i + 1,
-                type: q.type,
-                stem: q.stem,
-                choices: q.choices,
-                chosen,
-                correct,
-                isCorrect,
+            idx: i + 1,
+            type: q.type,
+            stem: q.stem,
+            essayAnswer: typeof chosen === "string" ? chosen : "",
+            isCorrect: null, // không chấm
             };
-            });
+        }
+        // mcq/boolean
+        const correct = typeof q.answer === "number" ? q.answer : null;
+        const isCorrect = correct != null && chosen === correct;
+        return {
+            idx: i + 1,
+            type: q.type,
+            stem: q.stem,
+            choices: q.choices,
+            chosen,
+            correct,
+            isCorrect,
+        };
+        });
 
         const gradableItems = items.filter(
-            (it) => it.type === "mcq" || it.type === "boolean"
+        (it) => it.type === "mcq" || it.type === "boolean"
         );
         const correctCount = gradableItems.filter((x) => x.isCorrect).length;
         const gradableTotal = gradableItems.length;
 
         const attemptedCount =
-            Object.keys(answers).filter((qid) => {
-                const q = flatQuestions.find((x) => x.id === qid);
-                if (!q) return false;
-                if (q.type === "essay") return (answers[qid] || "").trim().length > 0;
-                return typeof answers[qid] === "number";
+        Object.keys(answers).filter((qid) => {
+            const q = flatQuestions.find((x) => x.id === qid);
+            if (!q) return false;
+            if (q.type === "essay") return (answers[qid] || "").trim().length > 0;
+            return typeof answers[qid] === "number";
         }).length;
 
         const incorrectCount =
-            gradableItems.filter(
-                (x) => x.chosen != null && x.isCorrect === false
+        gradableItems.filter(
+            (x) => x.chosen != null && x.isCorrect === false
         ).length;
 
         const unansweredCount = total - attemptedCount;
         const percent = gradableTotal
-            ? Math.round((correctCount / gradableTotal) * 100)
-            : 0;
+        ? Math.round((correctCount / gradableTotal) * 100)
+        : 0;
 
         // stop timer + clear saved session
         clearInterval(timerRef.current);
         localStorage.removeItem(LS_KEY);
 
         setResult({
-            correctCount,
-            incorrectCount,
-            unansweredCount,
-            attemptedCount,
-            total,
-            gradableTotal,
-            percent,
-            auto,
-            items,
+        correctCount,
+        incorrectCount,
+        unansweredCount,
+        attemptedCount,
+        total,
+        gradableTotal,
+        percent,
+        auto,
+        items,
         });
 
         try {
@@ -365,7 +365,10 @@ export default function TestPlayer() {
                         </span>
                     </div>
 
-                    <div className="rv-stem">{it.stem}</div>
+                    {/* SỬ DỤNG MATH DISPLAY CHO NỘI DUNG CÂU HỎI */}
+                    <div className="rv-stem">
+                        <FormulaDisplay content={it.stem} />
+                    </div>
 
                     {it.type === "essay" ? (
                         <div className="rv-essay">
@@ -391,7 +394,11 @@ export default function TestPlayer() {
                                 <span className="rv-index">
                                 {ABC[ci] ?? (ci === 0 ? "T" : "F")}.
                                 </span>
-                                <span className="rv-text">{c}</span>
+                                {/* SỬ DỤNG MATH DISPLAY CHO ĐÁP ÁN */}
+                                <span className="rv-text">
+                                    <FormulaDisplay content={c} />
+                                </span>
+                                
                                 {isCorrect && <span className="rv-tag">Correct</span>}
                                 {isChosen && !isCorrect && (
                                 <span className="rv-tag wrong">Your choice</span>
@@ -458,7 +465,10 @@ export default function TestPlayer() {
 
                     {current && (
                         <>
-                        <div className="tp-stem">{current.stem}</div>
+                        {/* SỬ DỤNG MATH DISPLAY CHO ĐỀ BÀI */}
+                        <div className="tp-stem">
+                            <FormulaDisplay content={current.stem} />
+                        </div>
 
                         {/* MCQ */}
                         {current.type === "mcq" && (
@@ -477,7 +487,10 @@ export default function TestPlayer() {
                                     <span className="choice-index">
                                         {String.fromCharCode(65 + idx)}.
                                     </span>
-                                    <span className="choice-text">{c}</span>
+                                    {/* SỬ DỤNG MATH DISPLAY CHO LỰA CHỌN */}
+                                    <span className="choice-text">
+                                        <FormulaDisplay content={c} />
+                                    </span>
                                     </label>
                                 </li>
                                 );

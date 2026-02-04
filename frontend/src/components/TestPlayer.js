@@ -3,6 +3,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import SiteHeader from "./Header";
 import SiteFooter from "./Footer";
 import { toAbsolute } from "../utils/url";
+import { api } from "../api";
 import FormulaDisplay from "./FormulaDisplay";
 import "../css/TestPlayer.css";
 
@@ -51,6 +52,9 @@ export default function TestPlayer() {
     const [result, setResult] = useState(null);
 
     const LS_KEY = `test-session:${id}`;
+
+    const [essayGrades, setEssayGrades] = useState({});
+    const [gradingLoading, setGradingLoading] = useState({});
 
     // Load test from API
     useEffect(() => {
@@ -207,6 +211,26 @@ export default function TestPlayer() {
         return ns;
         });
 
+    const handleGradeEssay = async (item) => {
+        // item là object câu hỏi trong mảng result.items
+        const { idx, stem, essayAnswer, modelAnswer } = item; // Lưu ý: cần đảm bảo modelAnswer được truyền xuống từ result (xem bước sửa logic bên dưới)
+        
+        setGradingLoading(prev => ({ ...prev, [idx]: true }));
+        try {
+            const res = await api.post("/tests/grade-essay", {
+                question: stem,
+                student_answer: essayAnswer,
+                model_answer: modelAnswer || "" // Cần sửa handleSubmit để truyền cái này vào items
+            });
+            
+            setEssayGrades(prev => ({ ...prev, [idx]: res.data }));
+        } catch (err) {
+            alert("AI Grading failed. Please try again.");
+        } finally {
+            setGradingLoading(prev => ({ ...prev, [idx]: false }));
+        }
+    };
+
     // Build result and show review screen
     const handleSubmit = (auto = false) => {
         const items = flatQuestions.map((q, i) => {
@@ -216,8 +240,9 @@ export default function TestPlayer() {
             idx: i + 1,
             type: q.type,
             stem: q.stem,
+            modelAnswer: q.modelAnswer,
             essayAnswer: typeof chosen === "string" ? chosen : "",
-            isCorrect: null, // không chấm
+            isCorrect: null,
             };
         }
         // mcq/boolean
@@ -376,6 +401,61 @@ export default function TestPlayer() {
                         <div className="rv-essay-text">
                             {(it.essayAnswer || "").trim() || "— (empty) —"}
                         </div>
+                        
+                        {/* --- TÍNH NĂNG AI GRADING --- */}
+                        {(it.essayAnswer || "").trim().length > 0 && (
+                            <div style={{ marginTop: '16px' }}>
+                                {!essayGrades[it.idx] ? (
+                                    <button 
+                                        className={`ai-grade-btn ${gradingLoading[it.idx] ? 'loading' : ''}`}
+                                        onClick={() => handleGradeEssay(it)}
+                                        disabled={gradingLoading[it.idx]}
+                                    >
+                                        {gradingLoading[it.idx] ? (
+                                            <>
+                                                <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                                                AI is analyzing...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <i className="bi bi-stars"></i> Grade with AI
+                                            </>
+                                        )}
+                                    </button>
+                                ) : (
+                                    <div className="ai-result-box">
+                                        <div className="ai-result-header">
+                                            <div className="ai-title">
+                                                <i className="bi bi-robot"></i> AI Assessment
+                                            </div>
+                                            <span 
+                                                className={`ai-score-badge ${
+                                                    essayGrades[it.idx].score >= 8 ? 'ai-score-high' : 
+                                                    essayGrades[it.idx].score >= 5 ? 'ai-score-med' : 'ai-score-low'
+                                                }`}
+                                            >
+                                                Score: {essayGrades[it.idx].score}/10
+                                            </span>
+                                        </div>
+                                        
+                                        <div className="ai-feedback">
+                                            <strong>Feedback: </strong> 
+                                            {essayGrades[it.idx].feedback}
+                                        </div>
+                                        
+                                        {essayGrades[it.idx].suggestion && (
+                                            <div className="ai-suggestion">
+                                                <i className="bi bi-lightbulb-fill"></i>
+                                                <div>
+                                                    <strong>Suggestion: </strong>
+                                                    {essayGrades[it.idx].suggestion}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        )}
                         </div>
                     ) : (
                         <ul className="rv-choices">

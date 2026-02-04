@@ -5,6 +5,8 @@ from typing import Optional
 from lesson_chat_agent import call_lesson_tutor
 from slides_agent import generate_slides_for_lesson
 
+from grading_agent import grade_essay_logic
+
 app = FastAPI(title="BrainBoost AI Agent")
 
 # ==== Create slide based on lesson content ====
@@ -38,7 +40,19 @@ class LearningPathResponse(BaseModel):
     advice: str # Lời khuyên chung
     recommended_courses: list[dict] # Danh sách course_id và lý do recommend
 
+# ==== Grading essay model ====
+class GradeEssayRequest(BaseModel):
+    question: str
+    student_answer: str
+    model_answer: Optional[str] = ""
 
+# Model Output
+class GradeEssayResponse(BaseModel):
+    score: float
+    feedback: str
+    suggestion: str
+
+# ==== API Endpoints ====
 @app.post("/generate-slides", response_model=SlidesResponse)
 def generate_slides(req: SlidesRequest):
     """
@@ -73,3 +87,8 @@ def generate_learning_path_api(req: LearningPathRequest):
     """
     from learning_path_agent import generate_path # Chúng ta sẽ tạo file này sau
     return generate_path(req.user_goal, req.available_courses)
+
+@app.post("/grade-essay", response_model=GradeEssayResponse)
+def grade_essay_endpoint(req: GradeEssayRequest):
+    result = grade_essay_logic(req.question, req.student_answer, req.model_answer)
+    return GradeEssayResponse(**result)

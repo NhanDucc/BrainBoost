@@ -1,4 +1,7 @@
+const axios = require("axios");
 const Test = require("../models/Test");
+
+const AI_AGENT_URL = process.env.AI_AGENT_URL;
 
 // Normalizes and validates question data to ensure consistent format
 function normalizeQuestion(q) {
@@ -211,4 +214,26 @@ const getPublicTestById = async (req, res) => {
   }
 };
 
-module.exports = { createTest, getMyTests, getOneTest, updateTest, deleteTest, listPublicTests, getPublicTestById };
+const gradeEssay = async (req, res) => {
+  try {
+    const { question, student_answer, model_answer } = req.body;
+
+    if (!question || !student_answer) {
+      return res.status(400).json({ message: "Missing info" });
+    }
+
+    // Gọi sang Python Agent
+    const aiRes = await axios.post(`${process.env.AI_AGENT_URL}/grade-essay`, {
+      question,
+      student_answer,
+      model_answer: model_answer || ""
+    });
+
+    return res.json(aiRes.data);
+
+  } catch (err) {
+    console.error("Grade Essay Error:", err.message);
+    res.status(500).json({ message: "AI Grading Failed" });
+  }
+};
+module.exports = { createTest, getMyTests, getOneTest, updateTest, deleteTest, listPublicTests, getPublicTestById, gradeEssay };

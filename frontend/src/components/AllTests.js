@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import SiteHeader from "./Header";
 import SiteFooter from "./Footer";
@@ -6,7 +6,7 @@ import skillsPlaceholder from "../images/skills-placeholder.png";
 import { toAbsolute } from "../utils/url";
 import "../css/AllTests.css";
 
-/** dropdown options (minutes) */
+// List of available time limit options for the test preview dropdown
 const TIME_OPTIONS = [
     { key: "unlimited", label: "Unlimited", minutes: null },
     { key: "45", label: "45 minutes", minutes: 45 },
@@ -14,6 +14,7 @@ const TIME_OPTIONS = [
     { key: "60", label: "60 minutes", minutes: 60 },
 ];
 
+// Mapping of raw database subject keys to user-friendly display labels
 const SUBJECT_LABEL = {
     math: "Mathematics",
     physics: "Physics",
@@ -21,89 +22,110 @@ const SUBJECT_LABEL = {
     english: "English",
 };
 
+// Predefined order for rendering subject tabs in the UI
 const SUBJECT_ORDER = ["Mathematics", "English", "Physics", "Chemistry"];
 
+/**
+ * Helper function to extract the first recognized difficulty level from a test's tags array.
+ * @param {Array} tags - Array of string tags associated with a test.
+ * @returns {String} The matched difficulty level, or "General" if none found.
+ */
 const FIRST_DIFF_FROM_TAGS = (tags = []) => {
-    // pick first matching tag as "difficulty"
     const diffs = ["Easy", "Medium", "Hard", "Beginner", "Intermediate", "Advanced"];
     return tags.find((t) => diffs.includes(t)) || "General";
 };
 
+/**
+ * Main component for displaying, filtering, and previewing the list of all available public tests
+ */
 export default function Tests() {
     const navigate = useNavigate();
 
-    // server data
+    // Server Data
     const [tests, setTests] = useState([]);
     const [loading, setLoading] = useState(false);
     const [errMsg, setErrMsg] = useState("");
 
-    // UI state
-    const [timeByTest, setTimeByTest] = useState({});
-    const [previewId, setPreviewId] = useState(null);
-    const [query, setQuery] = useState("");
-    const [activeTab, setActiveTab] = useState("All");
+    // UI & Interactions
+    const [timeByTest, setTimeByTest] = useState({}); // Stores selected time limit for each test
+    const [previewId, setPreviewId] = useState(null); // ID of the test currently being previewed in the modal
+    const [query, setQuery] = useState("");           // Search bar input value
+    const [activeTab, setActiveTab] = useState("All"); // Currently selected subject tab
 
-    // fetch from API
+
+    // Fetches the list of public tests from the backend API, normalizes the data for UI consumption, and updates local state
     const load = async () => {
         try {
-        setLoading(true);
-        setErrMsg("");
-        const res = await fetch(toAbsolute("/api/tests/public"));
-        if (!res.ok) {
-            const data = await res.json().catch(() => ({}));
-            throw new Error(data?.message || `HTTP ${res.status}`);
-        }
-        const list = await res.json();
+            setLoading(true);
+            setErrMsg("");
 
-        // normalize for UI
-        const normalized = (Array.isArray(list) ? list : []).map((t) => ({
-            id: t._id, // used for routing/preview
-            title: t.title,
-            subjectKey: t.subject,
-            subject: SUBJECT_LABEL[t.subject] || t.subject || "Unknown",
-            grade: t.grade,
-            questions: t.numQuestions || (t.questions?.length || 0),
-            difficulty: FIRST_DIFF_FROM_TAGS(t.tags),
-            description: t.description || "",
-            thumb: skillsPlaceholder, // you can map a real image later
-            tags: t.tags || [],
-        }));
+            const res = await fetch(toAbsolute("/api/tests/public"));
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                throw new Error(data?.message || `HTTP ${res.status}`);
+            }
+            const list = await res.json();
 
-        setTests(normalized);
-        // update active tab if it was non-existent before
-        if (activeTab !== "All") {
-            const hasTab = normalized.some((x) => x.subject === activeTab);
-            if (!hasTab) setActiveTab("All");
-        }
+            // Normalize backend data structure for easier frontend rendering
+            const normalized = (Array.isArray(list) ? list : []).map((t) => ({
+                id: t._id, // Used for routing and preview tracking
+                title: t.title,
+                subjectKey: t.subject,
+                subject: SUBJECT_LABEL[t.subject] || t.subject || "Unknown",
+                grade: t.grade,
+                questions: t.numQuestions || (t.questions?.length || 0),
+                difficulty: FIRST_DIFF_FROM_TAGS(t.tags),
+                description: t.description || "",
+                thumb: skillsPlaceholder,
+                tags: t.tags || [],
+            }));
+
+            setTests(normalized);
+
+            // Fallback to the "All" tab if the currently active subject tab no longer exists in the newly fetched data
+            if (activeTab !== "All") {
+                const hasTab = normalized.some((x) => x.subject === activeTab);
+                if (!hasTab) setActiveTab("All");
+            }
         } catch (e) {
         setErrMsg(e.message || "Failed to load");
         } finally {
-        setLoading(false);
+            setLoading(false);
         }
     };
 
-    // initial load
+    // Trigger initial data fetch on component mount
     useEffect(() => {
         load();
     }, []);
 
-    // auto refresh when page regains focus
+    // Automatically refresh the test list whenever the user returns to the browser tab
     useEffect(() => {
         const onFocus = () => load();
         window.addEventListener("focus", onFocus);
         return () => window.removeEventListener("focus", onFocus);
     }, []);
 
+    // Memoize the specific test object that is currently being previewed to prevent unnecessary recalculations
     const previewTest = useMemo(
         () => tests.find((t) => t.id === previewId) || null,
         [previewId, tests]
     );
 
+    /**
+     * Handles changing the selected time limit in the preview modal.
+     * @param {String} testId - The ID of the test.
+     * @param {String} key - The selected time option key.
+     */
     const onChangeTime = (testId, key) => {
         const opt = TIME_OPTIONS.find((o) => o.key === key);
         setTimeByTest((prev) => ({ ...prev, [testId]: opt?.key || "unlimited" }));
     };
 
+    /**
+     * Navigates the user to the Test Player page, passing the selected time limit as a URL parameter.
+     * @param {Object} test - The test object to start.
+     */
     const onStart = (test) => {
         const key = timeByTest[test.id] || "unlimited";
         const opt = TIME_OPTIONS.find((o) => o.key === key);
@@ -112,13 +134,18 @@ export default function Tests() {
         navigate(`/tests/${test.id}${qs}`);
     };
 
-    // tabs based on loaded data
+    /**
+     * Dynamically generates the list of subject tabs based on the available data.
+     * Only displays tabs for subjects that actually have tests.
+     */
     const SUBJECT_TABS = useMemo(() => {
         const present = new Set(tests.map((t) => t.subject));
         return ["All", ...SUBJECT_ORDER.filter((s) => present.has(s))];
     }, [tests]);
 
-    // filter by tab + search
+    /**
+     * Filters the tests based on the selected subject tab and the user's search query.
+     */
     const filtered = useMemo(() => {
         const q = query.trim().toLowerCase();
         return tests.filter((t) => {
@@ -132,7 +159,10 @@ export default function Tests() {
         });
     }, [tests, activeTab, query]);
 
-    // group by subject for "All"
+    /**
+     * Groups the filtered tests by subject to display categorized sections 
+     * when the "All" tab is active.
+     */
     const groupedBySubject = useMemo(() => {
         const map = new Map();
         filtered.forEach((t) => {
@@ -140,6 +170,8 @@ export default function Tests() {
         if (!map.has(key)) map.set(key, []);
         map.get(key).push(t);
         });
+
+        // Returns an array of tuples: [ [SubjectName, [TestArray]], ... ]
         return SUBJECT_ORDER
             .filter((s) => map.has(s))
             .map((s) => [s, map.get(s)]); // [subject, items]
@@ -150,7 +182,7 @@ export default function Tests() {
         <SiteHeader />
 
         <div className="tests-container">
-            {/* Toolbar */}
+            {/* Toolbar: Search input and Category Tabs */}
             <div className="tests-toolbar">
             <div className="searchbox">
                 <span className="bi bi-search"></span>
@@ -180,13 +212,14 @@ export default function Tests() {
             </div>
             </div>
 
-            {/* States */}
+            {/* Error and Loading States */}
             {errMsg && <div className="empty-state">Load failed: {errMsg}</div>}
             {loading && <div className="empty-state">Loading…</div>}
 
-            {/* Content */}
+            {/* Main Content Grid */}
             {!loading && !errMsg && (
             <>
+                {/* Condition 1: "All" tab is active -> Show categorized sections */}
                 {activeTab === "All" ? (
                 groupedBySubject.length ? (
                     groupedBySubject.map(([subject, items]) => (
@@ -241,6 +274,8 @@ export default function Tests() {
                     <p className="empty-state">No tests found.</p>
                 )
                 ) : (
+                
+                /* Condition 2: A specific Subject tab is active -> Show single grid */
                 <section className="subject-section">
                     <h2 className="subject-title">{activeTab}</h2>
                     <div className="tests-grid">
@@ -295,58 +330,79 @@ export default function Tests() {
 
         <SiteFooter />
 
-        {/* Preview Modal */}
+        {/* Displays test details and time limit options before starting */}
         {previewTest && (
             <div className="modal-backdrop" onClick={() => setPreviewId(null)}>
-            <div className="modal-card test-preview" onClick={(e) => e.stopPropagation()}>
-                <button className="modal-close" aria-label="Close" onClick={() => setPreviewId(null)}>
-                ×
-                </button>
+                <div className="modal-card test-preview-enhanced" onClick={(e) => e.stopPropagation()}>
+                    <button className="modal-close" aria-label="Close" onClick={() => setPreviewId(null)}>
+                        <i className="bi bi-x-lg"></i>
+                    </button>
 
-                <div className="tp-head">
-                <span className="tp-badge">Preview</span>
-                <h3 className="tp-title">{previewTest.title}</h3>
-                </div>
+                    {/* Header: Contains tags, title, and full description */}
+                    <div className="tp-enhanced-header">
+                        <div className="tp-badges">
+                            <span className={`chip chip-${(previewTest.subjectKey || "").toLowerCase()}`}>
+                                {previewTest.subject}
+                            </span>
+                            <span className="chip chip-level">{previewTest.difficulty}</span>
+                            {previewTest.grade && (
+                                <span className="chip chip-grade">Grade {previewTest.grade}</span>
+                            )}
+                        </div>
+                        <h3 className="tp-title-large">{previewTest.title}</h3>
+                        <p className="tp-desc-full">
+                            {previewTest.description || "No description provided for this test. Are you ready to challenge yourself?"}
+                        </p>
+                    </div>
 
-                <div className="tp-body">
-                <div className="tp-row">
-                    <span className="tp-label">Number of questions</span>
-                    <span className="tp-value">{previewTest.questions}</span>
-                </div>
+                    {/* Body: Contains visually separated statistic boxes */}
+                    <div className="tp-enhanced-body">
+                        <div className="tp-stat-box">
+                            <div className="tp-stat-icon">
+                                <i className="bi bi-ui-checks-grid"></i>
+                            </div>
+                            <div className="tp-stat-info">
+                                <span className="tp-stat-label">Questions</span>
+                                <span className="tp-stat-value">{previewTest.questions} Qs</span>
+                            </div>
+                        </div>
 
-                <div className="tp-row">
-                    <label className="tp-label" htmlFor="time-select">
-                    Time to do the test
-                    </label>
-                    <select
-                    id="time-select"
-                    className="tp-select"
-                    value={timeByTest[previewTest.id] || "unlimited"}
-                    onChange={(e) => onChangeTime(previewTest.id, e.target.value)}
-                    >
-                    {TIME_OPTIONS.map((o) => (
-                        <option key={o.key} value={o.key}>
-                        {o.label}
-                        </option>
-                    ))}
-                    </select>
-                </div>
-                </div>
+                        {/* Time Limit Selector Box */}
+                        <div className="tp-stat-box">
+                            <div className="tp-stat-icon" style={{ background: '#fff5f5', color: '#ef4444' }}>
+                                <i className="bi bi-stopwatch"></i>
+                            </div>
+                            <div className="tp-stat-info">
+                                <label className="tp-stat-label" htmlFor="time-select">Time Limit</label>
+                                <select
+                                    id="time-select"
+                                    className="tp-select-clean"
+                                    value={timeByTest[previewTest.id] || "unlimited"}
+                                    onChange={(e) => onChangeTime(previewTest.id, e.target.value)}
+                                >
+                                    {TIME_OPTIONS.map((o) => (
+                                        <option key={o.key} value={o.key}>
+                                            {o.label}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
 
-                <div className="tp-actions">
-                <button className="ghost-btn" onClick={() => setPreviewId(null)}>
-                    Close
-                </button>
-                <button
-                    className="primary-btn"
-                    onClick={() => {
-                    onStart(previewTest);
-                    }}
-                >
-                    Start
-                </button>
+                    {/* Actions: Cancel and Start Buttons */}
+                    <div className="tp-enhanced-actions">
+                        <button className="ghost-btn" onClick={() => setPreviewId(null)}>
+                            Cancel
+                        </button>
+                        <button
+                            className="start-test-btn"
+                            onClick={() => onStart(previewTest)}
+                        >
+                            Start Practicing <i className="bi bi-arrow-right"></i>
+                        </button>
+                    </div>
                 </div>
-            </div>
             </div>
         )}
         </div>

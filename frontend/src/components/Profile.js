@@ -2,15 +2,20 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 import SiteHeader from "./Header";
 import SiteFooter from "./Footer";
-import "../css/Profile.css";
 import defaultAvatar from "../images/defaultAvatar.png";
 import { useNavigate } from "react-router-dom";
 import { toAbsolute } from "../utils/url";
+import "../css/Profile.css";
 
-/* Các môn học hiển thị trên bảng */
+// List of subjects displayed on the dashboard tables and practice tabs
 const SUBJECTS = ["Mathematics", "Physics", "Chemistry", "English"];
 
-// Hàm chuyển đổi ngày giờ sang chuẩn YYYY-MM-DD theo giờ Local (tránh lỗi múi giờ UTC)
+/**
+ * Formats a Date object to a standard YYYY-MM-DD string using local time.
+ * This prevents date-shifting issues caused by UTC timezone differences.
+ * @param {Date} d - The date object to format.
+ * @returns {String} Formatted date string (e.g., "2023-10-25").
+ */
 function fmtDateLocal(d) {
     const year = d.getFullYear();
     const month = String(d.getMonth() + 1).padStart(2, '0');
@@ -18,11 +23,17 @@ function fmtDateLocal(d) {
     return `${year}-${month}-${day}`;
 }
 
+/**
+ * Builds a 6x7 grid (42 days) for the mini calendar view.
+ * It calculates the offset to ensure the calendar always starts on a Monday.
+ * @param {Number} year - The target year.
+ * @param {Number} month - The target month (0-indexed).
+ * @returns {Array<Date>} Array of Date objects representing the 42-cell grid.
+ */
 function buildMonth(year, month) {
-    // return 6x7 grid for mini calendar
     const first = new Date(year, month, 1);
     const start = new Date(first);
-    const offset = (first.getDay() + 6) % 7; // Monday-first
+    const offset = (first.getDay() + 6) % 7; // Monday-first calculation
     start.setDate(1 - offset);
     const grid = [];
     for (let i = 0; i < 42; i++) {
@@ -33,7 +44,10 @@ function buildMonth(year, month) {
     return grid;
 }
 
-// Bảng dữ liệu trống dùng làm mặc định nếu user chưa có dữ liệu tuần này
+/**
+ * Default empty data structure for the weekly statistics table.
+ * Used as a fallback if the user has no study data for the current week.
+ */
 const defaultWeekStats = [
     { day: "Mon", Mathematics: 0, Physics: 0, Chemistry: 0, English: 0, minutes: 0 },
     { day: "Tue", Mathematics: 0, Physics: 0, Chemistry: 0, English: 0, minutes: 0 },
@@ -44,34 +58,51 @@ const defaultWeekStats = [
     { day: "Sun", Mathematics: 0, Physics: 0, Chemistry: 0, English: 0, minutes: 0 },
 ];
 
+/**
+ * Component for the Student Dashboard view.
+ * Renders the diligence calendar, weekly study summary table, and practice history.
+ */
 function StudentDashboard({ user }) {
     const today = new Date();
-    
-    // ĐÃ GỠ BỎ MOCK DATA. SỬ DỤNG DỮ LIỆU THẬT TỪ DATABASE:
+    const navigate = useNavigate();
+
+    // Extract dynamic study data from the user profile, fallback to defaults if missing
     const submittedDays = user?.study?.submittedDays || [];
     const weekStats = user?.weekStats || defaultWeekStats;
+    const history = user?.practiceHistory || [];
 
+    // Calendar state
     const [month, setMonth] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
     const [currentDate, setCurrentDate] = useState(new Date(today));
     
+    // Tab state for the practice history section
+    const [activeTab, setActiveTab] = useState("Mathematics");
+
+    // Memoize the calendar grid calculation so it only runs when the month changes
     const monthCells = useMemo(() => buildMonth(month.getFullYear(), month.getMonth()), [month]);
-    
-    // Tính tổng thời gian học trong tuần
+
+    // Calculate total study minutes across all days in the week
     const minutesTotal = weekStats.reduce((t, r) => t + (r.minutes || 0), 0);
 
+    /**
+     * Resets the calendar view back to the current real-world month and day.
+     */
     const handleTodayClick = () => {
         const todayObj = new Date();
         setMonth(new Date(todayObj.getFullYear(), todayObj.getMonth(), 1));
         setCurrentDate(todayObj);
     };
 
+    // Filter the user's test history based on the currently selected subject tab
+    const displayedHistory = history.filter(h => h.subject === activeTab);
+
     return (
         <>
-        {/* TOP GRID */}
+        {/* TOP GRID: Calendar & Weekly Stats */}
         <div className="stu-grid">
-            {/* Left column: calendar */}
+
+            {/* Left column: Diligence Calendar */}
             <div className="col-left">
-                {/* Mini Calendar */}
                 <div className="dash-card">
                     <div className="card-head">
                         <div className="title">Your diligence calendar</div>
@@ -95,14 +126,19 @@ function StudentDashboard({ user }) {
                     </div>
 
                     <div className="calendar-grid">
+                        {/* Days of the week header */}
                         {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => (
                             <div key={d} className="dow">{d}</div>
                         ))}
+
+                        {/* 42-day calendar grid */}
                         {monthCells.map((d, i) => {
                             const inMonth = d.getMonth() === month.getMonth();
                             const isToday = fmtDateLocal(d) === fmtDateLocal(currentDate);
-                            // Kiểm tra xem ngày này có trong mảng dữ liệu thật từ Backend không
+
+                            // Check if the specific date exists in the backend 'submittedDays' array
                             const submitted = submittedDays.includes(fmtDateLocal(d));
+
                             const cellClass =  `cal-cell ${inMonth ? "" : "dim"} ${isToday ? "today" : ""} ${submitted ? "submitted" : ""}`
 
                             return (
@@ -115,7 +151,7 @@ function StudentDashboard({ user }) {
                 </div>
             </div>
 
-            {/* Right column: weekly table */}
+            {/* Right column: Weekly Study Summary Table */}
             <div className="col-right">
                 <div className="dash-card">
                     <div className="card-head">
@@ -157,27 +193,66 @@ function StudentDashboard({ user }) {
             </div>
         </div>
 
-        {/* Practice history placeholder */}
+        {/* BOTTOM SECTION: Practice History */}
         <div className="dash-card mt">
             <div className="card-head"><div className="title">Practice history</div></div>
+            
+            {/* Dynamic Subject Tabs */}
             <div className="tabs">
-                <button className="tab active">Mathematics</button>
-                <button className="tab">Physics</button>
-                <button className="tab">Chemistry</button>
-                <button className="tab">English</button>
+                {SUBJECTS.map(sub => (
+                    <button 
+                        key={sub}
+                        className={`tab ${activeTab === sub ? "active" : ""}`}
+                        onClick={() => setActiveTab(sub)}
+                    >
+                        {sub}
+                    </button>
+                ))}
             </div>
-            <div className="empty">
-                <div>You have no practice yet. Pick a subject and start now!</div>
-                <button className="cta-ghost">Start practicing</button>
-            </div>
+
+            {/* List of completed tests based on active tab */}
+            {displayedHistory.length === 0 ? (
+                <div className="empty">
+                    <div>You have no practice history for {activeTab} yet. Pick a subject and start now!</div>
+                    <button className="cta-ghost" onClick={() => navigate('/tests')}>Start practicing</button>
+                </div>
+            ) : (
+                <div className="recent-list">
+                    {displayedHistory.map(item => (
+                        <div key={item.id} className="recent-item">
+                            <div className="r-main">
+                                <div className="r-title">{item.title}</div>
+                                <div className="r-sub">
+                                    <span className="chip" style={{ color: item.percent >= 50 ? '#15803d' : '#b91c1c' }}>
+                                        Score: {item.score}/{item.maxScore} ({item.percent}%)
+                                    </span>
+                                    <span className="chip"><i className="bi bi-clock"></i> {item.timeSpent} mins</span>
+                                    <span className="chip"><i className="bi bi-calendar-event"></i> {new Date(item.completedAt).toLocaleDateString()}</span>
+                                </div>
+                            </div>
+                            <div className="r-actions">
+                                <button className="ghost-btn" onClick={() => navigate(`/tests/public/${item.testId}`)}>
+                                    <i className="bi bi-arrow-repeat"></i> Practice Again
+                                </button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
         </div>
         </>
     );
 }
 
-/* Profile */
+/**
+ * Main Profile Page Component.
+ * Fetches the user profile, determines their role, and conditionally renders 
+ * the appropriate dashboard layout (Student, Instructor, or Admin).
+ */
 export default function Profile() {
     const navigate = useNavigate();
+
+    // Global user state
     const [user, setUser] = useState({
         fullname: "Name",
         avatarUrl: "",
@@ -186,7 +261,7 @@ export default function Profile() {
     });
     const [error] = useState("");
 
-    // Load profile
+    // Fetch user profile data on component mount
     useEffect(() => {
         (async () => {
         try {
@@ -198,57 +273,61 @@ export default function Profile() {
                 bannerUrl: u.bannerUrl || "",
                 updatedAt: u.updatedAt,
                 role: u.role || "student",
-                study: u.study,            // Cập nhật dữ liệu study (chứa submittedDays)
-                weekStats: u.weekStats,    // Cập nhật dữ liệu weekStats
+                study: u.study,
+                weekStats: u.weekStats,
+                practiceHistory: u.practiceHistory,
             });
         } catch {
-            /* ignore */
+            /* Silently ignore API failures on initial load; let UI handle empty state */
         }
         })();
     }, []);
 
-    // Computed flags
+    // Computed boolean flags for role-based rendering
     const role = user.role || "student";
     const isStudent = role === "student";
     const isInstructor = role === "instructor";
     const isAdmin = role === "admin";
 
-    // Avatar/Banner
+    // Prepare media URLs, using fallbacks if the user hasn't uploaded custom images
     const rawAvatar = user?.avatarUrl || defaultAvatar;
     const avatarSrc = user?.avatarUrl ? rawAvatar : defaultAvatar;
     const bannerSrc = user?.bannerUrl || "https://via.placeholder.com/1200x300?text=Cover+Image";
 
+    // State exclusively for Instructors to track tests they have authored
     const [myTests, setMyTests] = useState([]);
     const [itLoading, setItLoading] = useState(false);
 
+    // Fetch authored tests if the user is an instructor
     useEffect(() => {
-    if (user.role !== "instructor") return;
-    (async () => {
-        try {
-        setItLoading(true);
-        const res = await fetch(toAbsolute("/api/tests?mine=1"), { credentials: "include" });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        setMyTests(Array.isArray(data) ? data : []);
-        } catch (e) {
-        // có thể đặt toast ở đây nếu muốn
-        } finally {
-        setItLoading(false);
-        }
-    })();
-    }, [user.role]);
+        if (user.role !== "instructor") return;
+        (async () => {
+            try {
+                setItLoading(true);
+                const res = await fetch(toAbsolute("/api/tests?mine=1"), { credentials: "include" });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+                setMyTests(Array.isArray(data) ? data : []);
+            } catch (e) {
+                // Ignore gracefully; could implement a toast notification here
+            } finally {
+                setItLoading(false);
+            }
+        })();
+        }, [user.role]);
 
+    // Compute aggregate statistics for the Instructor view
     const testsTotal = myTests.length;
     const questionsTotal = myTests.reduce((t, x) => t + (x.numQuestions || (x.questions?.length || 0)), 0);
     const subjectSet = new Set(myTests.map(t => t.subject));
-    const recent = myTests.slice(0, 5);
+    const recent = myTests.slice(0, 5); // Grab only the 5 most recent tests
 
     return (
         <div className="profile-page">
         <SiteHeader />
 
         <div className="profile-container">
-            {/* Cover */}
+            {/* Cover Image */}
             <div className="profile-cover">
             <img
                 src={bannerSrc}
@@ -257,18 +336,18 @@ export default function Profile() {
             />
             </div>
 
-            {/* Avatar + name */}
+            {/* Avatar & Name */}
             <div className="profile-head">
             <div className="profile-avatar-wrapper">
                 <img src={avatarSrc} alt="avatar" className="profile-avatar" />
                 <button
-                type="button"
-                className="information-edit-btn"
-                onClick={() => navigate("/update-profile")}
-                aria-label="Edit profile"
-                title="Edit profile"
-                >
-                <i className="bi bi-pencil-fill" />
+                    type="button"
+                    className="information-edit-btn"
+                    onClick={() => navigate("/update-profile")}
+                    aria-label="Edit profile"
+                    title="Edit profile"
+                    >
+                    <i className="bi bi-pencil-fill" />
                 </button>
             </div>
             <div className="profile-name">{user.fullname || "Name"}</div>
@@ -277,15 +356,16 @@ export default function Profile() {
 
             {error && <div className="profile-error">{error}</div>}
 
-            {/* ====== STUDENT VIEW ====== */}
+            {/* ==== STUDENT VIEW ==== */}
             {isStudent && (
             <StudentDashboard user={user} />
             )}
 
-            {/* ====== INSTRUCTOR VIEW (placeholder) ====== */}
+            {/* ==== INSTRUCTOR VIEW ==== */}
             {isInstructor && (
             <div className="role-section">
-                {/* Quick actions */}
+
+                {/* Quick Action Links */}
                 <div className="role-card">
                 <h3>Instructor quick actions</h3>
                 <div className="qa-row">
@@ -299,7 +379,7 @@ export default function Profile() {
                 <p className="role-muted">Create and manage tests from your dashboard.</p>
                 </div>
 
-                {/* Overview stats */}
+                {/* KPI Statistics */}
                 <div className="role-cards-3">
                 <div className="stat-card">
                     <div className="stat-kpi">{testsTotal}</div>
@@ -315,7 +395,7 @@ export default function Profile() {
                 </div>
                 </div>
 
-                {/* Recent tests */}
+                {/* List of Recent Authored Tests */}
                 <div className="role-card">
                 <div className="role-card-head">
                     <h4>Recent tests</h4>
@@ -356,7 +436,7 @@ export default function Profile() {
             </div>
             )}
 
-            {/* ====== ADMIN VIEW (placeholder) ====== */}
+            {/* ==== ADMIN VIEW ==== */}
             {isAdmin && (
             <div className="role-section">
                 <div className="role-card">

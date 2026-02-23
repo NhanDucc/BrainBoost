@@ -1,52 +1,50 @@
-// backend/models/LessonChatSession.js
 const mongoose = require("mongoose");
 
 const lessonChatSessionSchema = new mongoose.Schema(
   {
-    // user đang hỏi (lấy từ auth middleware)
+    // The user is asking
     userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
     },
 
-    // id khóa học (string như trong URL /api/courses/public/:courseId)
+    // Course ID
     courseId: {
       type: String,
       required: true,
     },
 
-    // khóa định danh lesson cho user + course
-    // bạn có thể truyền lesson._id từ frontend, hoặc fallback "secIndex:lessonIndex"
+    // Lesson ID
     lessonKey: {
       type: String,
       required: true,
     },
 
-    // lưu tiêu đề lesson cho dễ debug
+    // Save lesson title (optional)
     lessonTitle: {
       type: String,
       default: "",
     },
-
-    // tóm tắt toàn bộ hội thoại tới hiện tại
-    summary: {
-      type: String,
-      default: "",
-    },
+    
+    // Save full history
+    history: {
+      type: [Object], // [{role: 'user', content: '...'}, ...]
+      default: []
+    }
   },
   {
-    timestamps: true,
+    timestamps: true, // Automatically create createdAt, updatedAt
   }
 );
 
-// Một user – một course – một lesson chỉ có 1 session tóm tắt
+// Index Unique: One user – one course – one lesson has only one session memory.
 lessonChatSessionSchema.index(
   { userId: 1, courseId: 1, lessonKey: 1 },
   { unique: true }
 );
 
-module.exports = mongoose.model(
-  "LessonChatSession",
-  lessonChatSessionSchema
-);
+// Automatically deleted after 10 days (864,000 seconds) from the last update.
+lessonChatSessionSchema.index({ updatedAt: 1 }, { expireAfterSeconds: 864000 });
+
+module.exports = mongoose.model("LessonChatSession", lessonChatSessionSchema);

@@ -1,7 +1,7 @@
 const Course = require("../models/Course");
 const axios = require("axios");
 const mongoose = require("mongoose");
-const { extractTextFromDocUrl } = require("../services/docTextService");
+const LessonProgress = require("../models/LessonProgress");
 
 const AI_AGENT_URL = process.env.AI_AGENT_URL
 
@@ -372,6 +372,49 @@ async function createLearningPath (req, res) {
     }
 };
 
+// POST /api/courses/:id/progress
+const markLessonProgress = async (req, res) => {
+    try {
+        const courseId = req.params.id;
+        const { lessonKey, timeSpent } = req.body;
+
+        const course = await Course.findById(courseId).select('subject');
+        if (!course) return res.status(404).json({ message: "Course not found" });
+
+        // Lấy thời điểm 00:00:00 của ngày hôm nay
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        // TÌM TIẾN ĐỘ CỦA BÀI NÀY - NHƯNG CHỈ TRONG NGÀY HÔM NAY (tránh cộng dồn nhầm ngày cũ)
+        let progress = await LessonProgress.findOne({
+            user: req.userId,
+            course: courseId,
+            lessonKey: lessonKey,
+            lastAccessed: { $gte: today } 
+        });
+
+        if (progress) {
+            progress.lastAccessed = Date.now();
+            progress.timeSpent += (timeSpent || 1);
+            await progress.save();
+        } else {
+            progress = await LessonProgress.create({
+                user: req.userId,
+                course: courseId,
+                lessonKey: lessonKey,
+                subject: course.subject,
+                timeSpent: timeSpent || 1,
+                lastAccessed: Date.now()
+            });
+        }
+
+        res.json({ message: "Progress recorded", progress });
+    } catch (error) {
+        console.error("Progress error:", error);
+        res.status(500).json({ message: "Server error" });
+    }
+};
+
 module.exports = {
   createCourse,
   getCourse,
@@ -382,4 +425,5 @@ module.exports = {
   deleteCourse,
   generateLessonSlides,
   createLearningPath,
+  markLessonProgress,
 };

@@ -241,7 +241,7 @@ const gradeEssay = async (req, res) => {
 // 1. Lưu kết quả bài thi khi học sinh bấm Submit
 const submitTest = async (req, res) => {
   try {
-    const { testId, answers, resultSummary } = req.body;
+    const { testId, answers, resultSummary, timeSpent } = req.body;
     // answers: Mảng chi tiết các câu trả lời từ Frontend gửi xuống
     // resultSummary: { correctCount, totalScore... }
 
@@ -251,7 +251,8 @@ const submitTest = async (req, res) => {
       answers: answers,
       totalScore: resultSummary.correctCount, // Tạm thời lưu số câu đúng làm điểm
       maxScore: resultSummary.gradableTotal,
-      finalPercent: resultSummary.percent
+      finalPercent: resultSummary.percent,
+      timeSpent: timeSpent || 0
     });
 
     res.status(201).json(newResult);

@@ -3,9 +3,7 @@ const router = express.Router();
 const axios = require("axios");
 const { auth } = require("../middleware/auth");
 const { extractTextFromDocUrl } = require("../services/docTextService");
-
-// Import service mới
-const { getHistory, saveHistory, cleanupOldMemories } = require("../services/jsonMemoryService");
+const { getHistory, saveHistory } = require("../services/jsonMemoryService");
 
 const AI_AGENT_URL = process.env.AI_AGENT_URL + "/lesson-chat";
 
@@ -25,10 +23,10 @@ router.post("/", auth, async (req, res) => {
       return res.status(400).json({ message: "courseId and lessonKey are required." });
     }
 
-    // 1) Lấy lịch sử chat cũ từ file JSON
+    // Retrieve old chat history from the database.
     let history = await getHistory(userId, courseId, lessonKey);
 
-    // 2) Chuẩn bị lesson text (giữ nguyên logic cũ)
+    // Prepare lesson text
     let lessonText = "";
     if (Array.isArray(aiSlides) && aiSlides.length > 0) {
       lessonText = aiSlides.map(s => 
@@ -37,24 +35,26 @@ router.post("/", auth, async (req, res) => {
     }
     if (docUrl) {
       try {
-         // Logic extract cũ giữ nguyên...
-         // (Đoạn này code cũ của bạn extractDocUrl, mình lược bớt cho gọn)
+        const raw = await extractTextFromDocUrl(docUrl);
+        if (raw && raw.trim()) {
+        lessonText = raw.length > 12000 ? raw.slice(0, 12000) : raw;
+        }
       } catch (e) {
           console.warn("Doc extract failed", e.message);
       }
     }
 
-    // 3) Gửi sang Python Agent: Thay vì prev_summary, giờ gửi HISTORY
+    // Send to Python Agent
     const agentPayload = {
-      lesson_id: `${courseId}_${lessonKey}`, // ID định danh để Python RAG vector
+      lesson_id: `${courseId}_${lessonKey}`,
       lesson_text: lessonText, 
-      history: history, // <--- TRUYỀN FULL LIST JSON
+      history: history,
       user_message: userMessage,
       lesson_title: lessonTitle || "",
     };
 
     const agentResp = await axios.post(AI_AGENT_URL, agentPayload, {
-      timeout: 30000, // Tăng timeout chút vì xử lý context dài hơn
+      timeout: 30000,
     });
 
     const { answer } = agentResp.data || {};
@@ -62,14 +62,11 @@ router.post("/", auth, async (req, res) => {
       return res.status(500).json({ message: "AI Agent did not return an answer." });
     }
 
-    // 4) Cập nhật file JSON: Thêm câu hỏi mới và câu trả lời mới
+    // Update history: Add new questions and answers.
     history.push({ role: "user", content: userMessage });
     history.push({ role: "model", content: answer });
     
     await saveHistory(userId, courseId, lessonKey, history);
-
-    // 5) Trigger cleanup (chạy ngầm, không await để không block user)
-    cleanupOldMemories();
 
     return res.json({ answer });
 

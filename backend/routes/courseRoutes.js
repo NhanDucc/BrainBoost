@@ -11,6 +11,7 @@ const {
     deleteCourse,
     generateLessonSlides,
     createLearningPath,
+    markLessonProgress,
 } = require("../controllers/courseController");
 const { uploadDoc, toCloudinaryDoc } = require("../middleware/uploadDoc");
 
@@ -66,5 +67,6 @@ router.post("/", auth, authorize("admin", "instructor"), createCourse);
 router.get("/:id", auth, getCourse);
 router.patch("/:id", auth, authorize("admin", "instructor"), updateCourse);
 router.delete("/:id", auth, authorize("admin", "instructor"), deleteCourse);
+router.post("/:id/progress", auth, markLessonProgress);
 
 module.exports = router;

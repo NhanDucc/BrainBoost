@@ -1,14 +1,15 @@
 const axios = require("axios");
+const mongoose = require("mongoose");
 const Test = require("../models/Test");
 const TestResult = require("../models/TestResult");
 
 const AI_AGENT_URL = process.env.AI_AGENT_URL;
 
-// Normalizes and validates question data to ensure consistent format
+// Normalizes and formats question data to ensure consistency before saving to the database
 function normalizeQuestion(q) {
   const t = (q.type || "mcq").toLowerCase();
 
-  // multiple choice question
+  // Handle Multiple Choice Questions
   if (t === "mcq") {
     const choices = Array.isArray(q.choices) && q.choices.length === 4
       ? q.choices.map(c => String(c ?? "").trim())
@@ -23,7 +24,7 @@ function normalizeQuestion(q) {
     };
   }
 
-  // true/false question
+  // Handle True/False (Boolean) Questions
   if (t === "tf" || t === "boolean") {
     return {
       type: "boolean",
@@ -36,7 +37,7 @@ function normalizeQuestion(q) {
     };
   }
 
-  // essay
+  // Handle Essay Questions
   return {
     type: "essay",
     stem: String(q.stem || "").trim(),
@@ -66,11 +67,13 @@ function validateQuestions(qs) {
       return `Question ${i + 1}: please choose True or False.`;
     }
   }
-  return null;
+  return null;  // No errors
 }
 
-// Creates a new test with validated questions and required fields
-// POST /api/tests
+/**
+ * Creates a new test with validated questions and required fields.
+ * * POST /api/tests
+ */
 const createTest = async (req, res) => {
   try {
     const p = req.body || {};
@@ -100,8 +103,10 @@ const createTest = async (req, res) => {
   }
 };
 
-// Retrieves tests based on query parameters
-// GET /api/tests?mine=1
+/**
+ * Retrieves a list of tests created by the currently authenticated user.
+ * * GET /api/tests?mine=1
+ */
 const getMyTests = async (req, res) => {
   try {
     const mine = String(req.query.mine || "") === "1";
@@ -114,8 +119,10 @@ const getMyTests = async (req, res) => {
   }
 };
 
-// Retrieves a single test by ID with permission check
-// GET /api/tests/:id
+/**
+ * Retrieves a single test by ID, checking that the requester is the test creator.
+ * * GET /api/tests/:id
+ */
 const getOneTest = async (req, res) => {
   try {
     const t = await Test.findById(req.params.id).lean();
@@ -129,17 +136,22 @@ const getOneTest = async (req, res) => {
   }
 };
 
-// Updates an existing test with permission check
-// PUT /api/tests/:id
+/**
+ * Updates an existing test, checking permissions and validating new questions.
+ * * PUT /api/tests/:id
+ */
 const updateTest = async (req, res) => {
   try {
     const doc = await Test.findById(req.params.id);
     if (!doc) return res.status(404).json({ message: "Not found" });
+
+    // Permission check
     if (String(doc.createdBy) !== String(req.userId))
       return res.status(403).json({ message: "Forbidden" });
 
     const p = req.body || {};
     const questions = Array.isArray(p.questions) ? p.questions.map(normalizeQuestion) : null;
+    
     if (questions) {
       const err = validateQuestions(questions);
       if (err) return res.status(400).json({ message: "Invalid question format.", detail: err });
@@ -163,12 +175,16 @@ const updateTest = async (req, res) => {
   }
 };
 
-// Deletes a test with permission check
-// DELETE /api/tests/:id
+/**
+ * Deletes a test after verifying the user's permissions.
+ * * DELETE /api/tests/:id
+ */
 const deleteTest = async (req, res) => {
   try {
     const t = await Test.findById(req.params.id);
     if (!t) return res.status(404).json({ message: "Not found" });
+    
+    // Permission check
     if (String(t.createdBy) !== String(req.userId)) {
       return res.status(403).json({ message: "Forbidden" });
     }
@@ -180,21 +196,26 @@ const deleteTest = async (req, res) => {
   }
 };
 
-// Lists public tests with optional filtering by subject and search query
-// GET /api/public/tests
+/**
+ * Lists public tests with optional filtering by subject and search queries.
+ * * GET /api/public/tests
+ */
 const listPublicTests = async (req, res) => {
   try {
     const { q = "", subject } = req.query;
     const cond = {};
+
     if (subject) cond.subject = subject;
     if (q) cond.$or = [
       { title: { $regex: q, $options: "i" } },
       { description: { $regex: q, $options: "i" } },
     ];
+
     const list = await Test.find(cond)
       .select("_id title subject grade numQuestions description tags updatedAt")
       .sort({ updatedAt: -1 })
       .lean();
+
     res.json(list);
   } catch (e) {
     console.error(e);
@@ -202,8 +223,10 @@ const listPublicTests = async (req, res) => {
   }
 };
 
-// Retrieves a public test by ID without showing answers
-// GET /api/public/tests/:id
+/**
+ * Retrieves a public test by ID for students to take.
+ * * GET /api/public/tests/:id
+ */
 const getPublicTestById = async (req, res) => {
   try {
     const doc = await Test.findById(req.params.id).lean();
@@ -215,6 +238,10 @@ const getPublicTestById = async (req, res) => {
   }
 };
 
+/**
+ * Sends a student's essay answer to the external AI Agent for grading.
+ * * POST /api/tests/grade-essay
+ */
 const gradeEssay = async (req, res) => {
   try {
     const { question, student_answer, model_answer } = req.body;
@@ -223,7 +250,7 @@ const gradeEssay = async (req, res) => {
       return res.status(400).json({ message: "Missing info" });
     }
 
-    // Gọi sang Python Agent
+    // Forward the request to the Python AI Agent
     const aiRes = await axios.post(`${AI_AGENT_URL}/grade-essay`, {
       question,
       student_answer,
@@ -238,18 +265,21 @@ const gradeEssay = async (req, res) => {
   }
 };
 
-// 1. Lưu kết quả bài thi khi học sinh bấm Submit
+/**
+ * Saves the test result when a student submits their test.
+ * * POST /api/tests/submit
+ */
 const submitTest = async (req, res) => {
   try {
     const { testId, answers, resultSummary, timeSpent } = req.body;
-    // answers: Mảng chi tiết các câu trả lời từ Frontend gửi xuống
-    // resultSummary: { correctCount, totalScore... }
+    // answers: Array of detailed answers sent from the frontend
+    // resultSummary: Contains overall score { correctCount, gradableTotal, percent }
 
     const newResult = await TestResult.create({
-      student: req.userId, // Lấy từ token đăng nhập
+      student: req.userId,
       test: testId,
       answers: answers,
-      totalScore: resultSummary.correctCount, // Tạm thời lưu số câu đúng làm điểm
+      totalScore: resultSummary.correctCount,
       maxScore: resultSummary.gradableTotal,
       finalPercent: resultSummary.percent,
       timeSpent: timeSpent || 0
@@ -262,7 +292,10 @@ const submitTest = async (req, res) => {
   }
 };
 
-// 2. Cập nhật điểm chấm AI cho 1 câu hỏi cụ thể
+/**
+ * Updates the AI grade, feedback, and suggestion for a specific essay question.
+ * * POST /api/tests/update-grade
+ */
 const updateEssayGrade = async (req, res) => {
   try {
     const { resultId, questionIdx, aiData } = req.body;
@@ -270,20 +303,16 @@ const updateEssayGrade = async (req, res) => {
 
     const result = await TestResult.findById(resultId);
     if (!result) return res.status(404).json({ message: "Result not found" });
-
-    // Tìm câu trả lời trong mảng answers dựa vào index (idx) hoặc questionId
-    // Ở frontend đang dùng idx (1, 2, 3...), ta trừ 1 để ra index mảng
-    const answerIndex = result.answers.findIndex(a => a.questionId === `q${questionIdx}` || a._id?.toString() === questionIdx); 
     
-    // Nếu không tìm thấy bằng ID, thử tìm theo thứ tự (cách đơn giản nhất cho project này)
-    const targetAnswer = result.answers[questionIdx - 1]; // Giả sử thứ tự không đổi
+    // If not found by ID, fall back to index position
+    const targetAnswer = result.answers[questionIdx - 1];
 
     if (targetAnswer) {
       targetAnswer.score = aiData.score;
       targetAnswer.aiFeedback = aiData.feedback;
       targetAnswer.aiSuggestion = aiData.suggestion;
       
-      // Lưu đè lại mảng answers
+      // Notify mongoose that the answers array has been modified to trigger a save
       result.markModified('answers'); 
       await result.save();
     }
@@ -295,7 +324,73 @@ const updateEssayGrade = async (req, res) => {
   }
 };
 
+/**
+ * Fetches the leaderboard for a specific test.
+ * Aggregates data so each student only appears once (with their highest score & lowest time).
+ * * GET /api/tests/public/:id/leaderboard
+ */
+const getTestLeaderboard = async (req, res) => {
+  try {
+    const testId = new mongoose.Types.ObjectId(req.params.id);
+
+    const leaderboardRaw = await TestResult.aggregate([
+      // Filter: Only get results for this specific test
+      { $match: { test: testId } },
+
+      // Pre-sort: Highest score first -> Lowest time spent -> Earliest submission date
+      { $sort: { totalScore: -1, timeSpent: 1, completedAt: 1 } },
+
+      // Group by User: Because of the pre-sort, using $first grabs their absolute best attempt
+      {
+        $group: {
+          _id: "$student",  // Group by student ID
+          bestScore: { $first: "$totalScore" },
+          bestTime: { $first: "$timeSpent" },
+          maxScore: { $first: "$maxScore" },
+          completedAt: { $first: "$completedAt" }
+        }
+      },
+
+      // Final Sort: Rank the grouped users against each other
+      { $sort: { bestScore: -1, bestTime: 1, completedAt: 1 } },
+
+      // Limit: Only return the top 10 performers
+      { $limit: 10 },
+
+      // Join: Lookup the "users" collection to get the student's name and avatar
+      {
+        $lookup: {
+          from: "users",
+          localField: "_id",
+          foreignField: "_id",
+          as: "studentInfo"
+        }
+      },
+      
+      // Unwind: Flatten the studentInfo array into an object
+      { $unwind: "$studentInfo" }
+    ]);
+
+    // Map the aggregated raw data into a clean structure for the frontend UI
+    const leaderboard = leaderboardRaw.map((r, index) => ({
+      rank: index + 1,
+      user: r.studentInfo.fullname || "Unknown User",
+      avatar: r.studentInfo.avatarUrl || "",
+      score: r.bestScore,
+      maxScore: r.maxScore,
+      timeSpent: r.bestTime,
+      date: r.completedAt
+    }));
+
+    res.json(leaderboard);
+  } catch (error) {
+    console.error("Leaderboard Error:", error);
+    res.status(500).json({ message: "Failed to fetch leaderboard" });
+  }
+};
+
 module.exports = { 
   createTest, getMyTests, getOneTest, updateTest, deleteTest, 
-  listPublicTests, getPublicTestById, gradeEssay, submitTest, updateEssayGrade 
+  listPublicTests, getPublicTestById, gradeEssay, submitTest, updateEssayGrade,
+  getTestLeaderboard,
 };

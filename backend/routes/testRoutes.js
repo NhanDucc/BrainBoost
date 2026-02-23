@@ -1,22 +1,16 @@
 const express = require("express");
 const router = express.Router();
 const { 
-    createTest, 
-    getMyTests, 
-    getOneTest, 
-    updateTest, 
-    deleteTest, 
-    listPublicTests, 
-    getPublicTestById, 
-    gradeEssay,
-    submitTest,
-    updateEssayGrade, 
+    createTest, getMyTests, getOneTest, updateTest, deleteTest, 
+    listPublicTests, getPublicTestById, gradeEssay, submitTest, updateEssayGrade,
+    getTestLeaderboard,
 } = require("../controllers/testController");
 const { auth, authorize } = require("../middleware/auth");
 
 // Public route to list all public tests
 router.get("/public", listPublicTests);
 router.get("/public/:id", getPublicTestById);
+router.get("/public/:id/leaderboard", getTestLeaderboard);
 
 // Protected routes for instructors
 router.get("/", auth, authorize("instructor"), getMyTests);

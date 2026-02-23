@@ -47,6 +47,7 @@ export default function TestPlayer() {
 
     const [secondsLeft, setSecondsLeft] = useState(minutes ? minutes * 60 : null);
     const timerRef = useRef(null);
+    const startTimeRef = useRef(Date.now());
 
     // results screen data
     const [result, setResult] = useState(null);
@@ -215,7 +216,7 @@ export default function TestPlayer() {
 
     const handleGradeEssay = async (item) => {
         // item là object câu hỏi trong mảng result.items
-        const { idx, stem, essayAnswer, modelAnswer } = item; // Lưu ý: cần đảm bảo modelAnswer được truyền xuống từ result (xem bước sửa logic bên dưới)
+        const { idx, stem, essayAnswer, modelAnswer } = item; 
         
         setGradingLoading(prev => ({ ...prev, [idx]: true }));
         try {
@@ -229,11 +230,11 @@ export default function TestPlayer() {
             const aiResult = res.data;
             setEssayGrades(prev => ({ ...prev, [idx]: aiResult }));
 
-            // 2. PHẦN THÊM MỚI: Lưu kết quả chấm vào Database (nếu đã nộp bài)
+            // 2. Lưu kết quả chấm vào Database (nếu đã nộp bài)
             if (submissionId) {
                 await api.post("/tests/update-grade", {
                     resultId: submissionId,
-                    questionIdx: idx, // Gửi số thứ tự câu (1, 2, 3...)
+                    questionIdx: idx, 
                     aiData: aiResult
                 });
             }
@@ -302,6 +303,14 @@ export default function TestPlayer() {
         clearInterval(timerRef.current);
         localStorage.removeItem(LS_KEY);
 
+        // --- TÍNH TOÁN THỜI GIAN THỰC TẾ ---
+        const elapsedSeconds = Math.floor((Date.now() - startTimeRef.current) / 1000);
+        // Nếu có giới hạn thời gian (minutes), không cho phép thời gian vượt quá giới hạn
+        const limitSeconds = minutes ? minutes * 60 : Infinity;
+        const actualSeconds = Math.min(elapsedSeconds, limitSeconds);
+        // Làm tròn lên thành phút
+        const timeSpentMinutes = Math.ceil(actualSeconds / 60); 
+
         setResult({
             correctCount,
             incorrectCount,
@@ -323,24 +332,22 @@ export default function TestPlayer() {
                 gradableTotal,
                 percent
             },
+            timeSpent: timeSpentMinutes, // <--- THÊM SỐ PHÚT VÀO PAYLOAD ĐỂ GỬI LÊN BE
             answers: items.map(it => ({
-                questionId: `q${it.idx}`, // Lưu ID dạng q1, q2 để dễ tìm
+                questionId: `q${it.idx}`, 
                 type: it.type,
                 studentAnswer: it.type === 'essay' ? it.essayAnswer : it.chosen,
                 isCorrect: it.isCorrect,
-                // AI score sẽ cập nhật sau
             }))
         };
 
         const res = await api.post("/tests/submit", payload);
         if (res.data && res.data._id) {
-            setSubmissionId(res.data._id); // Lưu lại ID bài làm để dùng cho chấm AI
-            // Xóa local storage khi đã lưu DB thành công
+            setSubmissionId(res.data._id); 
             localStorage.removeItem(LS_KEY); 
         }
         } catch (err) {
             console.error("Failed to save result to DB", err);
-            // Có thể hiện thông báo lỗi nhẹ nếu muốn
         }
 
         try {
@@ -355,6 +362,7 @@ export default function TestPlayer() {
         setQi(0);
         setResult(null);
         setSecondsLeft(minutes ? minutes * 60 : null);
+        startTimeRef.current = Date.now(); // Reset lại bộ đếm khi làm lại
     };
 
     // palette answered flag
@@ -434,7 +442,6 @@ export default function TestPlayer() {
                         </span>
                     </div>
 
-                    {/* SỬ DỤNG MATH DISPLAY CHO NỘI DUNG CÂU HỎI */}
                     <div className="rv-stem">
                         <FormulaDisplay content={it.stem} />
                     </div>
@@ -446,7 +453,6 @@ export default function TestPlayer() {
                             {(it.essayAnswer || "").trim() || "— (empty) —"}
                         </div>
                         
-                        {/* --- TÍNH NĂNG AI GRADING --- */}
                         {(it.essayAnswer || "").trim().length > 0 && (
                             <div style={{ marginTop: '16px' }}>
                                 {!essayGrades[it.idx] ? (
@@ -518,7 +524,6 @@ export default function TestPlayer() {
                                 <span className="rv-index">
                                 {ABC[ci] ?? (ci === 0 ? "T" : "F")}.
                                 </span>
-                                {/* SỬ DỤNG MATH DISPLAY CHO ĐÁP ÁN */}
                                 <span className="rv-text">
                                     <FormulaDisplay content={c} />
                                 </span>
@@ -589,7 +594,6 @@ export default function TestPlayer() {
 
                     {current && (
                         <>
-                        {/* SỬ DỤNG MATH DISPLAY CHO ĐỀ BÀI */}
                         <div className="tp-stem">
                             <FormulaDisplay content={current.stem} />
                         </div>
@@ -611,7 +615,6 @@ export default function TestPlayer() {
                                     <span className="choice-index">
                                         {String.fromCharCode(65 + idx)}.
                                     </span>
-                                    {/* SỬ DỤNG MATH DISPLAY CHO LỰA CHỌN */}
                                     <span className="choice-text">
                                         <FormulaDisplay content={c} />
                                     </span>

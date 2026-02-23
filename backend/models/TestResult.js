@@ -6,15 +6,10 @@ const testResultSchema = new mongoose.Schema({
     
     answers: [{
         questionId: String,
-        
-        // --- SỬA LẠI DÒNG NÀY ---
-        // Phải viết rõ { type: String } để Mongoose không hiểu nhầm
         type: { type: String }, 
-        
-        studentAnswer: mongoose.Schema.Types.Mixed, // Index (số) hoặc Text (chuỗi)
+        studentAnswer: mongoose.Schema.Types.Mixed,
         isCorrect: Boolean,
         score: Number, 
-        
         aiFeedback: String,
         aiSuggestion: String
     }],
@@ -22,7 +17,7 @@ const testResultSchema = new mongoose.Schema({
     totalScore: { type: Number, default: 0 },   
     maxScore: { type: Number, default: 0 },     
     finalPercent: Number,                       
-    
+    timeSpent: { type: Number, default: 0 },
     completedAt: { type: Date, default: Date.now }
 });
 

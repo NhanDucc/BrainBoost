@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import SiteHeader from "./Header";
 import SiteFooter from "./Footer";
-import { toAbsolute } from "../utils/url";
+import { api } from "../api";
 import "../css/CoursePlayer.css";
 
 // Build sections/lessons from course
@@ -71,17 +71,18 @@ export default function CoursePlayer() {
   const [chatLoading, setChatLoading] = useState(false);
 
   // ==== TTS state ====
-  // idle | loading | ready | speaking | paused
   const [ttsStatus, setTtsStatus] = useState("idle");
   const [ttsText, setTtsText] = useState("");
   const utteranceRef = useRef(null);
 
   // ==== View mode ====
-  // "original" = file viewer, "ai" = AI slides
   const [viewMode, setViewMode] = useState("original");
 
   // ==== AI slides ====
   const [activeSlide, setActiveSlide] = useState(0);
+
+  // ===== TRACKING PROGRESS (ĐỒNG HỒ BẤM GIỜ HỌC) =====
+  const startTimeRef = useRef(Date.now());
 
   // ===== Helpers =====
   const stopTts = () => {
@@ -110,129 +111,111 @@ export default function CoursePlayer() {
 
   // ===== Hooks =====
 
-  // Check current user (đã login hay chưa)
+  // Check current user (ĐÃ SỬA LỖI TOKEN)
   useEffect(() => {
     let cancelled = false;
-
     async function checkAuth() {
       try {
-        const res = await fetch(toAbsolute("/api/users/me"), {
-          method: "GET",
-          credentials: "include",
-        });
-        if (!cancelled && res.ok) {
-          // Nếu backend trả user thành công => đã đăng nhập
-          setIsLoggedIn(true);
-        }
+        const res = await api.get("/users/me");
+        if (!cancelled && res.data) setIsLoggedIn(true);
       } catch (err) {
-        console.warn("[CoursePlayer] /api/users/me failed:", err);
+        console.warn("[CoursePlayer] User not logged in");
       } finally {
         if (!cancelled) setAuthChecked(true);
       }
     }
-
     checkAuth();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, []);
 
   // Cleanup TTS on unmount
   useEffect(() => {
-    return () => {
-      stopTts();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => stopTts();
   }, []);
 
-  // Load course (public)
+  // Load course (ĐÃ SỬA DÙNG API)
   useEffect(() => {
     let cancelled = false;
-
     async function fetchCourse() {
       setLoading(true);
       setError("");
       try {
-        const res = await fetch(toAbsolute(`/api/courses/public/${courseId}`));
-        if (!res.ok) {
-          if (res.status === 404) {
-            if (!cancelled) {
-              setError("not-found");
-              setCourse(null);
-            }
-            return;
-          }
-          const body = await res.json().catch(() => ({}));
-          throw new Error(body.message || "Failed to load course");
-        }
-        const data = await res.json();
-        if (!cancelled) setCourse(data);
+        const res = await api.get(`/courses/public/${courseId}`);
+        if (!cancelled) setCourse(res.data);
       } catch (e) {
-        if (!cancelled) setError(e.message || "Failed to load course");
+        if (!cancelled) {
+            if (e.response && e.response.status === 404) {
+                setError("not-found");
+                setCourse(null);
+            } else {
+                setError(e.response?.data?.message || "Failed to load course");
+            }
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
     }
-
     fetchCourse();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [courseId]);
 
-  // ==== Derived values from course/lesson ====
   const syllabus = course ? buildSyllabus(course) : [];
   const currentSection = syllabus[activeSec] || { lessons: [] };
   const currentLesson = currentSection.lessons[activeLesson] || null;
 
   const lessonHasFile = !!(currentLesson && currentLesson.contentUrl);
-
-  // cho xem tài liệu gốc hay không (schema: showOriginalToStudents)
-  const lessonUseOriginal =
-    currentLesson && typeof currentLesson.showOriginalToStudents === "boolean"
+  const lessonUseOriginal = currentLesson && typeof currentLesson.showOriginalToStudents === "boolean"
       ? currentLesson.showOriginalToStudents && lessonHasFile
       : lessonHasFile;
 
-  const hasAiSlides =
-    currentLesson &&
-    Array.isArray(currentLesson.aiSlides) &&
-    currentLesson.aiSlides.length > 0;
+  const hasAiSlides = currentLesson && Array.isArray(currentLesson.aiSlides) && currentLesson.aiSlides.length > 0;
+  const lessonUseAiSlides = currentLesson && currentLesson.useAiSlides && hasAiSlides;
+  const canPlayAudio = (viewMode === "ai" && lessonUseAiSlides) || (viewMode === "original" && lessonUseOriginal && lessonHasFile);
 
-  // chỉ bật AI slides nếu giáo viên cho phép + thực sự có slide
-  const lessonUseAiSlides =
-    currentLesson && currentLesson.useAiSlides && hasAiSlides;
-
-  const canPlayAudio =
-    (viewMode === "ai" && lessonUseAiSlides) ||
-    (viewMode === "original" && lessonUseOriginal && lessonHasFile);
-
-  // Reset khi đổi bài học: chọn view mặc định + reset TTS & slide index + reset chat
+  // Reset khi đổi bài học
   useEffect(() => {
-    if (!currentLesson) {
-      setViewMode("original");
-    } else if (lessonUseOriginal) {
-      setViewMode("original");
-    } else if (!lessonUseOriginal && lessonUseAiSlides) {
-      setViewMode("ai");
-    } else {
-      setViewMode("original");
-    }
+    if (!currentLesson) setViewMode("original");
+    else if (lessonUseOriginal) setViewMode("original");
+    else if (!lessonUseOriginal && lessonUseAiSlides) setViewMode("ai");
+    else setViewMode("original");
+
     setActiveSlide(0);
     setTtsText("");
     stopTts();
 
-    // reset chat cho lesson mới
-    setChatMessages([
-      {
-        from: "ai",
-        text:
-          "Hi, I'm BrainBoost Assistant. Ask me about this lesson and I will answer based on the uploaded content.",
-      },
-    ]);
+    setChatMessages([{ from: "ai", text: "Hi, I'm BrainBoost Assistant. Ask me about this lesson and I will answer based on the uploaded content." }]);
     setChatInput("");
     setChatLoading(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSec, activeLesson, courseId]);
+
+  // THUẬT TOÁN ĐO THỜI GIAN HỌC VÀ GỬI VỀ BACKEND
+  useEffect(() => {
+      // Nếu chưa đăng nhập hoặc chưa load xong bài thì không chạy
+      if (!isLoggedIn || !courseId || !currentLesson) return;
+
+      const payload = {
+          lessonKey: `s${activeSec}:l${activeLesson}`,
+          timeSpent: 1 // Mỗi lần gửi sẽ cộng thêm 1 phút vào Database
+      };
+
+      // 1. Lưu điểm danh lần đầu: Sau khi học sinh ở trang 10 giây (tránh spam click)
+      const initialTimer = setTimeout(() => {
+          api.post(`/courses/${courseId}/progress`, payload)
+             .catch(e => console.log("Lỗi lưu tiến độ:", e));
+      }, 10000); 
+
+      // 2. Auto-save liên tục: Cứ mỗi 60 giây (1 phút) sẽ ngầm báo Backend cộng thêm 1 phút
+      const interval = setInterval(() => {
+          api.post(`/courses/${courseId}/progress`, payload)
+             .catch(e => console.log("Lỗi lưu tiến độ:", e));
+      }, 60000);
+
+      // Cleanup: Xóa các bộ đếm khi chuyển sang bài khác hoặc tắt trang
+      return () => {
+          clearTimeout(initialTimer);
+          clearInterval(interval);
+      };
+  }, [activeSec, activeLesson, courseId, isLoggedIn, currentLesson]);
 
   // ===== TTS (doc gốc + AI slides) =====
   const loadLessonText = async () => {
@@ -245,9 +228,7 @@ export default function CoursePlayer() {
       return "";
     }
 
-    if (ttsStatus === "speaking" || ttsStatus === "paused") {
-      return ttsText;
-    }
+    if (ttsStatus === "speaking" || ttsStatus === "paused") return ttsText;
 
     setTtsStatus("loading");
 
@@ -257,43 +238,20 @@ export default function CoursePlayer() {
 
       const lower = forExt.toLowerCase();
 
-      // Plain .txt → đọc trực tiếp
       if (lower.endsWith(".txt")) {
         const res = await fetch(full);
-        if (!res.ok) {
-          throw new Error(`Cannot load text file (HTTP ${res.status}).`);
-        }
+        if (!res.ok) throw new Error(`Cannot load text file (HTTP ${res.status}).`);
         const text = await res.text();
-        if (!text.trim()) {
-          throw new Error("Text file is empty.");
-        }
-        setTtsText(text);
-        setTtsStatus("ready");
-        return text;
+        if (!text.trim()) throw new Error("Text file is empty.");
+        setTtsText(text); setTtsStatus("ready"); return text;
       }
 
-      // Các loại khác → gọi backend extract
-      const res = await fetch(
-        toAbsolute(`/api/tts/extract?url=${encodeURIComponent(full)}`),
-        { credentials: "include" }
-      );
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(
-          data.message || `TTS extract failed (HTTP ${res.status}).`
-        );
-      }
+      const res = await api.get(`/tts/extract?url=${encodeURIComponent(full)}`);
+      const text = res.data.text || "";
+      if (!text.trim()) throw new Error("No readable text returned from server.");
 
-      const text = data.text || "";
-      if (!text.trim()) {
-        throw new Error("No readable text returned from server.");
-      }
-
-      setTtsText(text);
-      setTtsStatus("ready");
-      return text;
+      setTtsText(text); setTtsStatus("ready"); return text;
     } catch (err) {
-      console.error("[TTS] loadLessonText failed:", err);
       setTtsStatus("idle");
       alert(err.message || "Cannot read text from this document for TTS yet.");
       return "";
@@ -302,46 +260,24 @@ export default function CoursePlayer() {
 
   const handlePlayPause = async () => {
     if (!currentLesson) return;
-
     if (typeof window === "undefined" || !("speechSynthesis" in window)) {
       alert("Your browser does not support text-to-speech.");
       return;
     }
 
-    // Toggle pause/resume
-    if (ttsStatus === "speaking") {
-      window.speechSynthesis.pause();
-      setTtsStatus("paused");
-      return;
-    }
-
-    if (ttsStatus === "paused") {
-      window.speechSynthesis.resume();
-      setTtsStatus("speaking");
-      return;
-    }
+    if (ttsStatus === "speaking") { window.speechSynthesis.pause(); setTtsStatus("paused"); return; }
+    if (ttsStatus === "paused") { window.speechSynthesis.resume(); setTtsStatus("speaking"); return; }
 
     let text = ttsText;
 
     if (!text) {
-      // 1) Nếu đang ở AI view → đọc từ aiSlides
       if (viewMode === "ai" && lessonUseAiSlides) {
-        const slides = Array.isArray(currentLesson.aiSlides)
-          ? currentLesson.aiSlides
-          : [];
-        if (!slides.length) {
-          alert("No AI slides available for this lesson.");
-          return;
-        }
+        const slides = Array.isArray(currentLesson.aiSlides) ? currentLesson.aiSlides : [];
+        if (!slides.length) { alert("No AI slides available for this lesson."); return; }
         const built = buildSlidesTts(slides);
-        if (!built) {
-          alert("Cannot build readable text from AI slides.");
-          return;
-        }
-        text = built;
-        setTtsText(built);
+        if (!built) { alert("Cannot build readable text from AI slides."); return; }
+        text = built; setTtsText(built);
       }
-      // 2) Nếu ở Original view → đọc từ tài liệu gốc
       else if (lessonUseOriginal && lessonHasFile) {
         text = await loadLessonText();
         if (!text) return;
@@ -352,7 +288,7 @@ export default function CoursePlayer() {
     }
 
     const u = new SpeechSynthesisUtterance(text);
-    u.lang = "en-US"; // đổi sang "vi-VN" nếu tài liệu tiếng Việt
+    u.lang = "en-US"; 
     u.rate = 1.0;
     u.onend = () => setTtsStatus("ready");
     u.onerror = () => setTtsStatus("ready");
@@ -368,103 +304,32 @@ export default function CoursePlayer() {
     if (!currentLesson || !currentLesson.contentUrl || !lessonUseOriginal) {
       return (
         <div className="doc-empty">
-          <p>
-            This lesson does not provide the original document to students.
-            If you are the teacher, enable “Show original document” in the
-            editor.
-          </p>
+          <p>This lesson does not provide the original document to students. If you are the teacher, enable “Show original document” in the editor.</p>
         </div>
       );
     }
-
     const { full, forExt } = getUrlParts(currentLesson.contentUrl);
-    if (!full) {
-      return (
-        <div className="doc-empty">
-          <p>No document uploaded for this lesson yet.</p>
-        </div>
-      );
-    }
+    if (!full) return (<div className="doc-empty"><p>No document uploaded for this lesson yet.</p></div>);
 
     const lower = forExt.toLowerCase();
-    const isPdf = lower.endsWith(".pdf");
-    const isPpt = lower.endsWith(".ppt") || lower.endsWith(".pptx");
-    const isDoc = lower.endsWith(".doc") || lower.endsWith(".docx");
-
-    if (isPdf) {
-      const pdfViewerUrl = `https://docs.google.com/gview?url=${encodeURIComponent(
-        full
-      )}&embedded=true`;
-
-      return (
-        <iframe
-          src={pdfViewerUrl}
-          title={currentLesson.title || "Lesson document"}
-          className="doc-frame"
-        />
-      );
+    if (lower.endsWith(".pdf")) {
+      const pdfViewerUrl = `https://docs.google.com/gview?url=${encodeURIComponent(full)}&embedded=true`;
+      return <iframe src={pdfViewerUrl} title={currentLesson.title || "Lesson document"} className="doc-frame" />;
     }
-
-    if (isPpt || isDoc) {
-      const officeUrl = `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(
-        full
-      )}`;
-
-      return (
-        <iframe
-          src={officeUrl}
-          title={currentLesson.title || "Lesson document"}
-          className="doc-frame"
-        />
-      );
+    if (lower.endsWith(".ppt") || lower.endsWith(".pptx") || lower.endsWith(".doc") || lower.endsWith(".docx")) {
+      const officeUrl = `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(full)}`;
+      return <iframe src={officeUrl} title={currentLesson.title || "Lesson document"} className="doc-frame" />;
     }
-
-    const viewerUrl = `https://docs.google.com/gview?url=${encodeURIComponent(
-      full
-    )}&embedded=true`;
-
-    return (
-      <iframe
-        src={viewerUrl}
-        title={currentLesson.title || "Lesson document"}
-        className="doc-frame"
-      />
-    );
+    const viewerUrl = `https://docs.google.com/gview?url=${encodeURIComponent(full)}&embedded=true`;
+    return <iframe src={viewerUrl} title={currentLesson.title || "Lesson document"} className="doc-frame" />;
   };
 
   const renderAiSlides = () => {
-    const slides =
-      currentLesson && Array.isArray(currentLesson.aiSlides)
-        ? currentLesson.aiSlides
-        : [];
+    const slides = currentLesson && Array.isArray(currentLesson.aiSlides) ? currentLesson.aiSlides : [];
+    if (!lessonUseAiSlides) return (<div className="doc-empty"><p>AI slides are not enabled for this lesson.</p></div>);
+    if (!slides.length) return (<div className="doc-empty"><p>No AI slides were saved for this lesson.</p></div>);
 
-    if (!lessonUseAiSlides) {
-      return (
-        <div className="doc-empty">
-          <p>
-            AI slides are not enabled for this lesson.
-            If you are the teacher, tick “Allow BrainBoost to generate AI
-            slides” and save the course.
-          </p>
-        </div>
-      );
-    }
-
-    if (!slides.length) {
-      return (
-        <div className="doc-empty">
-          <p>
-            No AI slides were saved for this lesson.
-            Please regenerate slides in the instructor editor.
-          </p>
-        </div>
-      );
-    }
-
-    const safeIndex = Math.min(
-      Math.max(activeSlide, 0),
-      Math.max(slides.length - 1, 0)
-    );
+    const safeIndex = Math.min(Math.max(activeSlide, 0), Math.max(slides.length - 1, 0));
     const slide = slides[safeIndex] || {};
     const bullets = Array.isArray(slide.bullets) ? slide.bullets : [];
 
@@ -472,205 +337,89 @@ export default function CoursePlayer() {
       <div className="ai-slide-container">
         <div className="ai-slide">
           <div className="ai-slide-header">
-            <span className="ai-slide-chip">
-              Lesson {activeLesson + 1} • Slide {safeIndex + 1}
-            </span>
+            <span className="ai-slide-chip">Lesson {activeLesson + 1} • Slide {safeIndex + 1}</span>
             <h2 className="ai-slide-title">{slide.title || "Slide"}</h2>
           </div>
-
           {bullets.length > 0 ? (
-            <ul className="ai-slide-list">
-              {bullets.map((b, idx) => (
-                <li key={idx}>{b}</li>
-              ))}
-            </ul>
+            <ul className="ai-slide-list">{bullets.map((b, idx) => (<li key={idx}>{b}</li>))}</ul>
           ) : (
-            slide.ttsText && (
-              <p className="ai-slide-body">{slide.ttsText}</p>
-            )
+            slide.ttsText && (<p className="ai-slide-body">{slide.ttsText}</p>)
           )}
         </div>
-
         <div className="ai-slide-footer">
-          <button
-            type="button"
-            className="btn-outline ai-slide-nav"
-            onClick={() => setActiveSlide((s) => Math.max(0, s - 1))}
-            disabled={safeIndex === 0}
-          >
-            ◀ Prev
-          </button>
-          <span className="ai-slide-index">
-            {safeIndex + 1} / {slides.length}
-          </span>
-          <button
-            type="button"
-            className="btn-outline ai-slide-nav"
-            onClick={() =>
-              setActiveSlide((s) =>
-                Math.min(slides.length - 1, s + 1)
-              )
-            }
-            disabled={safeIndex >= slides.length - 1}
-          >
-            Next ▶
-          </button>
+          <button type="button" className="btn-outline ai-slide-nav" onClick={() => setActiveSlide((s) => Math.max(0, s - 1))} disabled={safeIndex === 0}>◀ Prev</button>
+          <span className="ai-slide-index">{safeIndex + 1} / {slides.length}</span>
+          <button type="button" className="btn-outline ai-slide-nav" onClick={() => setActiveSlide((s) => Math.min(slides.length - 1, s + 1))} disabled={safeIndex >= slides.length - 1}>Next ▶</button>
         </div>
       </div>
     );
   };
 
   const renderActiveView = () => {
-    if (!currentLesson) {
-      return (
-        <div className="doc-empty">
-          <p>Select a lesson from the left to start learning.</p>
-        </div>
-      );
-    }
-
-    if (!lessonHasFile && !lessonUseAiSlides) {
-      return (
-        <div className="doc-empty">
-          <p>No document or AI slides are available for this lesson yet.</p>
-        </div>
-      );
-    }
-
-    if (viewMode === "ai" && lessonUseAiSlides) {
-      return renderAiSlides();
-    }
-
-    if (viewMode === "original" && lessonUseOriginal) {
-      return renderDocViewer();
-    }
-
-    // Fallback: nếu viewMode không hợp lệ, ưu tiên original rồi đến AI
+    if (!currentLesson) return (<div className="doc-empty"><p>Select a lesson from the left to start learning.</p></div>);
+    if (!lessonHasFile && !lessonUseAiSlides) return (<div className="doc-empty"><p>No document or AI slides are available for this lesson yet.</p></div>);
+    if (viewMode === "ai" && lessonUseAiSlides) return renderAiSlides();
+    if (viewMode === "original" && lessonUseOriginal) return renderDocViewer();
     if (lessonUseOriginal) return renderDocViewer();
     if (lessonUseAiSlides) return renderAiSlides();
-
-    return (
-      <div className="doc-empty">
-        <p>This lesson does not have any enabled view.</p>
-      </div>
-    );
+    return (<div className="doc-empty"><p>This lesson does not have any enabled view.</p></div>);
   };
 
-  // ===== Chat with AI (real) =====
+  // ===== Chat with AI (ĐÃ SỬA DÙNG API POST) =====
   const handleSendChat = async (e) => {
     e.preventDefault();
     const text = chatInput.trim();
     if (!text || chatLoading || !currentLesson) return;
 
-    // Nếu vì lý do nào đó vẫn mở được modal nhưng chưa login
     if (!isLoggedIn) {
-      setChatMessages((prev) => [
-        ...prev,
-        {
-          from: "ai",
-          text:
-            "You need to sign in to your BrainBoost account to chat with the AI assistant for this lesson.",
-        },
-      ]);
+      setChatMessages((prev) => [...prev, { from: "ai", text: "You need to sign in to your BrainBoost account to chat with the AI assistant for this lesson." }]);
       return;
     }
 
-    // Push user message lên UI ngay
     setChatMessages((prev) => [...prev, { from: "user", text }]);
     setChatInput("");
 
     try {
       setChatLoading(true);
-
-      const lessonKey =
-        currentLesson._id ||
-        currentLesson.id ||
-        `${activeSec}-${activeLesson}`;
-
+      const lessonKey = currentLesson._id || currentLesson.id || `${activeSec}-${activeLesson}`;
       const payload = {
         courseId,
         lessonKey,
         lessonTitle: currentLesson.title || "",
         userMessage: text,
-        docUrl:
-          lessonUseOriginal && currentLesson.contentUrl
-            ? currentLesson.contentUrl
-            : null,
-        aiSlides:
-          lessonUseAiSlides && Array.isArray(currentLesson.aiSlides)
-            ? currentLesson.aiSlides
-            : [],
+        docUrl: lessonUseOriginal && currentLesson.contentUrl ? currentLesson.contentUrl : null,
+        aiSlides: lessonUseAiSlides && Array.isArray(currentLesson.aiSlides) ? currentLesson.aiSlides : [],
       };
 
-      const res = await fetch(toAbsolute("/api/lesson-chat"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify(payload),
-      });
-
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        const msg =
-          body.message || "The AI assistant is not available right now.";
-        setChatMessages((prev) => [
-          ...prev,
-          {
-            from: "ai",
-            text:
-              "Sorry, I could not answer this question at the moment. " +
-              msg,
-          },
-        ]);
-        return;
-      }
-
-      const data = await res.json().catch(() => ({}));
-      const answer = data.answer || "(No answer returned from AI.)";
-
+      const res = await api.post("/lesson-chat", payload);
+      const answer = res.data.answer || "(No answer returned from AI.)";
       setChatMessages((prev) => [...prev, { from: "ai", text: answer }]);
+      
     } catch (err) {
       console.error("[LessonChat] failed:", err);
-      setChatMessages((prev) => [
-        ...prev,
-        {
-          from: "ai",
-          text:
-            "Sorry, something went wrong while contacting the AI assistant. Please try again later.",
-        },
-      ]);
+      const msg = err.response?.data?.message || "The AI assistant is not available right now.";
+      setChatMessages((prev) => [...prev, { from: "ai", text: "Sorry, I could not answer this question at the moment. " + msg }]);
     } finally {
       setChatLoading(false);
     }
   };
 
-  // ===== Audio bar text =====
   const audioStatusText =
-    ttsStatus === "loading"
-      ? "Preparing audio for this lesson…"
-      : ttsStatus === "speaking"
-      ? "Reading aloud – press Pause to stop."
-      : ttsStatus === "paused"
-      ? "Audio paused – press Resume."
-      : ttsStatus === "ready" && ttsText
-      ? "Audio ready – press Play to listen again."
-      : viewMode === "ai" && lessonUseAiSlides
-      ? "Press Play to listen to the AI slides for this lesson."
-      : lessonUseOriginal && lessonHasFile
-      ? "Press Play to listen to the original document."
+    ttsStatus === "loading" ? "Preparing audio for this lesson…"
+      : ttsStatus === "speaking" ? "Reading aloud – press Pause to stop."
+      : ttsStatus === "paused" ? "Audio paused – press Resume."
+      : ttsStatus === "ready" && ttsText ? "Audio ready – press Play to listen again."
+      : viewMode === "ai" && lessonUseAiSlides ? "Press Play to listen to the AI slides for this lesson."
+      : lessonUseOriginal && lessonHasFile ? "Press Play to listen to the original document."
       : "Audio is not available for this lesson yet.";
 
-  const chatDisabled =
-    !currentLesson || !authChecked || !isLoggedIn;
+  const chatDisabled = !currentLesson || !authChecked || !isLoggedIn;
 
-  // ======= EARLY RETURNS (sau tất cả hooks) =======
   if (loading) {
     return (
       <div className="learning-page">
         <SiteHeader />
-        <main className="learning-container">
-          <p>Loading course content…</p>
-        </main>
+        <main className="learning-container"><p>Loading course content…</p></main>
         <SiteFooter />
       </div>
     );
@@ -682,9 +431,7 @@ export default function CoursePlayer() {
         <SiteHeader />
         <main className="learning-container">
           <p>Course not found.</p>
-          <button className="btn-secondary" onClick={() => navigate("/courses")}>
-            ← Back to Courses
-          </button>
+          <button className="btn-secondary" onClick={() => navigate("/courses")}>← Back to Courses</button>
         </main>
         <SiteFooter />
       </div>
@@ -697,22 +444,18 @@ export default function CoursePlayer() {
         <SiteHeader />
         <main className="learning-container">
           <p className="error-text">Error: {error}</p>
-          <button className="btn-secondary" onClick={() => navigate("/courses")}>
-            ← Back to Courses
-          </button>
+          <button className="btn-secondary" onClick={() => navigate("/courses")}>← Back to Courses</button>
         </main>
         <SiteFooter />
       </div>
     );
   }
 
-  // ===== Render chính =====
   return (
     <div className="learning-page">
       <SiteHeader />
 
       <main className="learning-container">
-        {/* breadcrumb */}
         <nav className="breadcrumb">
           <Link to="/courses">Courses</Link>
           <span>›</span>
@@ -722,24 +465,16 @@ export default function CoursePlayer() {
         </nav>
 
         <div className="learning-layout">
-          {/* Sidebar: sections/lessons */}
           <aside className="learning-sidebar">
             <h2 className="course-title">{course.title}</h2>
-            <p className="course-sub">
-              Choose a lesson. The content will appear on the right.
-            </p>
+            <p className="course-sub">Choose a lesson. The content will appear on the right.</p>
 
             <div className="section-list">
               {syllabus.map((sec, si) => (
                 <div key={si} className="section-block">
                   <button
-                    className={`section-header ${
-                      si === activeSec ? "active" : ""
-                    }`}
-                    onClick={() => {
-                      setActiveSec(si);
-                      setActiveLesson(0);
-                    }}
+                    className={`section-header ${si === activeSec ? "active" : ""}`}
+                    onClick={() => { setActiveSec(si); setActiveLesson(0); }}
                   >
                     <span className="section-index">{si + 1}.</span>
                     <span>{sec.title}</span>
@@ -750,12 +485,8 @@ export default function CoursePlayer() {
                       {sec.lessons.map((l, li) => (
                         <li
                           key={li}
-                          className={`lesson-item ${
-                            li === activeLesson ? "lesson-active" : ""
-                          }`}
-                          onClick={() => {
-                            setActiveLesson(li);
-                          }}
+                          className={`lesson-item ${li === activeLesson ? "lesson-active" : ""}`}
+                          onClick={() => setActiveLesson(li)}
                         >
                           {li + 1}. {l.title || "Untitled lesson"}
                         </li>
@@ -767,85 +498,41 @@ export default function CoursePlayer() {
             </div>
           </aside>
 
-          {/* Main learning area */}
           <section className="learning-main">
-            {/* View mode tabs (Original / AI) */}
             <div className="viewer-mode-tabs">
               <button
                 type="button"
-                className={`viewer-mode-tab ${
-                  viewMode === "original" ? "active" : ""
-                }`}
-                onClick={() => {
-                  stopTts();
-                  setTtsText("");
-                  setTtsStatus("idle");
-                  setViewMode("original");
-                }}
+                className={`viewer-mode-tab ${viewMode === "original" ? "active" : ""}`}
+                onClick={() => { stopTts(); setTtsText(""); setTtsStatus("idle"); setViewMode("original"); }}
                 disabled={!lessonUseOriginal}
               >
                 Original document
               </button>
-
               <button
                 type="button"
-                className={`viewer-mode-tab ${
-                  viewMode === "ai" ? "active" : ""
-                }`}
-                onClick={() => {
-                  stopTts();
-                  setTtsText("");
-                  setTtsStatus("idle");
-                  setViewMode("ai");
-                }}
+                className={`viewer-mode-tab ${viewMode === "ai" ? "active" : ""}`}
+                onClick={() => { stopTts(); setTtsText(""); setTtsStatus("idle"); setViewMode("ai"); }}
                 disabled={!lessonUseAiSlides}
               >
                 AI slides
               </button>
             </div>
 
-            {/* Document / AI slides frame */}
             <div className="doc-container">{renderActiveView()}</div>
 
-            {/* Audio bar */}
-            <div className="audio-bar">
-              <span className="audio-label">{audioStatusText}</span>
-            </div>
+            <div className="audio-bar"><span className="audio-label">{audioStatusText}</span></div>
 
-            {/* Controls */}
             <div className="controls-row">
-              <button
-                type="button"
-                className="btn-primary"
-                onClick={handlePlayPause}
-                disabled={ttsStatus === "loading" || !canPlayAudio}
-              >
-                {ttsStatus === "loading"
-                  ? "Loading text…"
-                  : ttsStatus === "speaking"
-                  ? "Pause"
-                  : ttsStatus === "paused"
-                  ? "Resume"
-                  : "Play / Pause"}
+              <button type="button" className="btn-primary" onClick={handlePlayPause} disabled={ttsStatus === "loading" || !canPlayAudio}>
+                {ttsStatus === "loading" ? "Loading text…" : ttsStatus === "speaking" ? "Pause" : ttsStatus === "paused" ? "Resume" : "Play / Pause"}
               </button>
-              <button
-                type="button"
-                className="btn-outline"
-                onClick={() => {
-                  if (chatDisabled) return;
-                  setShowChat(true);
-                }}
-                disabled={chatDisabled}
-              >
+              <button type="button" className="btn-outline" onClick={() => { if (!chatDisabled) setShowChat(true); }} disabled={chatDisabled}>
                 Ask AI
               </button>
             </div>
 
             {authChecked && !isLoggedIn && (
-              <p className="ai-login-hint">
-                Sign in to your BrainBoost account to chat with the AI assistant
-                for this lesson.
-              </p>
+              <p className="ai-login-hint">Sign in to your BrainBoost account to chat with the AI assistant for this lesson.</p>
             )}
           </section>
         </div>
@@ -853,54 +540,25 @@ export default function CoursePlayer() {
 
       <SiteFooter />
 
-      {/* ==== AI Assistant modal ==== */}
       {showChat && (
-        <div
-          className="ai-modal-backdrop"
-          onClick={(e) => {
-            if (e.target.classList.contains("ai-modal-backdrop")) {
-              setShowChat(false);
-            }
-          }}
-        >
+        <div className="ai-modal-backdrop" onClick={(e) => { if (e.target.classList.contains("ai-modal-backdrop")) setShowChat(false); }}>
           <div className="ai-modal">
             <header className="ai-modal-header">
               <h3>AI Assistant</h3>
-              <button
-                type="button"
-                className="ai-close-btn"
-                onClick={() => setShowChat(false)}
-              >
-                ✕
-              </button>
+              <button type="button" className="ai-close-btn" onClick={() => setShowChat(false)}>✕</button>
             </header>
 
             <div className="ai-modal-body">
               {chatMessages.map((m, idx) => (
-                <div
-                  key={idx}
-                  className={`ai-msg ai-msg-${
-                    m.from === "user" ? "user" : "ai"
-                  }`}
-                >
+                <div key={idx} className={`ai-msg ai-msg-${m.from === "user" ? "user" : "ai"}`}>
                   <div className="ai-msg-bubble">{m.text}</div>
                 </div>
               ))}
             </div>
 
             <form className="ai-input-row" onSubmit={handleSendChat}>
-              <input
-                type="text"
-                placeholder="Ask about this lesson..."
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                disabled={chatLoading}
-              />
-              <button
-                type="submit"
-                className="btn-primary"
-                disabled={chatLoading}
-              >
+              <input type="text" placeholder="Ask about this lesson..." value={chatInput} onChange={(e) => setChatInput(e.target.value)} disabled={chatLoading} />
+              <button type="submit" className="btn-primary" disabled={chatLoading}>
                 {chatLoading ? "Thinking..." : "Send"}
               </button>
             </form>

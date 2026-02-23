@@ -7,12 +7,15 @@ import defaultAvatar from "../images/defaultAvatar.png";
 import { useNavigate } from "react-router-dom";
 import { toAbsolute } from "../utils/url";
 
-/* Student Dashboard (mock) */
+/* Các môn học hiển thị trên bảng */
 const SUBJECTS = ["Mathematics", "Physics", "Chemistry", "English"];
-const ZERO_GOALS = { overall: 0, Mathematics: 0, Physics: 0, Chemistry: 0, English: 0 };
 
-function fmtDateISO(d) {
-    return d.toISOString().slice(0, 10);
+// Hàm chuyển đổi ngày giờ sang chuẩn YYYY-MM-DD theo giờ Local (tránh lỗi múi giờ UTC)
+function fmtDateLocal(d) {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
 }
 
 function buildMonth(year, month) {
@@ -30,50 +33,43 @@ function buildMonth(year, month) {
     return grid;
 }
 
+// Bảng dữ liệu trống dùng làm mặc định nếu user chưa có dữ liệu tuần này
+const defaultWeekStats = [
+    { day: "Mon", Mathematics: 0, Physics: 0, Chemistry: 0, English: 0, minutes: 0 },
+    { day: "Tue", Mathematics: 0, Physics: 0, Chemistry: 0, English: 0, minutes: 0 },
+    { day: "Wed", Mathematics: 0, Physics: 0, Chemistry: 0, English: 0, minutes: 0 },
+    { day: "Thu", Mathematics: 0, Physics: 0, Chemistry: 0, English: 0, minutes: 0 },
+    { day: "Fri", Mathematics: 0, Physics: 0, Chemistry: 0, English: 0, minutes: 0 },
+    { day: "Sat", Mathematics: 0, Physics: 0, Chemistry: 0, English: 0, minutes: 0 },
+    { day: "Sun", Mathematics: 0, Physics: 0, Chemistry: 0, English: 0, minutes: 0 },
+];
+
 function StudentDashboard({ user }) {
     const today = new Date();
-    const mock = {
-        goals: ZERO_GOALS,
-        scores: ZERO_GOALS,
-        examDate: `${today.getFullYear() + 1}-01-01`,
-        submittedDays: [fmtDateISO(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1))],
-        weekStats: [
-            { day: "Mon", Mathematics: 2, Physics: 0, Chemistry: 0, English: 0, minutes: 90 },
-            { day: "Tue", Mathematics: 0, Physics: 0, Chemistry: 0, English: 0, minutes: 0 },
-            { day: "Wed", Mathematics: 0, Physics: 1, Chemistry: 0, English: 0, minutes: 20 },
-            { day: "Thu", Mathematics: 0, Physics: 0, Chemistry: 0, English: 0, minutes: 0 },
-            { day: "Fri", Mathematics: 0, Physics: 0, Chemistry: 0, English: 0, minutes: 0 },
-            { day: "Sat", Mathematics: 0, Physics: 0, Chemistry: 0, English: 0, minutes: 0 },
-            { day: "Sun", Mathematics: 0, Physics: 0, Chemistry: 0, English: 0, minutes: 0 },
-        ],
-    };
-
-    const goals = { ...ZERO_GOALS, ...user.goals };
-
-    const data = {
-        goals,
-        scores: user.scores || mock.scores,
-        examDate: user.examDate || mock.examDate,
-        submittedDays: (user.study && user.study.submittedDays) || mock.submittedDays,
-        weekStats: user.weekStats || mock.weekStats,
-    };
+    
+    // ĐÃ GỠ BỎ MOCK DATA. SỬ DỤNG DỮ LIỆU THẬT TỪ DATABASE:
+    const submittedDays = user?.study?.submittedDays || [];
+    const weekStats = user?.weekStats || defaultWeekStats;
 
     const [month, setMonth] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
     const [currentDate, setCurrentDate] = useState(new Date(today));
+    
     const monthCells = useMemo(() => buildMonth(month.getFullYear(), month.getMonth()), [month]);
-    const minutesTotal = data.weekStats.reduce((t, r) => t + (r.minutes || 0), 0);
+    
+    // Tính tổng thời gian học trong tuần
+    const minutesTotal = weekStats.reduce((t, r) => t + (r.minutes || 0), 0);
 
     const handleTodayClick = () => {
-        const today = new Date();
-        setMonth(new Date(today.getFullYear(), today.getMonth(), 1));
-        setCurrentDate(today);
+        const todayObj = new Date();
+        setMonth(new Date(todayObj.getFullYear(), todayObj.getMonth(), 1));
+        setCurrentDate(todayObj);
     };
 
     return (
         <>
         {/* TOP GRID */}
         <div className="stu-grid">
-            {/* Left column: goals + calendar */}
+            {/* Left column: calendar */}
             <div className="col-left">
                 {/* Mini Calendar */}
                 <div className="dash-card">
@@ -104,14 +100,14 @@ function StudentDashboard({ user }) {
                         ))}
                         {monthCells.map((d, i) => {
                             const inMonth = d.getMonth() === month.getMonth();
-                            const isToday = fmtDateISO(d) === fmtDateISO(currentDate);
-                            const submitted = data.submittedDays.includes(fmtDateISO(d));
+                            const isToday = fmtDateLocal(d) === fmtDateLocal(currentDate);
+                            // Kiểm tra xem ngày này có trong mảng dữ liệu thật từ Backend không
+                            const submitted = submittedDays.includes(fmtDateLocal(d));
                             const cellClass =  `cal-cell ${inMonth ? "" : "dim"} ${isToday ? "today" : ""} ${submitted ? "submitted" : ""}`
 
                             return (
                             <div key={i} className={cellClass}>
                                 <span className={`num ${isToday ? "today" : ""}`}>{d.getDate()}</span>
-                                {submitted && <span className="dot green" />}
                             </div>
                             );
                         })}
@@ -119,7 +115,7 @@ function StudentDashboard({ user }) {
                 </div>
             </div>
 
-            {/* Right column: exam boxes + weekly table */}
+            {/* Right column: weekly table */}
             <div className="col-right">
                 <div className="dash-card">
                     <div className="card-head">
@@ -137,11 +133,11 @@ function StudentDashboard({ user }) {
                             </thead>
 
                             <tbody>
-                                {data.weekStats.map((row, i) => (
+                                {weekStats.map((row, i) => (
                                     <tr key={i}>
                                     <td>{row.day}</td>
                                     {SUBJECTS.map((s) => <td key={s}>{row[s] || 0}</td>)}
-                                    <td>{Math.floor((row.minutes || 0) / 60)}h{(row.minutes || 0) % 60}m</td>
+                                    <td>{Math.floor((row.minutes || 0) / 60)}h {(row.minutes || 0) % 60}m</td>
                                     </tr>
                                 ))}
                             </tbody>
@@ -150,9 +146,9 @@ function StudentDashboard({ user }) {
                                 <tr>
                                     <td>Total</td>
                                     {SUBJECTS.map((s) => (
-                                    <td key={s}>{data.weekStats.reduce((t, r) => t + (r[s] || 0), 0)}</td>
+                                    <td key={s}>{weekStats.reduce((t, r) => t + (r[s] || 0), 0)}</td>
                                     ))}
-                                    <td>{Math.floor(minutesTotal / 60)}h{minutesTotal % 60}m</td>
+                                    <td>{Math.floor(minutesTotal / 60)}h {minutesTotal % 60}m</td>
                                 </tr>
                             </tfoot>
                         </table>
@@ -197,16 +193,13 @@ export default function Profile() {
             const res = await api.get("/users/me");
             const u = res.data?.user || res.data || {};
             setUser({
-            fullname: u.fullname || "Name",
-            avatarUrl: u.avatarUrl || "",
-            bannerUrl: u.bannerUrl || "",
-            updatedAt: u.updatedAt,
-            role: u.role || "student",
-            goals: u.goals,
-            scores: u.scores,
-            examDate: u.examDate,
-            study: u.study,
-            weekStats: u.weekStats,
+                fullname: u.fullname || "Name",
+                avatarUrl: u.avatarUrl || "",
+                bannerUrl: u.bannerUrl || "",
+                updatedAt: u.updatedAt,
+                role: u.role || "student",
+                study: u.study,            // Cập nhật dữ liệu study (chứa submittedDays)
+                weekStats: u.weekStats,    // Cập nhật dữ liệu weekStats
             });
         } catch {
             /* ignore */
@@ -286,10 +279,7 @@ export default function Profile() {
 
             {/* ====== STUDENT VIEW ====== */}
             {isStudent && (
-            <StudentDashboard
-                user={user}
-                onGoalsSaved={(newGoals) => setUser((prev) => ({ ...prev, goals: newGoals }))}
-            />
+            <StudentDashboard user={user} />
             )}
 
             {/* ====== INSTRUCTOR VIEW (placeholder) ====== */}
@@ -357,16 +347,12 @@ export default function Profile() {
                             <button className="ghost-btn" onClick={() => navigate(`/instructor/tests/${t._id}/edit`)}>
                             <i className="bi bi-pencil-square" /> Edit
                             </button>
-                            {/* chừa View/Preview cho tương lai */}
                         </div>
                         </div>
                     ))}
                     </div>
                 )}
                 </div>
-
-                {/* Placeholder cho earnings/courses nếu muốn sau này */}
-                {/* <div className="role-card">…</div> */}
             </div>
             )}
 

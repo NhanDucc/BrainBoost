@@ -376,6 +376,7 @@ const getTestLeaderboard = async (req, res) => {
       rank: index + 1,
       user: r.studentInfo.fullname || "Unknown User",
       avatar: r.studentInfo.avatarUrl || "",
+      isAnonymous: r.studentInfo.preferences?.isAnonymous || false,
       score: r.bestScore,
       maxScore: r.maxScore,
       timeSpent: r.bestTime,

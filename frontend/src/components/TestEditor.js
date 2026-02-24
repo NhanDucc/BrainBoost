@@ -6,6 +6,9 @@ import { toAbsolute } from "../utils/url";
 import FormulaEditor from "./FormulaEditor";
 import "../css/TestEditor.css";
 
+// ==== Constants & Configurations ====
+
+// List of available subjects for the test
 const SUBJECTS = [
   { key: "math", name: "Mathematics" },
   { key: "english", name: "English" },
@@ -13,51 +16,77 @@ const SUBJECTS = [
   { key: "chemistry", name: "Chemistry" },
 ];
 
+// Default difficulty tags available for quick selection
 const DIFFICULTY_TAGS = ["Easy", "Medium", "Hard"];
 
+// Supported question types in the test builder
 const Q_TYPES = [
   { key: "mcq", label: "Multiple choice" },
   { key: "boolean", label: "True / False" },
   { key: "essay", label: "Essay" },
 ];
 
-// Câu mặc định (MCQ)
+/**
+ * Factory function to generate a default, empty question object.
+ * Initializes with the Multiple Choice (mcq) format by default.
+ * @param {Number} i - The index of the question (used for default placeholder text).
+ * @returns {Object} A fresh question object.
+ */
 const emptyQuestion = (i) => ({
   type: "mcq",                // 'mcq' | 'boolean' | 'essay'
   stem: `Question ${i + 1} content`,
-  // MCQ
+  
+  // Fields for MCQ
   choices: ["", "", "", ""],
-  correctIndex: null,         // 0..3
-  // True/False
-  correctBool: null,          // true | false
-  // Essay
+  correctIndex: null, // 0..3 representing A, B, C, D
+  
+  // Fields for True/False
+  correctBool: null,  // true | false
+  
+  // Fields for Essay
   modelAnswer: "",
   explanation: "",
 });
 
+/**
+ * Main component for creating and editing tests.
+ * Allows instructors to define test metadata, add custom tags, and build questions.
+ */
 export default function TestEditor() {
   const { id } = useParams();
-  const isEdit = Boolean(id);
+  const isEdit = Boolean(id); // Determines if we are editing an existing test or creating a new one
   const navigate = useNavigate();
 
+  // ==== State Management ====
+
+  // Test Metadata State
   const [title, setTitle] = useState("");
   const [grade, setGrade] = useState("");
   const [subject, setSubject] = useState(SUBJECTS[0].key);
   const [tags, setTags] = useState([]);
   const [description, setDescription] = useState("");
+
+  // Questions State
   const [numQuestions, setNumQuestions] = useState(10);
   const [questions, setQuestions] = useState(() =>
     Array.from({ length: 10 }, (_, i) => emptyQuestion(i))
   );
+
+  // UI & Loading State
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [newTagInput, setNewTagInput] = useState(""); // Input state for custom tags
 
-  // Đã xóa state currentMath, activeQIndex vì không còn cần thiết với FormulaEditor
-
+  // Scroll to the top of the page on initial render
   useEffect(() => { window.scrollTo(0, 0); }, []);
 
-  // Load test khi edit
+  // ==== Data Fetching (Edit Mode) ====
+
+  /**
+   * Fetches the existing test data if the component is in Edit Mode.
+   * Populates the state with the retrieved test details and questions.
+   */
   useEffect(() => {
     if (!isEdit) return;
     (async () => {
@@ -70,12 +99,14 @@ export default function TestEditor() {
         }
         const t = await res.json();
 
+        // Populate test metadata
         setTitle(t.title || "");
         setGrade(t.grade || "");
         setSubject(t.subject || SUBJECTS[0].key);
         setTags(t.tags || []);
         setDescription(t.description || "");
 
+        // Map and normalize questions from the database
         const qs = (Array.isArray(t.questions) ? t.questions : []).map((q, i) => {
           const type = q.type || "mcq";
           return {
@@ -91,35 +122,63 @@ export default function TestEditor() {
           };
         });
 
+        // Set questions or fallback to default empty questions if none exist
         setQuestions(qs.length ? qs : Array.from({ length: 10 }, (_, i) => emptyQuestion(i)));
         setNumQuestions(qs.length || 10);
       } catch (e) {
-        setToast({ type: "error", msg: `Load failed: ${e.message}` });
+          setToast({ type: "error", msg: `Load failed: ${e.message}` });
       } finally {
-        setLoading(false);
-        setTimeout(() => setToast(null), 4000);
+          setLoading(false);
+          setTimeout(() => setToast(null), 4000);
       }
     })();
   }, [isEdit, id]);
 
-  // Đồng bộ số lượng câu hỏi
+  // ==== Side Effects ====
+
+  /**
+   * Synchronizes the `questions` array length with the `numQuestions` state.
+   * If `numQuestions` increases, it appends new empty questions.
+   * If it decreases, it truncates the array.
+   */
   useEffect(() => {
     const n = Math.max(1, Math.min(200, Number(numQuestions) || 1));
     setQuestions((prev) => {
       const next = [...prev];
       if (next.length < n) {
+        // Add new questions
         for (let i = next.length; i < n; i++) next.push(emptyQuestion(i));
       } else if (next.length > n) {
+        // Remove excess questions
         next.length = n;
       }
-      return next.map((q) => ({ ...q }));
+      return next.map((q) => ({ ...q })); // Return a shallow copy to trigger re-render
     });
   }, [numQuestions]);
 
+  // ==== Event Handlers ====
+
+  // Toggles a tag (adds it if missing, removes it if present).
   const toggleTag = (t) =>
     setTags((arr) => (arr.includes(t) ? arr.filter((x) => x !== t) : [...arr, t]));
 
-  // ===== Change handlers =====
+  /**
+   * Handles adding a custom tag from the input field.
+   * Triggered by pressing 'Enter' or clicking the add button.
+   */
+    const handleAddCustomTag = (e) => {
+    // Prevent default form submission if triggered via Enter key
+    if (e.key === 'Enter' || e.type === 'click') {
+      e.preventDefault();
+      const newTag = newTagInput.trim();
+      if (newTag && !tags.includes(newTag)) {
+        setTags([...tags, newTag]);
+      }
+      setNewTagInput(""); // Clear the input field
+    }
+  };
+
+  // Updates the question content (stem)
   const onChangeStem = (qi, val) =>
     setQuestions((prev) => {
       const n = [...prev];
@@ -127,11 +186,15 @@ export default function TestEditor() {
       return n;
     });
 
+  /** * Changes the question type and cleans up residual data from previous types 
+   * to prevent corrupted payloads (e.g., an MCQ having a boolean answer).
+   */
   const onChangeQType = (qi, type) =>
     setQuestions((prev) => {
       const n = [...prev];
       const base = { ...n[qi], type };
-      // reset fields theo loại
+      
+      // Reset specific fields based on the newly selected type
       if (type === "mcq") {
         base.choices = base.choices?.length === 4 ? [...base.choices] : ["", "", "", ""];
         base.correctIndex = null;
@@ -150,7 +213,7 @@ export default function TestEditor() {
       return n;
     });
 
-  // MCQ
+  // Updates a specific choice text for an MCQ question
   const onChangeChoice = (qi, ci, val) =>
     setQuestions((prev) => {
       const n = [...prev];
@@ -160,6 +223,7 @@ export default function TestEditor() {
       return n;
     });
 
+  // Sets the correct answer index for an MCQ question
   const onChangeCorrectIndex = (qi, idx) =>
     setQuestions((prev) => {
       const n = [...prev];
@@ -167,7 +231,7 @@ export default function TestEditor() {
       return n;
     });
 
-  // True/False
+  // Sets the correct boolean value for a True/False question
   const onChangeBool = (qi, boolVal) =>
     setQuestions((prev) => {
       const n = [...prev];
@@ -175,7 +239,7 @@ export default function TestEditor() {
       return n;
     });
 
-  // Essay
+  // Updates the model answer text for an Essay question
   const onChangeModelAnswer = (qi, val) =>
     setQuestions((prev) => {
       const n = [...prev];
@@ -183,7 +247,7 @@ export default function TestEditor() {
       return n;
     });
 
-  // Common
+  // Updates the explanation text (used across all question types)
   const onChangeExplain = (qi, val) =>
     setQuestions((prev) => {
       const n = [...prev];
@@ -191,7 +255,13 @@ export default function TestEditor() {
       return n;
     });
 
-  // ===== Validation theo loại =====
+  // ===== Validation & Submission =====
+
+  /**
+   * Validates the entire test form before submission.
+   * Checks for required metadata and validates each question based on its type.
+   * @returns {String|null} Error message if invalid, or null if valid.
+   */
   const validate = () => {
     if (!title.trim()) return "Please enter a test title.";
     if (!grade.toString().trim()) return "Please enter a grade/level.";
@@ -213,22 +283,25 @@ export default function TestEditor() {
         if (typeof q.correctBool !== "boolean")
           return `Question ${i + 1}: please choose True or False.`;
       } else if (q.type === "essay") {
-        // modelAnswer không bắt buộc
+        // modelAnswer is optional for essays
       }
     }
     return null;
   };
 
-  // Submit
+  /**
+   * Formats the payload and sends it to the API to either create or update the test.
+   */
   const handleSubmit = async () => {
     const err = validate();
     if (err) {
       setToast({ type: "error", msg: err });
       return;
     }
+
     setSaving(true);
     try {
-      // Chuẩn hoá payload
+      // Normalize payload to ensure clean data is sent to the backend
       const qs = questions.map((q) => {
         if (q.type === "mcq") {
           return {
@@ -279,6 +352,8 @@ export default function TestEditor() {
       }
 
       setToast({ type: "success", msg: isEdit ? "Updated." : "Created." });
+
+      // Redirect back to the instructor dashboard after a brief delay
       setTimeout(() => navigate("/instructor"), 600);
     } catch (e) {
       setToast({ type: "error", msg: `Save failed: ${e.message}` });
@@ -288,7 +363,12 @@ export default function TestEditor() {
     }
   };
 
-  // ===== UI helpers =====
+  // ===== Render helpers =====
+
+  /**
+   * Component to dynamically render the correct input fields
+   * based on the selected question type (MCQ, True/False, or Essay).
+   */
   const QuestionBody = ({ q, qi }) => {
     if (q.type === "mcq") {
       return (
@@ -313,6 +393,7 @@ export default function TestEditor() {
         </div>
       );
     }
+
     if (q.type === "boolean") {
       return (
         <div className="tf-row">
@@ -337,7 +418,8 @@ export default function TestEditor() {
         </div>
       );
     }
-    // essay
+
+    // Default fallback for 'essay' type
     return (
       <label className="q-row">
         <span>Sample answer / Rubric (optional)</span>
@@ -361,7 +443,7 @@ export default function TestEditor() {
           <div className="empty">Loading…</div>
         ) : (
           <>
-            {/* Meta */}
+            {/* Test Metadata Section */}
             <section className="card">
               <h3>Test information</h3>
               <div className="form-grid">
@@ -384,19 +466,46 @@ export default function TestEditor() {
                   </select>
                 </label>
 
+                {/* Tags Configuration */}
                 <div className="form-row">
                   <span>Tags</span>
-                  <div className="chips">
-                    {DIFFICULTY_TAGS.map((t) => (
-                      <button
-                        type="button"
-                        key={t}
-                        className={`chip ${tags.includes(t) ? "active" : ""}`}
-                        onClick={() => toggleTag(t)}
-                      >
-                        {t}
+                  <div className="tags-input-container">
+                    <div className="chips" style={{ marginBottom: '10px', flexWrap: 'wrap', display: 'flex', gap: '8px' }}>
+                      {/* Default difficulty tags */}
+                      {DIFFICULTY_TAGS.map((t) => (
+                        <button
+                          type="button"
+                          key={t}
+                          className={`chip ${tags.includes(t) ? "active" : ""}`}
+                          onClick={() => toggleTag(t)}
+                        >
+                          {t}
+                        </button>
+                      ))}
+                      
+                      {/* Custom tags manually added by the instructor */}
+                      {tags.filter(t => !DIFFICULTY_TAGS.includes(t)).map(t => (
+                        <span key={t} className="chip active" style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#e2e8f0', color: '#334155', borderColor: '#cbd5e1' }}>
+                          {t} 
+                          <i className="bi bi-x-circle-fill" style={{cursor: 'pointer', color: '#94a3b8'}} onClick={() => toggleTag(t)}></i>
+                        </span>
+                      ))}
+                    </div>
+
+                    {/* Input field for adding new custom tags */}
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <input
+                        type="text"
+                        placeholder="Add custom tag (e.g. Midterm, Algebra...) and press Enter"
+                        value={newTagInput}
+                        onChange={(e) => setNewTagInput(e.target.value)}
+                        onKeyDown={handleAddCustomTag}
+                        style={{ flex: 1 }}
+                      />
+                      <button type="button" className="ghost-btn" onClick={handleAddCustomTag}>
+                        Add Tag
                       </button>
-                    ))}
+                    </div>
                   </div>
                 </div>
 
@@ -422,13 +531,15 @@ export default function TestEditor() {
               </div>
             </section>
 
-            {/* Builder */}
+            {/* Questions Builder Section */}
             <section className="card">
               <h3>Questions</h3>
 
               <div className="q-list">
                 {questions.map((q, qi) => (
                   <div key={qi} className="q-card">
+
+                    {/* Question Header: Number and Type Selector */}
                     <div className="q-head">
                       <span className="q-no">Q{qi + 1}</span>
                       <select
@@ -443,7 +554,7 @@ export default function TestEditor() {
                       </select>
                     </div>
 
-                    {/* --- CẬP NHẬT: DÙNG FormulaEditor CHO CÂU HỎI --- */}
+                    {/* Question Stem using FormulaEditor */}
                     <div className="q-row">
                       <span style={{ fontWeight: '800', marginBottom: '6px', display: 'block' }}>Question Content</span>
                       <FormulaEditor
@@ -453,10 +564,10 @@ export default function TestEditor() {
                       />
                     </div>
 
-                    {/* Nội dung đáp án theo loại */}
+                    {/* Dynamic Question Inputs (MCQ / TF / Essay) */}
                     <QuestionBody q={q} qi={qi} />
 
-                    {/* --- CẬP NHẬT: DÙNG FormulaEditor CHO GIẢI THÍCH --- */}
+                    {/* Question Explanation using FormulaEditor */}
                     <div className="q-row" style={{ marginTop: '15px' }}>
                       <span style={{ fontWeight: '800', marginBottom: '6px', display: 'block' }}>Explanation (Optional)</span>
                       <FormulaEditor
@@ -469,6 +580,7 @@ export default function TestEditor() {
                 ))}
               </div>
 
+              {/* Form Action Buttons */}
               <div className="actions">
                 <button className="ghost-btn" onClick={() => navigate("/instructor")}>Cancel</button>
                 <button className="primary-btn" disabled={saving} onClick={handleSubmit}>
@@ -480,7 +592,9 @@ export default function TestEditor() {
         )}
       </main>
 
+      {/* Global Toast Notification */}
       {toast && <div className={`toast ${toast.type}`}>{toast.msg}</div>}
+      
       <SiteFooter />
     </div>
   );

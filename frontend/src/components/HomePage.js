@@ -1,20 +1,39 @@
 import { useState } from "react";
 import SiteHeader from "./Header"
 import SiteFooter from "./Footer"
-import "../css/HomePage.css";
 import defaultAvatar from "../images/defaultAvatar.png";
 import skillsPlaceholder from "../images/skills-placeholder.png";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api.js";
+import "../css/HomePage.css";
 
+/**
+ * HomePage Component
+ * Serves as the landing page of the BrainBoost platform.
+ * Features an AI-powered Learning Path generator, featured courses, 
+ * platform benefits, and student testimonials.
+ */
 const HomePage = () => {
   const navigate = useNavigate();
 
-  // State cho Learning Path
+  // ==== State Management ====
+
+  // State for AI Learning Path
   const [goal, setGoal] = useState("");
   const [pathResult, setPathResult] = useState(null);
   const [loadingPath, setLoadingPath] = useState(false);
+  const [isSavingPath, setIsSavingPath] = useState(false);
+  const [pathSaved, setPathSaved] = useState(false);
 
+  /**
+   * Reusable UI Component for displaying a summarized course card.
+   * @param {Object} props - Component properties.
+   * @param {String} props.img - URL of the course thumbnail.
+   * @param {String} props.title - Title of the course.
+   * @param {String|Number} props.lessons - Total number of lessons.
+   * @param {String|Number} props.hours - Total duration in hours.
+   * @param {String} props.price - Display price.
+   */
   const CourseCard = ({ img, title, lessons, hours, price = "$40" }) => (
   <article className="fc-card">
     <div className="fc-thumb">
@@ -39,11 +58,17 @@ const HomePage = () => {
   </article>
   );
 
+  // ==== Event Handlers ====
+
+  /**
+   * Sends the user's goal to the backend AI service to generate a personalized learning path.
+   */
   const handleGeneratePath = async () => {
       if (!goal.trim()) return;
       setLoadingPath(true);
+      setPathSaved(false);  // Reset the save status when generating a new path
       try {
-          // Gọi API Backend
+          // Call the backend API to prompt the AI agent
           const res = await api.post('/courses/learning-path', { goal });
           setPathResult(res.data);
       } catch (err) {
@@ -53,12 +78,41 @@ const HomePage = () => {
       }
   };
 
+  /**
+   * Saves the generated learning path to the authenticated user's profile.
+   * Redirects to the login page if the user is not authenticated.
+   */
+  const handleSavePath = async () => {
+      if (!pathResult) return;
+
+      setIsSavingPath(true);
+      try {
+        // Send the generated advice and path steps to the database
+          await api.post('/learning/paths', {
+              goal: goal,
+              advice: pathResult.advice,
+              path: pathResult.path
+          });
+          setPathSaved(true);
+      } catch (error) {
+        // Handle unauthorized access (user not logged in)
+          if (error.response && error.response.status === 401) {
+              alert("Please login to save this learning path.");
+              navigate('/login');
+          } else {
+              alert("Failed to save path. Please try again.");
+          }
+      } finally {
+          setIsSavingPath(false);
+      }
+  };
+
   return (
     <div className="homepage">
-      {/* HEADER */}
+      {/* ==== Header ==== */}
       <SiteHeader />
 
-      {/* HERO SECTION */}
+      {/* ====  Hero Section ==== */}
       <section className="hero">
         <h1>BrainBoost - Boost Your Brainpower And Learning Efficiency</h1>
         <p>
@@ -66,7 +120,8 @@ const HomePage = () => {
         </p>
       </section>
 
-      {/* --- NEW SECTION: AI LEARNING PATH --- */}
+      {/* --- AI Learning Path Section --- */}
+      {/* Allows users to input goals and receive personalized suggestions */}
       <section className="lp-section">
           <h2 className="lp-title">Not sure where to start?</h2>
           <p className="lp-sub">Tell our AI Advisor your goals (e.g., "I want to master Grade 10 Math"), and we'll build a path for you.</p>
@@ -87,46 +142,59 @@ const HomePage = () => {
               </button>
           </div>
 
-          {/* Hiển thị kết quả */}
+          {/* Display the generated path results */}
           {pathResult && (
-              <div className="lp-result">
-                  <div className="lp-advice">
-                      <i className="bi bi-chat-quote-fill" style={{marginRight:'10px'}}></i>
-                      {pathResult.advice}
-                  </div>
-
-                  <div className="path-list">
-                      {pathResult.path.map((item, index) => (
-                          <div key={item.id} className="path-item">
-                              <div className="path-step">{index + 1}</div>
-                              <div className="path-content">
-                                  <h4>{item.title}</h4>
-                                  <p className="path-reason">💡 AI Suggestion: {item.reason}</p>
-                                  <div style={{fontSize:'14px', color:'#888', marginBottom:'8px'}}>
-                                      {item.subject} • Grade {item.grade}
-                                  </div>
-                                  <button 
-                                      className="path-go-btn" 
-                                      onClick={() => navigate(`/courses/${item.id}`)}
-                                  >
-                                      Start Learning →
-                                  </button>
-                              </div>
-                          </div>
-                      ))}
-                  </div>
+            <div className="lp-result">
+              <div className="lp-advice">
+                <i className="bi bi-chat-quote-fill" style={{marginRight:'10px'}}></i>
+                {pathResult.advice}
               </div>
+
+              <div className="path-list">
+                {pathResult.path.map((item, index) => (
+                  <div key={item.id} className="path-item">
+                    <div className="path-step">{index + 1}</div>
+                      <div className="path-content">
+                        <h4>{item.title}</h4>
+                        <p className="path-reason">💡 AI Suggestion: {item.reason}</p>
+                        <div style={{fontSize:'14px', color:'#888', marginBottom:'8px'}}>
+                          {item.subject} • Grade {item.grade}
+                        </div>
+                        <button 
+                          className="path-go-btn" 
+                          onClick={() => navigate(`/courses/${item.id}`)}
+                        >
+                          Start Learning →
+                        </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Save Path Button */}
+              <div style={{ textAlign: 'center', marginTop: '30px' }}>
+                <button 
+                  className="view-course-button" 
+                  style={{ background: pathSaved ? '#16a34a' : '', boxShadow: pathSaved ? 'none' : '' }}
+                  onClick={handleSavePath}
+                  disabled={isSavingPath || pathSaved}
+                >
+                  {isSavingPath ? "Saving..." : pathSaved ? "Saved to My Learning Space" : "Save This Path"}
+                </button>
+              </div>
+            </div>
           )}
       </section>
 
-      {/* FEATURED COURSES */}
+      {/* ==== Featured Courses Section ==== */}
+      {/* Organized by Subject */}
       <section className="featured">
         <h2 className="section-title">Featured Courses</h2>
         <p className="section-sub">
           Choose your favorite subject and start your journey of knowledge with BrainBoost.
         </p>
 
-        {/* Mathematics */}
+        {/* --- Mathematics --- */}
         <div className="fc-subject">
           <h3>Mathematics</h3>
           <button className="fc-more" onClick={() => navigate("/courses?subject=math")}>More <i class="bi bi-caret-right-fill"></i></button>
@@ -148,7 +216,7 @@ const HomePage = () => {
           />
         </div>
 
-        {/* English */}
+        {/* --- English --- */}
         <div className="fc-subject">
           <h3>English</h3>
           <button className="fc-more" onClick={() => navigate("/courses?subject=english")}>More <i class="bi bi-caret-right-fill"></i></button>
@@ -168,7 +236,7 @@ const HomePage = () => {
           />
         </div>
 
-        {/* Physics */}
+        {/* --- Physics --- */}
         <div className="fc-subject">
           <h3>Physics</h3>
           <button className="fc-more" onClick={() => navigate("/courses?subject=physics")}>More <i class="bi bi-caret-right-fill"></i></button>
@@ -188,7 +256,7 @@ const HomePage = () => {
           />
         </div>
 
-        {/* Chemistry */}
+        {/* --- Chemistry --- */}
         <div className="fc-subject">
           <h3>Chemistry</h3>
           <button className="fc-more" onClick={() => navigate("/courses?subject=chemistry")}>More <i class="bi bi-caret-right-fill"></i></button>
@@ -209,7 +277,7 @@ const HomePage = () => {
         </div>
       </section>
 
-      {/* SKILLS GAINED */}
+      {/* ==== Skills Gained Section ==== */}
       <section className="skills-section">
         <div className="skills-container">
           <div className="skills-image">
@@ -231,7 +299,7 @@ const HomePage = () => {
         </div>
       </section>
 
-      {/* ABOUT SECTION */}
+      {/* ==== About Section ==== */}
       <section className="about-section">
         <div className="about-container">
           <div className="about-image">
@@ -249,7 +317,7 @@ const HomePage = () => {
         </div>
       </section>
 
-      {/* WHY STUDY SECTION */}
+      {/* ==== Why Study Section ==== */}
       <section className="why-section">
         <h2 className="why-title">Why should you study with BrainBoost</h2>
 
@@ -307,7 +375,7 @@ const HomePage = () => {
       </section>
 
 
-      {/* TESTIMONIALS */}
+      {/* ==== Testimonials Section ==== */}
       <section className="testimonials-section" id="testimonials">
         <h2 className="t-title">Student Testimonials</h2>
 
@@ -383,7 +451,7 @@ const HomePage = () => {
         </div>
       </section>
 
-      {/* FOOTER */}
+      {/* ==== Footer ==== */}
       <SiteFooter />
     </div>
   );

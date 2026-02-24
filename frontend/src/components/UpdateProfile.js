@@ -1,13 +1,13 @@
-import React, { useEffect, useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
-import '../css/UpdateProfile.css';
 import { useUser } from '../context/UserContext';
+import '../css/UpdateProfile.css';
 
-export default function Settings() {
+export default function UpdateProfile() {
   const { fetchMe, setUser } = useUser();
-  const [tab, setTab] = useState('basic');
   const navigate = useNavigate();
+  
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
@@ -15,7 +15,7 @@ export default function Settings() {
 
   const clearAlerts = () => { setMsg(''); setSuccess(''); setError(''); };
 
-  // Basic info
+  // Basic info state
   const [form, setForm] = useState({
     fullname: '',
     email: '',
@@ -25,11 +25,9 @@ export default function Settings() {
     bio: '',
   });
 
-  // Change password
-  const [pwd, setPwd] = useState({ currentPassword: '', newPassword: '', confirm: '' });
-
+  // Fetch user data on mount
   useEffect(() => {
-    const fetchMe = async () => {
+    const loadProfile = async () => {
       try {
         const res = await api.get('/users/me');
         const u = res.data || {};
@@ -47,19 +45,13 @@ export default function Settings() {
         setLoading(false);
       }
     };
-    fetchMe();
+    loadProfile();
   }, []);
 
-
+  // Auto-hide alerts
   useEffect(() => {
     if (!msg && !success && !error) return;
-
-    const timer = setTimeout(() => {
-      setMsg('');
-      setSuccess('');
-      setError('');
-    }, 3000); // 3s
-
+    const timer = setTimeout(() => clearAlerts(), 3000);
     return () => clearTimeout(timer);
   }, [msg, success, error]);
 
@@ -73,7 +65,7 @@ export default function Settings() {
       await api.put('/users/me', form);
       await fetchMe();
       setMsg('');
-      setSuccess('Saved successfully.');
+      setSuccess('Profile updated successfully.');
       setTimeout(() => navigate('/profile', { replace: true }), 600);
     } catch (e) {
       setError(e.response?.data?.message || 'Save failed');
@@ -83,17 +75,14 @@ export default function Settings() {
   const uploadFile = async (field, file) => {
     if (!file) return;
     clearAlerts();
-
     const fd = new FormData();
     fd.append(field, file);
 
     try {
       setMsg('Uploading...')
       await api.put(`/users/me/${field}`, fd);
-
       const me = await api.get('/users/me');
       setUser(me.data);
-
       setMsg('');
       setSuccess(`${field === 'avatar' ? 'Avatar' : 'Banner'} uploaded.`);
     } catch (e) {
@@ -102,61 +91,44 @@ export default function Settings() {
     }
   };
 
-  const savePassword = async (e) => {
-    e.preventDefault();
-    clearAlerts();
-    if (pwd.newPassword !== pwd.confirm) {
-      setError('New password and confirm do not match.');
-      return;
-    }
-    try {
-      setMsg('Updating password...');
-      await api.put(`users/me/password`, {currentPassword: pwd.currentPassword, newPassword: pwd.newPassword });
-      setMsg('');
-      setSuccess('Password updated.');
-      setPwd({ currentPassword: '', newPassword: '', confirm: '' });
-    } catch (e) {
-      setMsg('');
-      setError(e.response?.data?.message || 'Update password failed');
-    }
-  };
-
   if (loading) return <div className="settings-wrap"><div className="settings-card">Loading...</div></div>;
 
   return (
-    <div className="settings-wrap">
-      <div className="settings-card">
-        <h2>Update personal information</h2>
+    <div style={{ backgroundColor: '#edf2fb', minHeight: '100vh' }}>
+      <div className="settings-wrap" style={{ margin: '40px auto' }}>
+        <div className="settings-card">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '20px' }}>
+            <button className="ghost-btn" onClick={() => navigate('/profile')} style={{ padding: '6px 12px' }}>
+              <i className="bi bi-arrow-left"></i> Back
+            </button>
+            <h2 style={{ margin: 0 }}>Update Personal Information</h2>
+          </div>
 
-        <div className="tabs">
-          <button className={tab === 'basic' ? 'active' : ''} onClick={() => setTab('basic')}>Basic information</button>
-          <button className={tab === 'privacy' ? 'active' : ''} onClick={() => setTab('privacy')}>Privacy</button>
-          <button className={tab === 'password' ? 'active' : ''} onClick={() => setTab('password')}>Change password</button>
-        </div>
+          {msg && <div className="alert info">{msg}</div>}
+          {success && <div className="alert success">{success}</div>}
+          {error && <div className="alert error">{error}</div>}
 
-        {msg && <div className="alert info">{msg}</div>}
-        {success && <div className="alert success">{success}</div>}
-        {error && <div className="alert error">{error}</div>}
-
-        {/* BASIC */}
-        {tab === 'basic' && (
           <form className="form" onSubmit={saveBasic}>
             <div className="form-group">
               <label>Fullname</label>
-              <input name="fullname" value={form.fullname} onChange={handleChange} />
+              <input name="fullname" value={form.fullname} onChange={handleChange} required />
             </div>
 
             <div className="form-group">
               <label>Email</label>
-              <input name="email" value={form.email} disabled />
-              <small>
-                BrainBoost does not support email changes. If you have purchased a course and wish to change your account, please contact us directly.
-              </small>
+              <input name="email" value={form.email} disabled style={{ backgroundColor: '#f1f5f9', cursor: 'not-allowed' }} />
+              <small>Email cannot be changed directly. Please contact support if needed.</small>
             </div>
 
-            <div className="form-group">
-              <label>Phone</label>
-              <input name="phone" value={form.phone} onChange={handleChange} />
+            <div className="form-row">
+              <div className="form-group half">
+                <label>Phone</label>
+                <input name="phone" value={form.phone} onChange={handleChange} />
+              </div>
+              <div className="form-group half">
+                <label>Date of Birth</label>
+                <input type="date" name="dateOfBirth" value={form.dateOfBirth} onChange={handleChange} />
+              </div>
             </div>
 
             <div className="form-group">
@@ -165,60 +137,26 @@ export default function Settings() {
             </div>
 
             <div className="form-group">
-              <label>Date of Birth</label>
-              <input type="date" name="dateOfBirth" value={form.dateOfBirth} onChange={handleChange} />
+              <label>About myself (Bio)</label>
+              <textarea name="bio" rows={4} value={form.bio} onChange={handleChange} placeholder="Tell us a bit about your learning goals..." />
             </div>
 
-            <div className="form-group">
-              <label>About myself</label>
-              <textarea name="bio" rows={6} value={form.bio} onChange={handleChange} />
-            </div>
-
-            <div className="form-row">
+            <div className="form-row" style={{ marginTop: '20px', borderTop: '1px solid #e2e8f0', paddingTop: '20px' }}>
               <div className="form-group half">
-                <label>Avatar</label>
+                <label>Profile Avatar</label>
                 <input type="file" accept="image/*" onChange={(e) => uploadFile('avatar', e.target.files?.[0])} />
               </div>
               <div className="form-group half">
-                <label>Banner</label>
+                <label>Cover Banner</label>
                 <input type="file" accept="image/*" onChange={(e) => uploadFile('banner', e.target.files?.[0])} />
               </div>
             </div>
 
-            <button className="save-btn" type="submit">Save</button>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '20px' }}>
+              <button className="primary-btn" type="submit" style={{ minWidth: '150px' }}>Save Changes</button>
+            </div>
           </form>
-        )}
-
-        {/* PRIVACY (placeholder) */}
-        {tab === 'privacy' && (
-          <div className="privacy-box">
-            <p className="policy-line">
-              Please read the{" "}
-              <Link to="/privacy-policy" className="policy-link">Privacy Policy</Link>{" "}
-              and{" "}
-              <Link to="/terms-of-use" className="policy-link">Terms of Use</Link>.
-            </p>
-          </div>
-        )}
-
-        {/* CHANGE PASSWORD */}
-        {tab === 'password' && (
-          <form className="form" onSubmit={savePassword}>
-            <div className="form-group">
-              <label>Current password</label>
-              <input type="password" value={pwd.currentPassword} onChange={(e) => setPwd({ ...pwd, currentPassword: e.target.value })} />
-            </div>
-            <div className="form-group">
-              <label>New password</label>
-              <input type="password" value={pwd.newPassword} onChange={(e) => setPwd({ ...pwd, newPassword: e.target.value })} />
-            </div>
-            <div className="form-group">
-              <label>Confirm new password</label>
-              <input type="password" value={pwd.confirm} onChange={(e) => setPwd({ ...pwd, confirm: e.target.value })} />
-            </div>
-            <button className="save-btn" type="submit">Save</button>
-          </form>
-        )}
+        </div>
       </div>
     </div>
   );

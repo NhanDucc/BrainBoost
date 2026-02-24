@@ -3,11 +3,11 @@
   justify-content: center;
   align-items: center;
   height: 100vh;
-  background: #EDF2FB;
+  background: var(--bg-main);
 }
 
 .login-box {
-  background: white;
+  background: var(--bg-card);
   padding: 40px;
   border-radius: 10px;
   width: 350px;
@@ -18,25 +18,28 @@
   text-align: center;
   margin-bottom: 30px;
   font-size: 30px;
-  color: #0057FF;
+  color: var(--primary);
 }
 
 .login-box label {
   display: block;
   margin: 10px 0 5px;
+  color: var(--text-main);
 }
 
 .login-box input[type="text"], .login-box input[type="password"], .login-box input[type="email"] {
   width: 100%;
   padding: 12px;
-  border: 1px solid #ccc;
+  border: 1px solid var(--border-input);
+  background: var(--bg-input);
+  color: var(--text-main);
   border-radius: 8px;
   box-sizing: border-box;
 }
 
 .login-box input:focus {
   outline: none;
-  border-color: #0057FF;
+  border-color: var(--primary);
   box-shadow: 0 0 0 2px rgba(0, 90, 255, 0.2);
 }
 
@@ -54,17 +57,18 @@
   font-size: 15px;
   font-weight: 500;
   cursor: pointer;
+  color: var(--text-main);
 }
 .checkbox-label input[type="checkbox"] {
   width: 18px;
   height: 18px;
-  accent-color: #0057FF;
+  accent-color: var(--primary);
 }
 
 .login-btn {
   width: 100%;
   padding: 12px;
-  background: #0057FF;
+  background: var(--primary);
   color: white;
   font-weight: bold;
   font-size: 16px;
@@ -75,7 +79,7 @@
   transition: background 0.3s ease;
 }
 
-.login-btn:hover { background: #0A2D88; }
+.login-btn:hover { background: var(--primary-hover); }
 
 .bottom-links {
   margin-top: 15px;
@@ -84,13 +88,13 @@
 }
 
 .bottom-links a {
-  color: #0057FF;
+  color: var(--primary);
   text-decoration: none;
   font-weight: 500;
 }
 
 .bottom-links a:hover {
-  color: #0A2D88;
+  color: var(--primary-hover);
 }
 
 .alert {
@@ -100,5 +104,5 @@
   font-weight: 600;
 }
 
-.alert.success { background: #e8f7ed; color: #51CF66; border: 1px solid #bfe9cd; }
-.alert.error   { background: #fdecea; color: #FA5252; border: 1px solid #f5c2c7; }
+.alert.success { background: var(--bg-object); color: var(--success); border: 1px solid var(--success); }
+.alert.error   { background: var(--bg-object); color: var(--error); border: 1px solid var(--error); }

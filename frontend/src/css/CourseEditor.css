@@ -1,180 +1,26 @@
-.course-page { background:#EDF2FB; }
+.course-page { background:var(--bg-main); color: var(--text-main); }
 .course-container { width:min(1100px,92vw); margin:24px auto 48px; }
 .pg-title { font-size:clamp(20px,3vw,28px); font-weight:900; margin:0 0 12px; }
 
 /* cards */
 .card {
-  background:#fff;
-  border:1px solid #e6ecff;
+  background:var(--bg-card);
+  border:1px solid var(--border-color);
   border-radius:12px;
   padding:16px;
   margin-bottom:14px;
-  box-shadow:0 8px 20px rgba(2,14,56,.06);
+  box-shadow:0 8px 20px rgba(0,0,0,.06);
 }
 
 /* ===== Hộp chú ý ở đầu Curriculum ===== */
 .upload-hints {
-  border-radius:10px;
-  border:1px dashed #cfe0ff;
-  background:#f5f7ff;
-  padding:10px 12px;
-  margin:8px 0 12px;
-  font-size:0.85rem;
-  color:#334155;
-}
-.upload-hints-title {
-  font-weight:800;
-  margin-bottom:4px;
-}
-.upload-hints-text {
-  margin:0 0 4px;
-}
-.upload-hints ul {
-  margin:4px 0 0;
-  padding-left:18px;
-}
-.upload-hints li {
-  margin-bottom:2px;
-}
-.upload-hints strong {
-  font-weight:800;
-}
-
-/* form */
-.form-grid { display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:12px; }
-.form-row { display:flex; flex-direction:column; gap:6px; }
-.form-row.full { grid-column:1/-1; }
-.form-row > span { font-weight:800; color:#1a1a1a; }
-.form-row input, .form-row select, .form-row textarea {
-  border:1px solid #cfe0ff; background:#fff; padding:10px; border-radius:10px; font:inherit;
-}
-
-.cover-uploader { display:flex; gap:8px; align-items:center; }
-.cover-uploader .url-input { flex:1; }
-.cover-preview { margin-top:8px; max-width:100%; border-radius:10px; border:1px solid #e6ecff; }
-
-/* builder */
-.sec-list { display:grid; gap:12px; }
-.sec-card { border:1px solid #e6ecff; border-radius:12px; padding:12px; background:#fff; }
-.sec-head { display:flex; gap:8px; align-items:center; justify-content:space-between; }
-.sec-title { font-weight:800; border:1px solid #cfe0ff; padding:8px; border-radius:10px; min-width:240px; }
-.sec-actions { display:flex; gap:8px; }
-.mini { background:#fff; border:1px solid #cfe0ff; border-radius:10px; padding:6px 10px; cursor:pointer; font-weight:800; font-size:0.82rem; }
-.mini.danger { border-color:#ffd1d1; color:#b42318; }
-
-.lesson-list { display:grid; gap:8px; margin-top:10px; }
-.lesson-row {
-  display:grid;
-  grid-template-columns: 34px 1fr 140px 90px 1.4fr 34px;
-  gap:8px;
-  align-items:flex-start;
-}
-.ls-idx { text-align:right; font-weight:800; color:#0a2d88; margin-top:8px; }
-.ls-title, .ls-type, .ls-dur, .ls-url {
-  border:1px solid #cfe0ff; padding:8px; border-radius:10px; font:inherit;
-}
-
-/* khối resource (checkbox + upload) */
-.ls-resource {
-  display:flex;
-  flex-direction:column;
-  gap:6px;
-}
-
-/* checkbox “show original / AI slides” */
-.lesson-switch-row {
-  display:flex;
-  flex-wrap:wrap;
-  gap:6px 14px;
-  font-size:0.8rem;
-  color:#475569;
-}
-.lesson-switch-label {
-  display:inline-flex;
-  align-items:center;
-  gap:4px;
-  cursor:pointer;
-}
-.lesson-switch-label input {
-  margin:0;
-  accent-color:#0057ff;
-}
-
-/* input URL + nút upload/remove */
-.ls-file-actions {
-  display:flex;
-  flex-wrap:wrap;
-  align-items:center;
-  gap:8px;
-  font-size:0.8rem;
-}
-.ls-uploading {
-  font-size:0.78rem;
-  color:#6b7280;
-}
-
-/* preview trạng thái lesson */
-.lesson-ai-preview {
-  margin-top:2px;
-  border-radius:10px;
-  border:1px dashed #dbe4ff;
-  background:#f8fafc;
-  padding:6px 8px;
-  font-size:0.8rem;
-  color:#334155;
-}
-.lesson-ai-preview-title {
-  font-weight:700;
-  margin-bottom:2px;
-}
-.lesson-ai-preview p {
-  margin:0;
-}
-
-/* actions + toast */
-.actions { display:flex; justify-content:flex-end; gap:8px; margin-top:12px; }
-.primary-btn { background:#0057FF; color:#fff; border:0; padding:10px 16px; border-radius:10px; font-weight:800; cursor:pointer; }
-.ghost-btn { background:#fff; color:#0a2d88; border:1px solid #cfe0ff; padding:10px 16px; border-radius:10px; font-weight:800; cursor:pointer; }
-
-.toast {
-  position:fixed; right:16px; bottom:16px; padding:10px 14px; border-radius:10px; color:#fff; font-weight:800; z-index:9999;
-  box-shadow:0 10px 24px rgba(0,0,0,.2);
-}
-.toast.success { background:#16a34a; }
-.toast.error { background:#dc2626; }
-.toast.info { background:#2563eb; }
-
-.empty { background:#fff; border:1px dashed #cfe0ff; padding:16px; border-radius:12px; }
-
-@media (max-width: 980px){
-  .form-grid { grid-template-columns:1fr; }
-  .lesson-row {
-    grid-template-columns: 26px 1fr;
-    grid-auto-rows:auto;
-  }
-  .ls-title { grid-column:2/3; }
-  .ls-type { grid-column:2/3; }
-  .ls-dur { grid-column:2/3; max-width:140px; }
-  .ls-resource { grid-column:2/3; }
-}
-
-/* Điều chỉnh lưới để đủ chỗ cho quiz time + resource */
-.lesson-row {
-  display: grid;
-  grid-template-columns: 34px 1fr 140px 110px 1.7fr 34px;
-  gap: 8px;
-  align-items: flex-start;
-}
-
-/* Hộp chú ý ở đầu Curriculum */
-.upload-hints {
   margin-bottom: 12px;
   padding: 10px 12px;
   border-radius: 12px;
-  background: #f5f7ff;
-  border: 1px dashed #cfe0ff;
+  background: var(--bg-input);
+  border: 1px dashed var(--border-color);
   font-size: 0.9rem;
-  color: #374151;
+  color: var(--text-secondary);
 }
 .upload-hints-title {
   font-weight: 800;
@@ -190,8 +36,52 @@
 .upload-hints li {
   margin-bottom: 2px;
 }
+.upload-hints strong {
+  font-weight:800;
+}
 
-/* Checkbox hàng dọc */
+/* form */
+.form-grid { display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:12px; }
+.form-row { display:flex; flex-direction:column; gap:6px; }
+.form-row.full { grid-column:1/-1; }
+.form-row > span { font-weight:800; color:var(--text-main); }
+.form-row input, .form-row select, .form-row textarea {
+  border:1px solid var(--border-input); background:var(--bg-input); color:var(--text-main); padding:10px; border-radius:10px; font:inherit;
+}
+
+.cover-uploader { display:flex; gap:8px; align-items:center; }
+.cover-uploader .url-input { flex:1; }
+.cover-preview { margin-top:8px; max-width:100%; border-radius:10px; border:1px solid var(--border-color); }
+
+/* builder */
+.sec-list { display:grid; gap:12px; }
+.sec-card { border:1px solid var(--border-color); border-radius:12px; padding:12px; background:var(--bg-card); }
+.sec-head { display:flex; gap:8px; align-items:center; justify-content:space-between; }
+.sec-title { font-weight:800; border:1px solid var(--border-input); padding:8px; border-radius:10px; min-width:240px; background:var(--bg-input); color:var(--text-main); }
+.sec-actions { display:flex; gap:8px; }
+.mini { background:var(--bg-card); border:1px solid var(--border-color); border-radius:10px; padding:6px 10px; cursor:pointer; font-weight:800; font-size:0.82rem; color:var(--text-main); }
+.mini.danger { border-color:var(--error); color:var(--error); }
+
+.lesson-list { display:grid; gap:8px; margin-top:10px; }
+.lesson-row {
+  display: grid;
+  grid-template-columns: 34px 1fr 140px 110px 1.7fr 34px;
+  gap: 8px;
+  align-items: flex-start;
+}
+.ls-idx { text-align:right; font-weight:800; color:var(--primary-hover); margin-top:8px; }
+.ls-title, .ls-type, .ls-dur, .ls-url {
+  border:1px solid var(--border-input); background:var(--bg-input); color:var(--text-main); padding:8px; border-radius:10px; font:inherit;
+}
+
+/* khối resource (checkbox + upload) */
+.ls-resource {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* checkbox “show original / AI slides” */
 .lesson-switch-row {
   display: flex;
   flex-direction: column;
@@ -203,27 +93,24 @@
   align-items: center;
   gap: 6px;
   font-size: 0.86rem;
-  color: #374151;
+  color: var(--text-secondary);
 }
 .lesson-switch-label input {
-  margin: 0;
+  margin:0;
+  accent-color:var(--primary);
 }
 
-/* Hành động upload + AI */
-.ls-resource {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
+/* input URL + nút upload/remove */
 .ls-file-actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+  font-size:0.8rem;
 }
 .ls-uploading {
   font-size: 0.8rem;
-  color: #6b7280;
+  color: var(--text-secondary);
 }
 
 /* Nút sinh slide + text trạng thái */
@@ -235,30 +122,48 @@
   margin-top: 4px;
 }
 .lesson-ai-actions .mini.primary {
-  border-color: #0057ff;
-  color: #0057ff;
+  border-color: var(--primary);
+  color: var(--primary);
 }
 .lesson-hint {
   font-size: 0.8rem;
-  color: #6b7280;
+  color: var(--text-secondary);
 }
 
-/* Hộp preview chế độ hiển thị */
+/* preview trạng thái lesson */
 .lesson-ai-preview {
   margin-top: 6px;
   padding: 8px 10px;
   border-radius: 10px;
-  background: #f5f7ff;
-  border: 1px dashed #cfe0ff;
+  background: var(--bg-input);
+  border: 1px dashed var(--border-color);
   font-size: 0.86rem;
-  color: #374151;
+  color: var(--text-secondary);
 }
 .lesson-ai-preview-title {
   font-weight: 700;
   margin-bottom: 4px;
 }
+.lesson-ai-preview p { margin:0; }
 
-@media (max-width: 980px) {
+/* actions + toast */
+.actions { display:flex; justify-content:flex-end; gap:8px; margin-top:12px; }
+.primary-btn { background:var(--primary); color:#fff; border:0; padding:10px 16px; border-radius:10px; font-weight:800; cursor:pointer; }
+.ghost-btn { background:var(--bg-card); color:var(--primary); border:1px solid var(--border-color); padding:10px 16px; border-radius:10px; font-weight:800; cursor:pointer; }
+.ghost-btn:hover { border-color:var(--primary); background:var(--bg-hover); }
+
+.toast {
+  position:fixed; right:16px; bottom:16px; padding:10px 14px; border-radius:10px; color:#fff; font-weight:800; z-index:9999;
+  box-shadow:0 10px 24px rgba(0,0,0,.2);
+}
+.toast.success { background:var(--success); }
+.toast.error { background:var(--error); }
+.toast.info { background:var(--primary); }
+
+.empty { background:var(--bg-card); border:1px dashed var(--border-color); padding:16px; border-radius:12px; }
+
+@media (max-width: 980px){
+  .form-grid { grid-template-columns:1fr; }
   .lesson-row {
     grid-template-columns: 26px 1fr 120px 90px 1.4fr 30px;
   }

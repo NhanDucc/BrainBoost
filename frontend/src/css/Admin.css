@@ -1,6 +1,6 @@
 .admin-page.settings-wrap{
   min-height: calc(100vh - 140px);
-  background:#edf2fb;
+  background:var(--bg-main);
   padding:32px 16px;
   display:grid;
   place-items:start center;
@@ -8,10 +8,10 @@
 
 .admin-page .settings-card{
   width:min(1100px,96vw);
-  background:#fff;
+  background:var(--bg-card);
   border-radius:16px;
-  border:2px solid #d4dcf5;
-  box-shadow:0 16px 40px rgba(13,110,253,.12);
+  border:2px solid var(--border-color);
+  box-shadow:0 16px 40px rgba(0,0,0,.05);
   padding:18px 18px 24px;
 }
 
@@ -19,7 +19,7 @@
   margin:0 0 10px;
   font-size:28px;
   font-weight:800;
-  color:#1a1a1a;
+  color:var(--text-main);
 }
 
 .admin-page .ad-tabs{ display:flex; gap:8px; margin:6px 0 12px; flex-wrap:wrap; }
@@ -28,9 +28,9 @@
 .admin-page .settings-card > div:first-of-type{ display:flex; gap:8px; flex-wrap:wrap; }
 .admin-page .settings-card > div:first-of-type > button,
 .admin-page .ad-tabs .ad-tab{
-  background:#e9f0ff;
-  color:#0a2d88;
-  border:1px solid #cfe0ff;
+  background:var(--bg-object);
+  color:var(--primary-hover);
+  border:1px solid var(--border-color);
   border-radius:10px;
   padding:6px 12px;
   font-weight:700;
@@ -40,7 +40,7 @@
 .admin-page .settings-card > div:first-of-type > button.active,
 .admin-page .ad-tabs .ad-tab.active,
 .admin-page .settings-card > div:first-of-type > button:hover{
-  background:#0057ff; color:#fff; border-color:#0057ff;
+  background:var(--primary); color:#fff; border-color:var(--primary);
 }
 .admin-page .settings-card > div:first-of-type > button:active{ transform:translateY(1px); }
 
@@ -51,21 +51,21 @@
   border-spacing:0 8px;
 }
 .admin-page .results-table thead th{
-  background:#e9f0ff;
-  color:#0a2d88;
+  background:var(--bg-object);
+  color:var(--primary-hover);
   text-align:left;
   padding:12px;
   font-weight:800;
 }
 .admin-page .results-table tbody tr{
-  background:#f7faff;
-  border:1px solid #e2eaff;
+  background:var(--bg-card);
+  border:1px solid var(--border-color);
   transition:box-shadow .15s, transform .05s;
 }
 
-.admin-page .results-table td{ padding:12px; color:#1a1a1a; }
+.admin-page .results-table td{ padding:12px; color:var(--text-main); }
 .admin-page .results-table tbody tr td[colspan]{
-  text-align:center; color:#6b7b99; padding:24px 12px; background:transparent; border:none;
+  text-align:center; color:var(--text-secondary); padding:24px 12px; background:transparent; border:none;
 }
 
 .admin-page .results-table td button{
@@ -76,15 +76,15 @@
   font-weight:700;
   cursor:pointer;
   color:#fff;
-  box-shadow:0 8px 16px rgba(13,110,253,.18);
+  box-shadow:0 4px 12px rgba(0,0,0,.15);
   transition:filter .15s, transform .02s;
 }
 .admin-page .results-table td button:active{ transform:translateY(1px); }
 
-.admin-page .results-table td button{ background:#0d6efd; }
+.admin-page .results-table td button{ background:var(--primary); }
 
-.admin-page .results-table td button:first-child{ background:#18a34a; box-shadow:0 8px 16px rgba(24,163,74,.25); }
-.admin-page .results-table td button:last-child { background:#e03131; box-shadow:0 8px 16px rgba(224,49,49,.25); }
+.admin-page .results-table td button:first-child{ background:var(--success); }
+.admin-page .results-table td button:last-child { background:var(--error); }
 .admin-page .results-table td button + button{ margin-left:8px; }
 .admin-page .results-table td button:hover{ filter:brightness(.95); }
 

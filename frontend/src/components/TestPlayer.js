@@ -412,7 +412,7 @@ export default function TestPlayer() {
             {!loading && error && <p>{error}</p>}
             {!loading && !error && !paper && <p>Test not found.</p>}
 
-            {/* ===== RESULTS VIEW ===== */}
+            {/* ===== Results View ===== */}
             {!loading && !error && paper && result && (
             <div className="tp-result-modern">
                 <div className="res-hero">
@@ -451,7 +451,7 @@ export default function TestPlayer() {
                 </div>
 
                 <div className="res-bottom-grid">
-                    {/* LEADERBOARD SECTION */}
+                    {/* Leaderboard Section */}
                     <div className="res-leaderboard">
                         <h3 className="lb-title"><i className="bi bi-trophy-fill text-warning"></i> Top Performers</h3>
                         {leaderboard.length === 0 ? (
@@ -468,10 +468,12 @@ export default function TestPlayer() {
                                 </thead>
                                 <tbody>
                                     {leaderboard.map((lbEntry, idx) => {
-                                        // --- LOGIC ẨN DANH (PRIVACY LOGIC) ---
-                                        // Lấy cờ ẩn danh từ data trả về
+                                        // --- Anonymous Privacy Logic ---
+
+                                        // Check if the user has the anonymous flag enabled in their preferences
                                         const isAnon = lbEntry.isAnonymous || lbEntry.preferences?.isAnonymous;
-                                        // Ghi đè Tên và Avatar nếu đang bật ẩn danh
+
+                                        // Override the displayed name and avatar to protect user privacy if anonymous
                                         const displayName = isAnon ? "Anonymous Student" : lbEntry.user;
                                         const displayAvatar = isAnon ? defaultAvatar : (lbEntry.avatar || defaultAvatar);
 
@@ -501,7 +503,7 @@ export default function TestPlayer() {
                         )}
                     </div>
 
-                    {/* DETAILED ANSWER REVIEW (Hidden by default, toggled via button) */}
+                    {/* Detailed Answer Review (Hidden by default, toggled via button) */}
                     {showReview && (
                         <div className="res-detailed-review">
                             <h3 className="rv-title">Detailed Review</h3>
@@ -607,7 +609,7 @@ export default function TestPlayer() {
             </div>
             )}
 
-            {/* ===== PLAYER VIEW (Displayed while the user is actively taking the test) ===== */}
+            {/* ===== Player View (Displayed while the user is actively taking the test) ===== */}
             {!loading && !error && paper && !result && (
             <>
                 {/* Top Header & Controls */}
@@ -615,15 +617,6 @@ export default function TestPlayer() {
                 <h2 className="tp-title">{paper.title}</h2>
 
                 <div className="tp-controls">
-                    <label className="switch">
-                    <input
-                        type="checkbox"
-                        checked={highlight}
-                        onChange={(e) => setHighlight(e.target.checked)}
-                    />
-                    <span>Highlight content</span>
-                    </label>
-
                     <div className="timer">
                     Time remaining: <strong>{formatSeconds(secondsLeft)}</strong>
                     </div>
@@ -644,16 +637,6 @@ export default function TestPlayer() {
                         <span className="tp-qno">
                         Question {globalIndex + 1} / {total}
                         </span>
-                        {current && (
-                        <button
-                            className={`mark-btn ${
-                            reviewSet.has(current.id) ? "marked" : ""
-                            }`}
-                            onClick={() => toggleReview(current.id)}
-                        >
-                            {reviewSet.has(current.id) ? "★ Marked" : "☆ Mark for review"}
-                        </button>
-                        )}
                     </div>
 
                     {current && (

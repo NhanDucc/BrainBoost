@@ -1,57 +1,56 @@
-.teacher-page { background:#EDF2FB; }
 .teacher-container { width:min(1100px,92vw); margin:24px auto 48px; }
-.pg-title { font-size:clamp(20px,3vw,28px); font-weight:900; margin:0 0 12px; }
+.pg-title { font-size:clamp(20px,3vw,28px); font-weight:900; margin:0 0 12px; color: var(--text-main); }
 
 /* cards */
 .card {
-  background:#fff; border:1px solid #e6ecff; border-radius:12px; padding:16px; margin-bottom:14px;
-  box-shadow:0 8px 20px rgba(2,14,56,.06);
+  background: var(--bg-card); border:1px solid var(--border-color); border-radius:12px; padding:16px; margin-bottom:14px;
+  box-shadow:0 8px 20px rgba(0,0,0,.05);
 }
 
 /* form */
 .form-grid { display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:12px; }
 .form-row { display:flex; flex-direction:column; gap:6px; }
 .form-row.full { grid-column: 1 / -1; }
-.form-row > span { font-weight:800; color:#1a1a1a; }
+.form-row > span { font-weight:800; color: var(--text-main); }
 .form-row input, .form-row select, .form-row textarea {
-  border:1px solid #cfe0ff; background:#fff; padding:10px; border-radius:10px; font:inherit;
+  border:1px solid var(--border-input); background: var(--bg-input); color: var(--text-main); padding:10px; border-radius:10px; font:inherit;
 }
-.readonly { background:#EDF2FB; border:1px dashed #cfe0ff; padding:10px; border-radius:8px; }
+.readonly { background: var(--bg-main); border:1px dashed var(--border-color); padding:10px; border-radius:8px; }
 
 /* tags */
 .chips { display:flex; gap:8px; flex-wrap:wrap; }
-.chip { border:1px solid #cfe0ff; background:#eef4ff; color:#0a2d88; padding:6px 10px; border-radius:999px; font-weight:800; cursor:pointer; }
-.chip.active { background:#0057FF; color:#fff; border-color:#0057FF; }
+.chip { border:1px solid var(--border-color); background: var(--bg-object); color: var(--primary-hover); padding:6px 10px; border-radius:999px; font-weight:800; cursor:pointer; }
+.chip.active { background: var(--primary); color:#fff; border-color: var(--primary); }
 
 /* question builder */
 .q-list { display:grid; gap:12px; }
-.q-card { border:1px solid #e6ecff; border-radius:12px; padding:12px; background:#fff; }
+.q-card { border:1px solid var(--border-color); border-radius:12px; padding:12px; background: var(--bg-card); }
 .q-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
-.q-no { font-weight:900; color:#0a2d88; }
+.q-no { font-weight:900; color: var(--primary-hover); }
 
 .q-row { display:flex; flex-direction:column; gap:6px; margin-top:8px; }
-.q-row > span { font-weight:800; color:#1a1a1a; }
-.q-row textarea { resize:vertical; }
+.q-row > span { font-weight:800; color: var(--text-main); }
+.q-row textarea { resize:vertical; background: var(--bg-input); color: var(--text-main); border: 1px solid var(--border-input); }
 
 .choices { display:grid; gap:8px; margin-top:8px; }
 .choice-row { display:flex; align-items:center; gap:8px; }
-.choice-idx { width:20px; font-weight:900; color:#0a2d88; }
+.choice-idx { width:20px; font-weight:900; color: var(--primary-hover); }
 .choice-row input[type="text"], .choice-row input:not([type="radio"]) {
-  flex:1; border:1px solid #cfe0ff; padding:10px; border-radius:10px;
+  flex:1; border:1px solid var(--border-input); background: var(--bg-input); color: var(--text-main); padding:10px; border-radius:10px;
 }
 
 /* actions */
 .actions { display:flex; justify-content:flex-end; gap:8px; margin-top:12px; }
-.primary-btn { background:#0057FF; color:#fff; border:0; padding:10px 16px; border-radius:10px; font-weight:800; cursor:pointer; }
-.ghost-btn { background:#fff; color:#0a2d88; border:1px solid #cfe0ff; padding:10px 16px; border-radius:10px; font-weight:800; cursor:pointer; }
+.primary-btn { background: var(--primary); color:#fff; border:0; padding:10px 16px; border-radius:10px; font-weight:800; cursor:pointer; }
+.ghost-btn { background: var(--bg-card); color: var(--primary-hover); border:1px solid var(--border-color); padding:10px 16px; border-radius:10px; font-weight:800; cursor:pointer; }
 
 /* editor toast */
 .toast {
   position:fixed; right:16px; bottom:16px; padding:10px 14px; border-radius:10px; color:#fff; font-weight:800; z-index:9999;
   box-shadow:0 10px 24px rgba(0,0,0,.2);
 }
-.toast.success { background:#16a34a; }
-.toast.error { background:#dc2626; }
+.toast.success { background: var(--success); }
+.toast.error { background: var(--error); }
 
 @media (max-width: 980px){
   .form-grid { grid-template-columns: 1fr; }
@@ -60,22 +59,22 @@
 /* ============ NEW: Question type dropdown ============ */
 .qtype-select {
   appearance: none;
-  border: 1px solid #cfe0ff;
-  background: #ffffff;
+  border: 1px solid var(--border-input);
+  background: var(--bg-input);
+  color: var(--primary-hover);
   padding: 8px 12px;
   border-radius: 10px;
   font-weight: 800;
-  color: #0a2d88;
   outline: none;
 }
 .qtype-select:focus {
   box-shadow: 0 0 0 3px rgba(0, 87, 255, 0.15);
-  border-color: #0057FF;
+  border-color: var(--primary);
 }
 
 /* Optional: subtle hover for each question card */
 .q-card:hover {
-  box-shadow: 0 8px 20px rgba(2, 14, 56, .08);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, .05);
   transition: box-shadow .2s ease;
 }
 
@@ -91,9 +90,9 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  border: 1px solid #cfe0ff;
-  background: #eef4ff;
-  color: #0a2d88;
+  border: 1px solid var(--border-color);
+  background: var(--bg-object);
+  color: var(--primary-hover);
   padding: 8px 12px;
   border-radius: 999px;
   font-weight: 800;
@@ -102,23 +101,23 @@
 }
 
 .chip-radio input[type="radio"] {
-  accent-color: #0057FF;
+  accent-color: var(--primary);
   width: 16px;
   height: 16px;
   cursor: pointer;
 }
 
 .chip-radio:has(input[type="radio"]:checked) {
-  background: #0057FF;
+  background: var(--primary);
   color: #fff;
-  border-color: #0057FF;
+  border-color: var(--primary);
 }
 
 /* ============ NEW: Essay model answer area ============ */
 .q-row textarea[rows="3"] {
   /* essay model answer */
-  border: 1px solid #cfe0ff;
-  background: #fff;
+  border: 1px solid var(--border-input);
+  background: var(--bg-input);
   padding: 10px;
   border-radius: 10px;
 }
@@ -138,7 +137,7 @@
 .form-row input:focus,
 .form-row select:focus,
 .form-row textarea:focus {
-  border-color: #0057FF;
+  border-color: var(--primary);
   box-shadow: 0 0 0 3px rgba(0, 87, 255, 0.12);
 }
 

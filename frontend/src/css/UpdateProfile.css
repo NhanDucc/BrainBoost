@@ -1,5 +1,5 @@
 .settings-wrap {
-  background: #edf2fb;
+  background: var(--bg-main);
   min-height: 100vh;
   padding: 24px 0;
 }
@@ -7,14 +7,14 @@
 .settings-card {
   width: min(960px, 92vw);
   margin: 0 auto;
-  background: #fff;
-  border: 1px solid #d7e3ff;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
   border-radius: 12px;
-  box-shadow: 0 10px 24px rgba(20,40,120,.08);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.05);
   padding: 18px;
 }
 
-.settings-card h2 { margin:0 0 12px; }
+.settings-card h2 { margin:0 0 12px; color: var(--text-main); }
 
 .form { display:block; }
 
@@ -32,22 +32,23 @@
   margin-bottom: 12px; 
 }
 
-.form-group label { font-weight: 600; }
+.form-group label { font-weight: 600; color: var(--text-main); }
 
 .form-group input, .form-group textarea {
-  border: 1px solid #cfdaf7; 
+  border: 1px solid var(--border-input); 
   border-radius: 8px; 
   padding: 10px; 
   outline: none;
-  background: #fafcff;
+  background: var(--bg-input);
+  color: var(--text-main);
 }
 
 .form-group input:focus, .form-group textarea:focus {
-  border-color: #0057ff; 
-  box-shadow: 0 0 0 3px rgba(0,87,255,.12);
+  border-color: var(--primary); 
+  box-shadow: 0 0 0 3px rgba(0, 87, 255, 0.12);
 }
 
-.form-group small { color: #6c757d; }
+.form-group small { color: var(--text-secondary); }
 
 @media (max-width: 640px){
   .form-row { flex-direction: column; }
@@ -59,6 +60,6 @@
   border-radius: 8px;
   font-weight: 600;
 }
-.alert.info    { background: #eef5ff; color: #0a2d88; border: 1px solid #cfe0ff; }
-.alert.success { background: #e8f7ed; color: #51CF66; border: 1px solid #bfe9cd; }
-.alert.error   { background: #fdecea; color: #FA5252; border: 1px solid #f5c2c7; }
+.alert.info    { background: var(--bg-object); color: var(--primary-hover); border: 1px solid var(--primary); }
+.alert.success { background: var(--bg-object); color: var(--success); border: 1px solid var(--success); }
+.alert.error   { background: var(--bg-object); color: var(--error); border: 1px solid var(--error); }

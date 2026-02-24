@@ -3,11 +3,11 @@
   justify-content: center;
   align-items: center;
   height: 100vh;
-  background: #EDF2FB;
+  background: var(--bg-main);
 }
 
 .register-box {
-  background: white;
+  background: var(--bg-card);
   padding: 40px;
   border-radius: 10px;
   width: 400px;
@@ -18,12 +18,13 @@
   text-align: center;
   margin-bottom: 30px;
   font-size: 30px;
-  color: #005aff;
+  color: var(--primary);
 }
 
 .register-box label {
   display: block;
   margin: 10px 0 5px;
+  color: var(--text-main);
 }
 
 .register-box input[type="text"],
@@ -31,7 +32,9 @@
 .register-box input[type="password"] {
   width: 100%;
   padding: 12px;
-  border: 1px solid #ccc;
+  border: 1px solid var(--border-input);
+  background: var(--bg-input);
+  color: var(--text-main);
   border-radius: 6px;
   box-sizing: border-box;
 }
@@ -39,7 +42,7 @@
 .register-btn {
   width: 100%;
   padding: 12px;
-  background: #005aff;
+  background: var(--primary);
   color: white;
   font-weight: bold;
   font-size: 16px;
@@ -51,7 +54,7 @@
 }
 
 .register-btn:hover {
-  background: #003d99;
+  background: var(--primary-hover);
 }
 
 .bottom-links {
@@ -61,7 +64,7 @@
 }
 
 .bottom-links a {
-  color: #005aff;
+  color: var(--primary);
   text-decoration: none;
   font-weight: 500;
 }
@@ -73,5 +76,5 @@
   font-weight: 600;
 }
 
-.alert.success { background: #e8f7ed; color: #51CF66; border: 1px solid #bfe9cd; }
-.alert.error   { background: #fdecea; color: #FA5252; border: 1px solid #f5c2c7; }
+.alert.success { background: var(--bg-object); color: var(--success); border: 1px solid var(--success); }
+.alert.error   { background: var(--bg-object); color: var(--error); border: 1px solid var(--error); }

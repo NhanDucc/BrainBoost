@@ -4,6 +4,7 @@ const TestResult = require('../models/TestResult');
 const LessonProgress = require('../models/LessonProgress');
 
 // ==== Helper function ====
+
 // Formats a date object to a standard YYYY-MM-DD string adjusted to the local timezone to prevent UTC date shifting errors
 const toISODate = (date) => {
     const d = new Date(date);
@@ -204,9 +205,9 @@ exports.updateBanner = async (req, res) => {
         if (!req.fileUrl) return res.status(400).json({ message: 'No file uploaded' });
 
         const user = await User.findByIdAndUpdate(
-        req.userId,
-        { $set: { bannerUrl: req.fileUrl } },
-        { new: true }
+            req.userId,
+            { $set: { bannerUrl: req.fileUrl } },
+            { new: true }
         ).select('-password');
 
         res.json({ message: 'Banner updated', bannerUrl: user.bannerUrl, updatedAt: user.updatedAt });
@@ -215,22 +216,31 @@ exports.updateBanner = async (req, res) => {
     }
 };
 
-// Cập nhật các thiết lập hệ thống (Settings) của User
+/**
+ * Updates the user's system settings and preferences (e.g., Theme, Privacy, Notifications).
+ * Merges the incoming preferences from the request body with the existing ones.
+ * * PUT /api/users/me/preferences
+ */
 exports.updatePreferences = async (req, res) => {
     try {
-        const { isAnonymous } = req.body;
-        const User = require('../models/User');
-
         const user = await User.findById(req.userId);
         if (!user) return res.status(404).json({ message: 'User not found' });
 
-        // Cập nhật preference
+        // Initialize the preferences object if it doesn't exist yet
         if (!user.preferences) user.preferences = {};
-        user.preferences.isAnonymous = isAnonymous;
+        
+        /** 
+        * Merge ALL settings sent from the Frontend (including theme, isAnonymous, notifications, etc.)
+        * This spread operator approach prevents overwriting unmentioned properties.
+        */
+        user.preferences = { 
+            ...user.preferences, 
+            ...req.body 
+        };
 
         await user.save();
         
-        // Trả về user đã cập nhật (ẩn mật khẩu)
+        // Return the updated user object (excluding the password) to sync the frontend Context
         const updatedUser = await User.findById(req.userId).select('-password');
         res.json(updatedUser);
     } catch (error) {

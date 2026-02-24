@@ -1,5 +1,5 @@
 /* ===== Page wrapper ===== */
-.profile-page { background: #EDF2FB; }
+.profile-page { background: var(--bg-main); }
 
 .profile-container{
   width: min(1200px, 92vw);
@@ -13,7 +13,7 @@
   border-radius: 16px;
   overflow: hidden;
   height: clamp(140px, 26vw, 260px);
-  background: linear-gradient(135deg,#8bb4ff 0%,#d3e0ff 100%);
+  background: var(--bg-object);
 }
 
 .cover-fake-image{
@@ -51,8 +51,8 @@
   height: 100%;
   object-fit: cover;
   border-radius: 50%;
-  border: 6px solid #fff;
-  box-shadow: 0 10px 28px rgba(10,45,136,.22);
+  border: 6px solid var(--bg-card);
+  box-shadow: 0 10px 28px rgba(0,0,0,.15);
 }
 
 .information-edit-btn{
@@ -62,32 +62,33 @@
   width: 36px; height: 36px;
   border: none; border-radius: 50%;
   display: grid; place-items: center;
-  background: #0057FF; color: #fff; cursor: pointer;
-  box-shadow: 0 8px 18px rgba(10,45,136,.35);
+  background: var(--primary); color: #fff; cursor: pointer;
+  box-shadow: 0 8px 18px rgba(0,0,0,.2);
   transition: transform .15s ease, background .15s ease;
 }
-.information-edit-btn:hover{ background:#0A2D88; transform: translateY(-1px); }
+.information-edit-btn:hover{ background:var(--primary-hover); transform: translateY(-1px); }
 
 .profile-name{
   font-size: clamp(18px, 2.4vw, 24px);
   font-weight: 800;
+  color: var(--text-main);
   letter-spacing: .2px;
   text-align: center;
   margin-top: 20px;
 }
 
-.profile-error{ margin-top:10px; color:#d93025; font-weight:600; }
+.profile-error{ margin-top:10px; color:var(--error); font-weight:600; }
 
 .profile-role-chip{
   margin-top: 4px;
-  background: #e9f0ff;
-  color: #0A2D88;
+  background: var(--bg-object);
+  color: var(--primary);
   display: inline-block;
   padding: 4px 10px;
   border-radius: 999px;
   font-weight: 600;
   font-size: 15px;
-  border: 1px solid #cfe0ff;
+  border: 1px solid var(--border-color);
 }
 
 /* Placeholder cards for admin/instructor */
@@ -97,16 +98,16 @@
   gap: 12px;
 }
 .role-card{
-  background: #fff;
+  background: var(--bg-card);
   border-radius: 12px;
-  border: 2px solid #0A2D88;
+  border: 2px solid var(--primary);
   padding: 16px;
 }
 .role-card h3, .role-card h4{
   margin: 0 0 8px;
-  color: #0A2D88;
+  color: var(--primary);
 }
-.role-muted{ color:#1A1A1A; }
+.role-muted{ color:var(--text-secondary); }
 .role-list{ margin: 6px 0 0 18px; }
 
 /* --- Student dashboard layout --- */
@@ -115,41 +116,41 @@
 }
 .col-left, .col-right{ display:grid; gap:16px; align-content:start; }
 .dash-card{
-  background:#fff; border:1px solid #e5eaf6; border-radius:12px; padding:14px;
-  box-shadow:0 8px 24px rgba(13,110,253,.08);
+  background:var(--bg-card); border:1px solid var(--border-color); border-radius:12px; padding:14px;
+  box-shadow:0 8px 24px rgba(0,0,0,.05);
 }
 .card-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
-.title{ font-size: 25px;font-weight:800; color:#0057FF; }
+.title{ font-size: 25px;font-weight:800; color:var(--primary); }
 
 .table-wrap{ overflow-x:auto; }
 .wk-table{ width:100%; border-collapse:collapse; font-size:14px; }
-.wk-table th, .wk-table td{ border:1px solid #0A2D88; padding:8px 10px; text-align:center; }
-.wk-table thead th{ background:#EDF2FB; color:#0A2D88; font-size: 16px; }
-.wk-table tfoot td{ font-size: 15px;font-weight:800; background:#D9E5FD; }
+.wk-table th, .wk-table td{ border:1px solid var(--border-color); padding:8px 10px; text-align:center; color: var(--text-main); }
+.wk-table thead th{ background:var(--bg-object); color:var(--primary); font-size: 16px; }
+.wk-table tfoot td{ font-size: 15px;font-weight:800; background:var(--bg-input); }
 
 .calendar-bar{ display:flex; align-items:center; justify-content:space-between; margin:6px 0 8px; }
-.calendar-bar .nav{ border:0; background:#EDF2FB; width:30px; height:30px; border-radius:8px; cursor:pointer; }
-.month-title{ font-size: 20px ;font-weight:800; color:#0A2D88; }
+.calendar-bar .nav{ border:0; background:var(--bg-input); color: var(--text-main); width:30px; height:30px; border-radius:8px; cursor:pointer; }
+.month-title{ font-size: 20px ;font-weight:800; color:var(--primary); }
 .calendar-grid{
   display:grid; grid-template-columns: repeat(7,1fr); gap:6px;
 }
-.dow{ text-align:center; font-size:15px; font-weight:700; color:#1A1A1A; }
+.dow{ text-align:center; font-size:15px; font-weight:700; color:var(--text-secondary); }
 .cal-cell{
-  position:relative; min-height:44px; background:#EDF2FB; border:1px solid #0A2D88; border-radius:8px; padding:6px;
+  position:relative; min-height:44px; background:var(--bg-input); border:1px solid var(--border-color); border-radius:8px; padding:6px;
 }
 .cal-cell.dim{ opacity:.45; }
-.num{ font-weight:700; color:#0A2D88; }
-.num.today{ background:#0057FF; color:#fff; border-radius:6px; padding:2px 6px; }
+.num{ font-weight:700; color:var(--text-main); }
+.num.today{ background:var(--primary); color:#fff; border-radius:6px; padding:2px 6px; }
 .dot{ width:8px; height:8px; border-radius:50%; display:inline-block; }
-.dot.green{ background:#51CF66; }
-.hint{ color:#1A1A1A; font-size:12px; display:flex; gap:6px; align-items:center; }
+.dot.green{ background:var(--success); }
+.hint{ color:var(--text-secondary); font-size:12px; display:flex; gap:6px; align-items:center; }
 
 .tabs{ display:flex; gap:10px; margin:6px 0 10px; }
-.tab{ border:1px solid #dfe6fb; background:#EDF2FB; border-radius:999px; padding:6px 12px; cursor:pointer; font-weight:700; }
-.tab.active{ background:#0057FF; border-color:#0057FF; color:#fff; }
-.empty{ text-align:center; color:#1A1A1A; padding:26px 10px; }
+.tab{ border:1px solid var(--border-color); background:var(--bg-object); color: var(--primary); border-radius:999px; padding:6px 12px; cursor:pointer; font-weight:700; }
+.tab.active{ background:var(--primary); border-color:var(--primary); color:#fff; }
+.empty{ text-align:center; color:var(--text-secondary); background: var(--bg-input); border: 1px dashed var(--border-color); border-radius: 12px; padding:26px 10px; }
 .empty img{ opacity:.7; margin-bottom:10px; }
-.cta-ghost{ border:1px solid #0057FF; color:#0057FF; background:#fff; padding:8px 14px; border-radius:10px; font-weight:800; cursor:pointer; }
+.cta-ghost{ border:1px solid var(--primary); color:var(--primary); background:var(--bg-card); padding:8px 14px; border-radius:10px; font-weight:800; cursor:pointer; }
 .mt{ margin-top:16px; }
 
 @media (max-width: 980px){
@@ -162,20 +163,20 @@
   justify-content: center;
   align-items: center;
   padding: 12px;
-  background-color: #EDF2FB;
+  background-color: var(--bg-input);
   border-radius: 5px;
   cursor: pointer;
   position: relative;
 }
 
 .cal-cell.today {
-  background-color: #0057FF; /* Blue background for today */
+  background-color: var(--primary); 
   color: white;
   font-weight: 600;
 }
 
 .cal-cell.submitted {
-  background-color: #51CF66; /* Green background for submitted days */
+  background-color: var(--success);
   color: white;
   font-weight: 600;
 }
@@ -183,7 +184,7 @@
 .num {
   font-weight: 700;
   font-size: 18px;
-  color: #0A2D88; /* Default color for numbers */
+  color: var(--text-main); 
 }
 
 .num.today {
@@ -196,16 +197,16 @@
 }
 
 .cal-cell:hover {
-  background-color: #D9E5FD;
+  background-color: var(--bg-hover);
 }
 
 .cal-cell.today:hover {
-  background-color: #0A2D88;
+  background-color: var(--primary-hover);
   box-shadow: none;
 }
 
 .go-today {
-  background: #0057FF;
+  background: var(--primary);
   color: white;
   padding: 8px 16px;
   border-radius: 12px;
@@ -217,30 +218,29 @@
 }
 
 .go-today:hover {
-  background: #0A2D88;
+  background: var(--primary-hover);
 }
 
 /* quick actions */
 .qa-row { display:flex; gap:10px; flex-wrap:wrap; margin-top:8px; }
-.primary-btn { background:#0057FF; color:#fff; border:0; padding:10px 16px; border-radius:10px; font-weight:800; cursor:pointer; }
-.ghost-btn { background:#fff; color:#0a2d88; border:1px solid #cfe0ff; padding:10px 16px; border-radius:10px; font-weight:800; cursor:pointer; }
-.link-btn { background:transparent; border:0; color:#0a2d88; font-weight:800; cursor:pointer; }
+.primary-btn { background:var(--primary); color:#fff; border:0; padding:10px 16px; border-radius:10px; font-weight:800; cursor:pointer; }
+.ghost-btn { background:var(--bg-card); color:var(--primary); border:1px solid var(--border-color); padding:10px 16px; border-radius:10px; font-weight:800; cursor:pointer; }
+.link-btn { background:transparent; border:0; color:var(--primary); font-weight:800; cursor:pointer; }
 
 /* overview stats */
 .role-cards-3 { display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap:12px; margin:12px 0; }
-.stat-card { background:#fff; border:1px solid #e6ecff; border-radius:12px; padding:16px; text-align:center; box-shadow:0 8px 20px rgba(2,14,56,.06); }
-.stat-kpi { font-size:28px; font-weight:900; color:#0a2d88; line-height:1; }
-.stat-label { color:#6b7b99; margin-top:4px; }
+.stat-card { background:var(--bg-card); border:1px solid var(--border-color); border-radius:12px; padding:16px; text-align:center; box-shadow:0 8px 20px rgba(0,0,0,.05); }
+.stat-kpi { font-size:28px; font-weight:900; color:var(--primary); line-height:1; }
+.stat-label { color:var(--text-secondary); margin-top:4px; }
 
 /* recent list */
 .role-card-head { display:flex; justify-content:space-between; align-items:center; }
 .recent-list { display:grid; gap:10px; margin-top:10px; }
 .recent-item { display:flex; justify-content:space-between; gap:12px; align-items:center;
-  background:#fff; border:1px solid #e6ecff; border-radius:10px; padding:10px 12px; }
-.r-title { font-weight:800; }
+  background:var(--bg-card); border:1px solid var(--border-color); border-radius:10px; padding:10px 12px; }
+.r-title { font-weight:800; color: var(--text-main); }
 .r-sub { display:flex; gap:6px; margin-top:2px; flex-wrap:wrap; }
-.chip { background:#eef4ff; color:#0a2d88; border:1px solid #cfe0ff; padding:2px 8px; border-radius:999px; font-weight:800; font-size:12px; }
-.empty { padding:18px; background:#f6f8fc; border:1px dashed #cfe0ff; border-radius:12px; text-align:center; }
+.chip { background:var(--bg-object); color:var(--primary); border:1px solid var(--border-color); padding:2px 8px; border-radius:999px; font-weight:800; font-size:12px; }
 
 @media (max-width: 980px){
   .role-cards-3 { grid-template-columns: 1fr; }

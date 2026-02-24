@@ -36,3 +36,41 @@
     transform: rotate(360deg);
   }
 }
+
+/* ==== Global Theme Variables ==== */
+
+/* Light Mode */
+:root, [data-theme="light"] {
+  --bg-main: #EDF2FB;
+  --bg-card: #FFFFFF;
+  --bg-object: #D9E5FD;
+  --primary: #0051FF;
+  --primary-hover: #0A2D88;
+  --text-main: #1A1A1A;
+  --text-secondary: #6C757D;
+  --border-color: #e7ecf8;
+  --border-input: #cbd5e1;
+  --bg-input: #f8fafc;
+  --success: #51CF66;
+  --error: #FA5252;
+  --bg-hover: #f8fafc; 
+  --bg-active: #eef2ff;
+}
+
+/* Dark Mode */
+[data-theme="dark"] {
+  --bg-main: #0B1121;
+  --bg-card: #151E32;
+  --bg-object: #1E293B;
+  --primary: #3374FF;
+  --primary-hover: #5C93FF;
+  --text-main: #F8FAFC;
+  --text-secondary: #94A3B8;
+  --border-color: #1E293B;
+  --border-input: #334155;
+  --bg-input: #0F172A;
+  --success: #4ADE80;
+  --error: #F87171;
+  --bg-hover: #1E293B; 
+  --bg-active: #172b4d;
+}

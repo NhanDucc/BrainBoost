@@ -1,6 +1,6 @@
 /* ===== Trang Learn – nền chung ===== */
 .learning-page {
-  background: #edf2fb;
+  background: var(--bg-main);
   min-height: 100vh;
   display: flex;
   flex-direction: column;
@@ -26,9 +26,9 @@
 
 /* ===== Sidebar lessons ===== */
 .learning-sidebar {
-  background: #ffffff;
+  background: var(--bg-card);
   border-radius: 18px;
-  box-shadow: 0 4px 10px rgba(10, 45, 136, 0.06);
+  box-shadow: 0 4px 10px rgba(0,0,0,.05);
   padding: 1.25rem 1rem;
   display: flex;
   flex-direction: column;
@@ -38,10 +38,11 @@
   font-size: 1rem;
   font-weight: 600;
   margin-bottom: 0.5rem;
+  color: var(--text-main);
 }
 
 .learning-sidebar .course-sub {
-  color: #6c757d;
+  color: var(--text-secondary);
   font-size: 0.82rem;
   margin-bottom: 0.75rem;
 }
@@ -63,8 +64,8 @@
   border: none;
   outline: none;
   padding: 0.45rem 0.6rem;
-  background: #e9f0ff;
-  color: #1a1a1a;
+  background: var(--bg-object);
+  color: var(--text-main);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -73,7 +74,7 @@
 }
 
 .section-header.active {
-  background: #0051ff;
+  background: var(--primary);
   color: #ffffff;
 }
 
@@ -93,20 +94,20 @@
   font-size: 0.82rem;
   border-radius: 6px;
   cursor: pointer;
-  background: #f3f6ff;
-  color: #1a1a1a;
+  background: var(--bg-input);
+  color: var(--text-main);
 }
 
 .lesson-item.lesson-active {
-  background: #d9e5fd;
-  color: #0051ff;
+  background: var(--bg-hover);
+  color: var(--primary);
 }
 
 /* ===== Main panel ===== */
 .learning-main {
-  background: #ffffff;
+  background: var(--bg-card);
   border-radius: 18px;
-  box-shadow: 0 4px 12px rgba(10, 45, 136, 0.06);
+  box-shadow: 0 4px 12px rgba(0,0,0,.05);
   padding: 1.25rem 1.75rem 1.75rem;
   display: flex;
   flex-direction: column;
@@ -120,12 +121,12 @@
   align-items: center;
   gap: 6px;
   font-size: 0.85rem;
-  color: #6b7280;
+  color: var(--text-secondary);
   margin-bottom: 0.75rem;
 }
 
 .breadcrumb a {
-  color: #2563eb;
+  color: var(--primary);
   text-decoration: none;
 }
 
@@ -144,20 +145,20 @@
 
 .viewer-mode-tab {
   border-radius: 999px;
-  border: 1px solid #d0d7ff;
-  background: #f8fafc;
+  border: 1px solid var(--border-color);
+  background: var(--bg-input);
   padding: 0.35rem 0.9rem;
   font-size: 0.82rem;
   font-weight: 600;
-  color: #475569;
+  color: var(--text-secondary);
   cursor: pointer;
 }
 
 .viewer-mode-tab.active {
-  background: #0051ff;
-  border-color: #0051ff;
+  background: var(--primary);
+  border-color: var(--primary);
   color: #ffffff;
-  box-shadow: 0 4px 10px rgba(0, 81, 255, 0.25);
+  box-shadow: 0 4px 10px rgba(0,0,0,.15);
 }
 
 .viewer-mode-tab:disabled {
@@ -172,8 +173,8 @@
   min-height: 420px;
   max-height: 720px;
   border-radius: 12px;
-  border: 1px dashed #d9e2ff;
-  background: #f5f7ff;
+  border: 1px dashed var(--border-color);
+  background: var(--bg-object);
   overflow: hidden;
   box-sizing: border-box;
 }
@@ -186,17 +187,17 @@
   max-height: 720px;
   border-radius: 12px;
   border: none;
-  background: #f5f7ff;
+  background: var(--bg-object);
   box-sizing: border-box;
 }
 
 /* khi không có tài liệu */
 .doc-empty {
-  border: 1px dashed #d9e2ff;
+  border: 1px dashed var(--border-color);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #6c757d;
+  color: var(--text-secondary);
   font-size: 0.9rem;
   text-align: center;
   padding: 1rem;
@@ -218,28 +219,15 @@
   flex: 1;
   padding: 1.2rem 1.5rem 1.4rem;
   border-radius: 18px;
-  border: 1px solid #d0d7ff;
+  border: 1px solid var(--border-color);
   background: radial-gradient(
     circle at top left,
-    #eef3ff 0%,
-    #ffffff 55%,
-    #f6f8ff 100%
+    var(--bg-object) 0%,
+    var(--bg-card) 55%,
+    var(--bg-input) 100%
   );
-  box-shadow: 0 12px 30px rgba(10, 45, 136, 0.12);
+  box-shadow: 0 12px 30px rgba(0,0,0,.05);
   overflow: hidden;
-}
-
-/* Layer decor nhẹ phía sau */
-.ai-slide::before {
-  content: "";
-  position: absolute;
-  right: -40px;
-  top: -40px;
-  width: 180px;
-  height: 180px;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(0, 81, 255, 0.12), transparent 70%);
-  pointer-events: none;
 }
 
 /* Header: chip + title */
@@ -256,9 +244,9 @@
   font-weight: 600;
   padding: 0.25rem 0.7rem;
   border-radius: 999px;
-  background: #e2ebff;
-  color: #0051ff;
-  border: 1px solid #c3d4ff;
+  background: var(--bg-object);
+  color: var(--primary);
+  border: 1px solid var(--border-color);
   white-space: nowrap;
 }
 
@@ -266,7 +254,7 @@
   margin: 0;
   font-size: 1.1rem;
   font-weight: 700;
-  color: #0a2d88;
+  color: var(--primary-hover);
 }
 
 /* Bullets */
@@ -282,7 +270,7 @@
   margin-bottom: 0.35rem;
   font-size: 0.95rem;
   line-height: 1.4;
-  color: #1f2937;
+  color: var(--text-main);
 }
 
 .ai-slide-list li::before {
@@ -293,8 +281,8 @@
   width: 8px;
   height: 8px;
   border-radius: 999px;
-  background: #0051ff;
-  box-shadow: 0 0 0 3px rgba(0, 81, 255, 0.18);
+  background: var(--primary);
+  box-shadow: 0 0 0 3px rgba(0,0,0,.05);
 }
 
 /* Trường hợp dùng ttsText thay bullet */
@@ -302,7 +290,7 @@
   margin-top: 0.3rem;
   font-size: 0.95rem;
   line-height: 1.5;
-  color: #1f2937;
+  color: var(--text-main);
 }
 
 /* Footer điều hướng slide */
@@ -316,7 +304,7 @@
 .ai-slide-index {
   font-size: 0.9rem;
   font-weight: 600;
-  color: #4b5563;
+  color: var(--text-secondary);
 }
 
 .ai-slide-nav {
@@ -329,9 +317,9 @@
   margin-top: 0.4rem;
   padding: 0.5rem 1rem;
   border-radius: 999px;
-  background: #f1f4ff;
+  background: var(--bg-input);
   font-size: 0.84rem;
-  color: #6c757d;
+  color: var(--text-secondary);
 }
 
 .controls-row {
@@ -354,28 +342,28 @@
 }
 
 .learning-page .btn-primary {
-  background: #0051ff;
+  background: var(--primary);
   color: #ffffff;
-  box-shadow: 0 4px 10px rgba(0, 81, 255, 0.25);
+  box-shadow: 0 4px 10px rgba(0,0,0,.1);
 }
 
 .learning-page .btn-primary:hover {
-  background: #0a2d88;
+  background: var(--primary-hover);
 }
 
 .learning-page .btn-outline {
-  background: #ffffff;
-  color: #0051ff;
-  border: 1px solid #0051ff;
+  background: var(--bg-card);
+  color: var(--primary);
+  border: 1px solid var(--primary);
 }
 
 .learning-page .btn-outline:hover {
-  background: #d9e5fd;
+  background: var(--bg-hover);
 }
 
 .learning-page .btn-secondary {
-  background: #d9e5fd;
-  color: #0051ff;
+  background: var(--bg-object);
+  color: var(--primary);
 }
 
 .controls-row .btn-primary,
@@ -398,9 +386,9 @@
 .ai-modal {
   width: min(480px, 100% - 2.5rem);
   max-height: 80vh;
-  background: #ffffff;
+  background: var(--bg-card);
   border-radius: 18px;
-  box-shadow: 0 16px 40px rgba(10, 45, 136, 0.35);
+  box-shadow: 0 16px 40px rgba(0,0,0,.25);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -412,15 +400,15 @@
   align-items: center;
   justify-content: space-between;
   padding: 0.8rem 1rem;
-  border-bottom: 1px solid #edf2fb;
-  background: #f5f7ff;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-input);
 }
 
 .ai-modal-header h3 {
   margin: 0;
   font-size: 1rem;
   font-weight: 600;
-  color: #1a1a1a;
+  color: var(--text-main);
 }
 
 .ai-close-btn {
@@ -428,12 +416,12 @@
   background: transparent;
   font-size: 1.1rem;
   cursor: pointer;
-  color: #6c757d;
+  color: var(--text-secondary);
 }
 
 .ai-modal-body {
   padding: 0.75rem 1rem;
-  background: #f5f7ff;
+  background: var(--bg-input);
   flex: 1 1 auto;
   overflow-y: auto;
 }
@@ -460,13 +448,13 @@
 }
 
 .ai-msg-ai .ai-msg-bubble {
-  background: #ffffff;
-  color: #1a1a1a;
-  border: 1px solid #e0e6ff;
+  background: var(--bg-card);
+  color: var(--text-main);
+  border: 1px solid var(--border-color);
 }
 
 .ai-msg-user .ai-msg-bubble {
-  background: #0051ff;
+  background: var(--primary);
   color: #ffffff;
 }
 
@@ -475,22 +463,24 @@
   align-items: center;
   gap: 0.5rem;
   padding: 0.6rem 1rem 0.8rem;
-  border-top: 1px solid #edf2fb;
-  background: #ffffff;
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-card);
 }
 
 .ai-input-row input {
   flex: 1;
   border-radius: 999px;
-  border: 1px solid #d0d7ff;
+  border: 1px solid var(--border-input);
+  background: var(--bg-input);
+  color: var(--text-main);
   padding: 0.5rem 0.85rem;
   font-size: 0.9rem;
   outline: none;
 }
 
 .ai-input-row input:focus {
-  border-color: #0051ff;
-  box-shadow: 0 0 0 2px rgba(0, 81, 255, 0.15);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(0,0,0,.05);
 }
 
 .ai-input-row .btn-primary {

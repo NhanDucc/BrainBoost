@@ -95,10 +95,12 @@ const userSchema = new mongoose.Schema({
     // ==== System Settings & Preferences ====
 
     preferences: {
-        isAnonymous: { 
-            type: Boolean, 
-            default: false,
-        },
+        isAnonymous: { type: Boolean, default: false },
+        theme: { type: String, enum: ['light', 'dark'], default: 'light' },
+        language: { type: String, default: 'en' },
+        notifyEmail: { type: Boolean, default: true },
+        notifyAIGrading: { type: Boolean, default: true },
+        notifyLeaderboard: { type: Boolean, default: false }
     },
 },
 

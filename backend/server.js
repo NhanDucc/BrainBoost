@@ -17,46 +17,45 @@ const courseRoutes = require('./routes/courseRoutes');
 const ttsRoutes = require("./routes/ttsRoutes");
 const aiSlidesRoutes = require("./routes/aiSlidesRoutes");
 const lessonChatRoutes = require("./routes/lessonChatRoutes");
+const learningRoutes = require('./routes/learningRoutes');
 
 const app = express();
 
+// ==== CORS Configuration ====
+
+// Configures Cross-Origin Resource Sharing to allow requests from the React frontend
 const corsOptions = {
     origin: 'http://localhost:3000',
-    credentials: true,
+    credentials: true,  // Crucial for allowing cookies (JWT) to be sent across origins
     methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
     allowedHeaders: ['Content-Type', 'X-Requested-With', 'Authorization']
 };
-
 app.use(cors(corsOptions));
 
-app.use(cookiesParser());
+// ==== Global Middleware ====
 
-app.use(express.json());
+app.use(cookiesParser());   // Parses cookies attached to the client request object
+app.use(express.json());    // Parses incoming JSON payloads
 
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));   // Serve static files from uploads directory
+// Serve static files from the 'uploads' directory (e.g., user avatars, course images)
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-app.use('/api/auth', authRoutes);   // Auth routes
+// ==== API Routes Mounting ====
 
-app.use('/api/users', userRoutes);  // User profile routes
+app.use('/api/auth', authRoutes);                           // Authentication (login, register, logout)
+app.use('/api/users', userRoutes);                          // User profiles and basic info
+app.use('/api/contact', contactRoutes);                     // Contact form submissions
+app.use('/api/admin', adminRoutes);                         // Admin dashboard and management
+app.use('/api/instructors', instructorRoutes);              // Instructor-specific actions
+app.use('/api/admin/instructors', adminInstructorRouters);  // Admin control over instructors
+app.use("/api/tests", testRoutes);                          // Exam and test management
+app.use('/api/courses', courseRoutes);                      // Course content and curriculum
+app.use("/api/tts", ttsRoutes);                             // Text-to-Speech integrations
+app.use("/api/ai-slides", aiSlidesRoutes);                  // AI-generated presentation slides
+app.use("/api/lesson-chat", lessonChatRoutes);              // AI Tutor chat within lessons
+app.use('/api/learning', learningRoutes);                   // User learning data (Bookmarks, Mistakes, AI Paths)
 
-app.use('/api/contact', contactRoutes);
-
-app.use('/api/admin', adminRoutes);
-
-app.use('/api/instructors', instructorRoutes);
-
-app.use('/api/admin/instructors', adminInstructorRouters);
-
-app.use("/api/tests", testRoutes);
-
-app.use('/api/courses', courseRoutes);
-
-app.use("/api/tts", ttsRoutes);
-
-app.use("/api/ai-slides", aiSlidesRoutes);
-
-app.use("/api/lesson-chat", lessonChatRoutes);
-
+// ==== Database Connection & Server Start ====
 mongoose.connect('mongodb://localhost:27017/learning_platform', {
     useNewUrlParser: true,
     useUnifiedTopology: true,

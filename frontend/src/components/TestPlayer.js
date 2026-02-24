@@ -467,26 +467,35 @@ export default function TestPlayer() {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {leaderboard.map((user, idx) => (
-                                        <tr key={idx} className={idx < 3 ? `top-${idx+1}` : ''}>
-                                            <td className="lb-rank">
-                                                {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `#${idx + 1}`}
-                                            </td>
-                                            <td className="lb-user">
-                                                <img 
-                                                    src={user.avatar || defaultAvatar} 
-                                                    alt={`${user.user}'s avatar`} 
-                                                    onError={(e) => {
-                                                        e.target.onerror = null; 
-                                                        e.target.src = defaultAvatar;
-                                                    }}
-                                                />
-                                                <span>{user.user}</span>
-                                            </td>
-                                            <td className="lb-score">{user.score}/{user.maxScore}</td>
-                                            <td className="lb-time">{user.timeSpent}m</td>
-                                        </tr>
-                                    ))}
+                                    {leaderboard.map((lbEntry, idx) => {
+                                        // --- LOGIC ẨN DANH (PRIVACY LOGIC) ---
+                                        // Lấy cờ ẩn danh từ data trả về
+                                        const isAnon = lbEntry.isAnonymous || lbEntry.preferences?.isAnonymous;
+                                        // Ghi đè Tên và Avatar nếu đang bật ẩn danh
+                                        const displayName = isAnon ? "Anonymous Student" : lbEntry.user;
+                                        const displayAvatar = isAnon ? defaultAvatar : (lbEntry.avatar || defaultAvatar);
+
+                                        return (
+                                            <tr key={idx} className={idx < 3 ? `top-${idx+1}` : ''}>
+                                                <td className="lb-rank">
+                                                    {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `#${idx + 1}`}
+                                                </td>
+                                                <td className="lb-user">
+                                                    <img 
+                                                        src={displayAvatar} 
+                                                        alt={`${displayName}'s avatar`} 
+                                                        onError={(e) => {
+                                                            e.target.onerror = null; 
+                                                            e.target.src = defaultAvatar;
+                                                        }}
+                                                    />
+                                                    <span>{displayName}</span>
+                                                </td>
+                                                <td className="lb-score">{lbEntry.score}/{lbEntry.maxScore}</td>
+                                                <td className="lb-time">{lbEntry.timeSpent}m</td>
+                                            </tr>
+                                        );
+                                    })}
                                 </tbody>
                             </table>
                         )}

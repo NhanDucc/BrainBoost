@@ -4,7 +4,10 @@ import SiteHeader from "./Header";
 import SiteFooter from "./Footer";
 import skillsPlaceholder from "../images/skills-placeholder.png";
 import { toAbsolute } from "../utils/url";
+import { api } from "../api";
 import "../css/AllTests.css";
+
+// ==== Constants & Configuration ====
 
 // List of available time limit options for the test preview dropdown
 const TIME_OPTIONS = [
@@ -25,6 +28,7 @@ const SUBJECT_LABEL = {
 // Predefined order for rendering subject tabs in the UI
 const SUBJECT_ORDER = ["Mathematics", "English", "Physics", "Chemistry"];
 
+// System-defined difficulty levels
 const DIFFS = ["Easy", "Medium", "Hard"];
 
 /**
@@ -36,11 +40,15 @@ const FIRST_DIFF_FROM_TAGS = (tags = []) => {
     return tags.find((t) => DIFFS.includes(t)) || "General";
 };
 
+// ==== Main Component ====
+
 /**
  * Main component for displaying, filtering, and previewing the list of all available public tests
  */
 export default function Tests() {
     const navigate = useNavigate();
+
+    // ---- State Management ----
 
     // Server Data
     const [tests, setTests] = useState([]);
@@ -57,7 +65,15 @@ export default function Tests() {
     const [filterGrade, setFilterGrade] = useState("All");
     const [filterDiff, setFilterDiff] = useState("All");
 
-    // Fetches the list of public tests from the backend API, normalizes the data for UI consumption, and updates local state
+    // Bookmark State
+    const [bookmarkedIds, setBookmarkedIds] = useState(new Set());
+
+    // ---- Data Fetching ----
+
+    /**
+     * Fetches the list of public tests from the backend API, 
+     * normalizes the data for UI consumption, and updates local state.
+     */
     const load = async () => {
         try {
             setLoading(true);
@@ -93,23 +109,45 @@ export default function Tests() {
                 if (!hasTab) setActiveTab("All");
             }
         } catch (e) {
-        setErrMsg(e.message || "Failed to load");
+            setErrMsg(e.message || "Failed to load");
         } finally {
             setLoading(false);
         }
     };
 
-    // Trigger initial data fetch on component mount
+    /**
+     * Initial data load when the component mounts.
+     * Also fetches the user's bookmarked tests to set initial button states.
+     */
     useEffect(() => {
         load();
+        
+        // Fetch saved tests API. If the user is not logged in, silently ignore the error
+        const fetchBookmarks = async () => {
+            try {
+                const res = await api.get("/learning/bookmarks");
+                if (res.data) {
+                    const ids = new Set(res.data.map(b => b.id));
+                    setBookmarkedIds(ids);
+                }
+            } catch (error) {
+                // Ignore if user is not logged in
+            }
+        };
+        fetchBookmarks();
     }, []);
 
-    // Automatically refresh the test list whenever the user returns to the browser tab
+    /**
+     * Automatically refresh the test list whenever the user returns to the browser tab
+     * to ensure data is always up-to-date.
+     */
     useEffect(() => {
         const onFocus = () => load();
         window.addEventListener("focus", onFocus);
         return () => window.removeEventListener("focus", onFocus);
     }, []);
+
+    // ---- Event Handlers ----
 
     // Memoize the specific test object that is currently being previewed to prevent unnecessary recalculations
     const previewTest = useMemo(
@@ -140,6 +178,28 @@ export default function Tests() {
     };
 
     /**
+     * Calls the API to add or remove a test from the user's bookmarks.
+     * Updates the UI optimistically if successful.
+     */
+    const handleToggleBookmark = async (testId, e) => {
+        e.stopPropagation();
+        try {
+            const res = await api.post("/learning/bookmarks/toggle", { testId });
+            setBookmarkedIds(prev => {
+                const newSet = new Set(prev);
+                if (res.data.isBookmarked) newSet.add(testId);
+                else newSet.delete(testId);
+                return newSet;
+            });
+        } catch (error) {
+            console.error("Failed to toggle bookmark");
+            alert("Please login to save tests.");
+        }
+    };
+    
+    // ---- Memoized Computations & Filters ----
+
+    /**
      * Dynamically generates the list of subject tabs based on the available data.
      * Only displays tabs for subjects that actually have tests.
      */
@@ -149,11 +209,12 @@ export default function Tests() {
     }, [tests]);
 
     /**
-     * Automatically retrieve a list of existing Grade levels from the data.
+     * Automatically retrieves a list of existing Grade levels from the fetched tests.
+     * Sorts them numerically.
      */
     const AVAILABLE_GRADES = useMemo(() => {
         const grades = new Set(tests.map(t => t.grade).filter(Boolean));
-        // Sắp xếp lớp theo thứ tự (nếu là số)
+
         const sortedGrades = Array.from(grades).sort((a, b) => {
             const numA = parseInt(a.replace(/\D/g, ''));
             const numB = parseInt(b.replace(/\D/g, ''));
@@ -164,8 +225,8 @@ export default function Tests() {
     }, [tests]);
 
     /**
-     * Automatically retrieve a list of existing Difficulty levels from the data.
-     * Enforce display order: Easy -> Medium -> Hard
+     * Automatically retrieves a list of existing Difficulty levels from the fetched tests.
+     * Enforces a strict display order (Easy -> Medium -> Hard) based on the DIFFS constant.
      */
     const AVAILABLE_DIFFS = useMemo(() => {
         const presentDiffs = new Set(tests.map(t => t.difficulty).filter(d => d !== "General"));
@@ -174,7 +235,8 @@ export default function Tests() {
     }, [tests]);
 
     /**
-     * Filters the tests based on the selected subject tab and the user's search query.
+     * Master filter function.
+     * Filters the tests based on: active subject tab, search query, selected grade, and selected difficulty.
      */
     const filtered = useMemo(() => {
         const q = query.trim().toLowerCase();
@@ -211,12 +273,14 @@ export default function Tests() {
             .map((s) => [s, map.get(s)]); // [subject, items]
     }, [filtered, SUBJECT_TABS]);
 
+    // ---- Render UI ----
+
     return (
         <div className="tests-page">
         <SiteHeader />
 
         <div className="tests-container">
-            {/* Toolbar: Search, Filters and Category Tabs */}
+            {/* ==== Toolbar: Search, Filters and Category Tabs ==== */}
             <div className="tests-toolbar">
                 <div className="toolbar-top-row">
                     <div className="searchbox">
@@ -232,7 +296,7 @@ export default function Tests() {
                         )}
                     </div>
 
-                    {/* Dropdown Filters */}
+                    {/* Dropdown Filters (Grade & Difficulty) */}
                     <div className="filter-group">
                         <div className="filter-item">
                             <i className="bi bi-mortarboard-fill"></i>
@@ -255,6 +319,7 @@ export default function Tests() {
                     </div>
                 </div>
 
+                {/* Subject Tabs */}
                 <div className="tabs">
                     {SUBJECT_TABS.map((s) => (
                     <button
@@ -272,10 +337,10 @@ export default function Tests() {
             {errMsg && <div className="empty-state">Load failed: {errMsg}</div>}
             {loading && <div className="empty-state">Loading…</div>}
 
-            {/* Main Content Grid */}
+            {/* ==== Main Content Grid ==== */}
             {!loading && !errMsg && (
             <>
-                {/* Condition 1: "All" tab is active -> Show categorized sections */}
+                {/* Condition 1: "All" tab is active -> Show horizontally grouped subject sections */}
                 {activeTab === "All" ? (
                 groupedBySubject.length ? (
                     groupedBySubject.map(([subject, items]) => (
@@ -299,12 +364,12 @@ export default function Tests() {
                                     </span>
                                     <span className="chip chip-level">{t.difficulty}</span>
 
-                                    {/* Grade */}
+                                    {/* Grade Tag */}
                                     {t.grade && (
                                         <span className="chip chip-grade">Grade {t.grade}</span>
                                     )}
 
-                                    {/* Custom Tags */}
+                                    {/* Custom Tags created by Instructors */}
                                     {t.customTags && t.customTags.map(ct => (
                                         <span key={ct} className="chip chip-custom">{ct}</span>
                                     ))}
@@ -341,7 +406,7 @@ export default function Tests() {
                 )
                 ) : (
                 
-                /* Condition 2: A specific Subject tab is active -> Show single grid */
+                /* Condition 2: A specific Subject tab is active -> Show a single, uniform grid */
                 <section className="subject-section">
                     <h2 className="subject-title">{activeTab}</h2>
                     <div className="tests-grid">
@@ -362,12 +427,12 @@ export default function Tests() {
                                 </span>
                                 <span className="chip chip-level">{t.difficulty}</span>
 
-                                {/* Grade */}
+                                {/* Grade Tag */}
                                 {t.grade && (
                                     <span className="chip chip-grade">Grade {t.grade}</span>
                                 )}
 
-                                {/* Custom Tags */}
+                                {/* Custom Tags created by Instructors */}
                                 {t.customTags && t.customTags.map(ct => (
                                     <span key={ct} className="chip chip-custom">{ct}</span>
                                 ))}
@@ -406,7 +471,8 @@ export default function Tests() {
 
         <SiteFooter />
 
-        {/* Displays test details and time limit options before starting */}
+        {/* ==== Preview Modal ==== */}
+        {/* Displays test details, tags, and start options */}
         {previewTest && (
             <div className="modal-backdrop" onClick={() => setPreviewId(null)}>
                 <div className="modal-card test-preview-enhanced" onClick={(e) => e.stopPropagation()}>
@@ -471,17 +537,34 @@ export default function Tests() {
                         </div>
                     </div>
 
-                    {/* Actions: Cancel and Start Buttons */}
-                    <div className="tp-enhanced-actions">
-                        <button className="ghost-btn" onClick={() => setPreviewId(null)}>
-                            Cancel
-                        </button>
-                        <button
-                            className="start-test-btn"
-                            onClick={() => onStart(previewTest)}
+                    {/* Actions: Cancel, Save, and Start Buttons */}
+                    <div className="tp-enhanced-actions" style={{ justifyContent: 'space-between' }}>
+                        
+                        {/* Save Test (Bookmark) Button */}
+                        <button 
+                            className="ghost-btn" 
+                            style={{ 
+                                color: bookmarkedIds.has(previewTest.id) ? '#ea580c' : '#64748b', 
+                                borderColor: bookmarkedIds.has(previewTest.id) ? '#fef08a' : '#e2e8f0', 
+                                background: bookmarkedIds.has(previewTest.id) ? '#fefce8' : 'transparent' 
+                            }}
+                            onClick={(e) => handleToggleBookmark(previewTest.id, e)}
                         >
-                            Start Practicing <i className="bi bi-arrow-right"></i>
+                            <i className={`bi bi-bookmark-${bookmarkedIds.has(previewTest.id) ? 'star-fill' : 'plus'}`}></i> 
+                            {bookmarkedIds.has(previewTest.id) ? ' Saved' : ' Save for later'}
                         </button>
+
+                        <div style={{ display: 'flex', gap: '12px' }}>
+                            <button className="ghost-btn" onClick={() => setPreviewId(null)}>
+                                Cancel
+                            </button>
+                            <button
+                                className="start-test-btn"
+                                onClick={() => onStart(previewTest)}
+                            >
+                                Start Practicing <i className="bi bi-arrow-right"></i>
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>

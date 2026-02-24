@@ -214,3 +214,27 @@ exports.updateBanner = async (req, res) => {
         res.status(500).json({ message: 'Upload failed', error: e.message });
     }
 };
+
+// Cập nhật các thiết lập hệ thống (Settings) của User
+exports.updatePreferences = async (req, res) => {
+    try {
+        const { isAnonymous } = req.body;
+        const User = require('../models/User');
+
+        const user = await User.findById(req.userId);
+        if (!user) return res.status(404).json({ message: 'User not found' });
+
+        // Cập nhật preference
+        if (!user.preferences) user.preferences = {};
+        user.preferences.isAnonymous = isAnonymous;
+
+        await user.save();
+        
+        // Trả về user đã cập nhật (ẩn mật khẩu)
+        const updatedUser = await User.findById(req.userId).select('-password');
+        res.json(updatedUser);
+    } catch (error) {
+        console.error("Update Preferences Error:", error);
+        res.status(500).json({ message: 'Failed to update preferences' });
+    }
+};

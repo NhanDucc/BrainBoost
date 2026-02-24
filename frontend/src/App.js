@@ -23,6 +23,8 @@ import ApplyInstructor from "./components/ApplyInstructor";
 import AllTests from "./components/AllTests";
 import TestPlayer from "./components/TestPlayer";
 import CoursePlayer from "./components/CoursePlayer";
+import Learning from "./components/Learning";
+import Settings from './components/Settings';
 
 const App = () => {
   return (
@@ -59,6 +61,8 @@ const App = () => {
           <Route path="/instructor/tests/:id/edit" element={<TestEditor />} />
           <Route path="/instructor/courses/new" element={<CourseEditor />} />
           <Route path="/instructor/courses/:id/edit" element={<CourseEditor />} />
+          <Route path="/learning" element={<Learning />} />
+          <Route path="/settings" element={<Settings />} />
         </Route>
       </Routes>
     </Router>

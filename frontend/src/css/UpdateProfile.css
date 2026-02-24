@@ -16,33 +16,6 @@
 
 .settings-card h2 { margin:0 0 12px; }
 
-.tabs {
-  display: flex; 
-  gap: 10px; 
-  margin: 8px 0 14px;
-}
-
-.tabs button {
-  padding: 8px 12px; 
-  border: 1px solid #d7e3ff; 
-  background: #f7faff; 
-  border-radius: 8px;
-  cursor: pointer; 
-  font-weight: 600;
-}
-
-.tabs button.active {
-  background: #e6efff; 
-  border-color: #8fb1ff; 
-  color: #0a2d88;
-}
-
-.settings-msg {
-  margin: 6px 0 10px; 
-  color: #0a2d88; 
-  font-weight: 600;
-}
-
 .form { display:block; }
 
 .form-row { 
@@ -76,54 +49,8 @@
 
 .form-group small { color: #6c757d; }
 
-.checkbox { 
-  display: flex; 
-  align-items: center; 
-  gap: 8px; 
-}
-
-.muted { color: #6c757d; }
-
-.save-btn {
-  width: 100%; 
-  padding: 12px; 
-  border: none; 
-  border-radius: 8px; 
-  cursor: pointer;
-  background: #0057ff; 
-  color: #fff; font-weight: 700;
-}
-
-.save-btn:hover { background: #0a2d88; }
-
 @media (max-width: 640px){
   .form-row { flex-direction: column; }
-}
-
-/* Privacy block */
-.privacy-box {
-  margin-top: 12px;
-}
-
-.policy-line {
-  font-size: 18px;
-  line-height: 1.6;
-  color: #2b2f42;
-  background: #f6f7fb;
-  border: 1px solid #e6ebff;
-  border-radius: 10px;
-  padding: 14px 16px;
-}
-
-.policy-link {
-  color: #0a2d88;
-  font-weight: 700;
-  text-decoration: underline;
-}
-
-.policy-link:hover {
-  color: #0057ff;
-  text-decoration: none;
 }
 
 .alert {

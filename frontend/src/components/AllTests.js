@@ -25,14 +25,15 @@ const SUBJECT_LABEL = {
 // Predefined order for rendering subject tabs in the UI
 const SUBJECT_ORDER = ["Mathematics", "English", "Physics", "Chemistry"];
 
+const DIFFS = ["Easy", "Medium", "Hard"];
+
 /**
  * Helper function to extract the first recognized difficulty level from a test's tags array.
  * @param {Array} tags - Array of string tags associated with a test.
  * @returns {String} The matched difficulty level, or "General" if none found.
  */
 const FIRST_DIFF_FROM_TAGS = (tags = []) => {
-    const diffs = ["Easy", "Medium", "Hard", "Beginner", "Intermediate", "Advanced"];
-    return tags.find((t) => diffs.includes(t)) || "General";
+    return tags.find((t) => DIFFS.includes(t)) || "General";
 };
 
 /**
@@ -52,6 +53,9 @@ export default function Tests() {
     const [query, setQuery] = useState("");           // Search bar input value
     const [activeTab, setActiveTab] = useState("All"); // Currently selected subject tab
 
+    // Filter states for Grade and Difficulty dropdowns
+    const [filterGrade, setFilterGrade] = useState("All");
+    const [filterDiff, setFilterDiff] = useState("All");
 
     // Fetches the list of public tests from the backend API, normalizes the data for UI consumption, and updates local state
     const load = async () => {
@@ -68,7 +72,7 @@ export default function Tests() {
 
             // Normalize backend data structure for easier frontend rendering
             const normalized = (Array.isArray(list) ? list : []).map((t) => ({
-                id: t._id, // Used for routing and preview tracking
+                id: t._id,
                 title: t.title,
                 subjectKey: t.subject,
                 subject: SUBJECT_LABEL[t.subject] || t.subject || "Unknown",
@@ -78,6 +82,7 @@ export default function Tests() {
                 description: t.description || "",
                 thumb: skillsPlaceholder,
                 tags: t.tags || [],
+                customTags: (t.tags || []).filter(tag => !DIFFS.includes(tag)),
             }));
 
             setTests(normalized);
@@ -144,6 +149,31 @@ export default function Tests() {
     }, [tests]);
 
     /**
+     * Automatically retrieve a list of existing Grade levels from the data.
+     */
+    const AVAILABLE_GRADES = useMemo(() => {
+        const grades = new Set(tests.map(t => t.grade).filter(Boolean));
+        // Sắp xếp lớp theo thứ tự (nếu là số)
+        const sortedGrades = Array.from(grades).sort((a, b) => {
+            const numA = parseInt(a.replace(/\D/g, ''));
+            const numB = parseInt(b.replace(/\D/g, ''));
+            if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+            return a.localeCompare(b);
+        });
+        return ["All", ...sortedGrades];
+    }, [tests]);
+
+    /**
+     * Automatically retrieve a list of existing Difficulty levels from the data.
+     * Enforce display order: Easy -> Medium -> Hard
+     */
+    const AVAILABLE_DIFFS = useMemo(() => {
+        const presentDiffs = new Set(tests.map(t => t.difficulty).filter(d => d !== "General"));
+        const sortedDiffs = DIFFS.filter(d => presentDiffs.has(d));
+        return ["All", ...sortedDiffs];
+    }, [tests]);
+
+    /**
      * Filters the tests based on the selected subject tab and the user's search query.
      */
     const filtered = useMemo(() => {
@@ -155,9 +185,13 @@ export default function Tests() {
             t.title.toLowerCase().includes(q) ||
             (t.description || "").toLowerCase().includes(q) ||
             (t.subject || "").toLowerCase().includes(q);
-        return byTab && byQuery;
+        
+        const byGrade = filterGrade === "All" ? true : t.grade === filterGrade;
+        const byDiff = filterDiff === "All" ? true : t.difficulty === filterDiff;
+        
+        return byTab && byQuery && byGrade && byDiff;
         });
-    }, [tests, activeTab, query]);
+    }, [tests, activeTab, query, filterGrade, filterDiff]);
 
     /**
      * Groups the filtered tests by subject to display categorized sections 
@@ -182,34 +216,56 @@ export default function Tests() {
         <SiteHeader />
 
         <div className="tests-container">
-            {/* Toolbar: Search input and Category Tabs */}
+            {/* Toolbar: Search, Filters and Category Tabs */}
             <div className="tests-toolbar">
-            <div className="searchbox">
-                <span className="bi bi-search"></span>
-                <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search exams…"
-                aria-label="Search tests"
-                />
-                {query && (
-                <button className="clear-btn" aria-label="Clear" onClick={() => setQuery("")}>
-                    ×
-                </button>
-                )}
-            </div>
+                <div className="toolbar-top-row">
+                    <div className="searchbox">
+                        <span className="bi bi-search"></span>
+                        <input
+                            value={query}
+                            onChange={(e) => setQuery(e.target.value)}
+                            placeholder="Search exams…"
+                            aria-label="Search tests"
+                        />
+                        {query && (
+                            <button className="clear-btn" aria-label="Clear" onClick={() => setQuery("")}>×</button>
+                        )}
+                    </div>
 
-            <div className="tabs">
-                {SUBJECT_TABS.map((s) => (
-                <button
-                    key={s}
-                    className={`tab ${activeTab === s ? "active" : ""}`}
-                    onClick={() => setActiveTab(s)}
-                >
-                    {s}
-                </button>
-                ))}
-            </div>
+                    {/* Dropdown Filters */}
+                    <div className="filter-group">
+                        <div className="filter-item">
+                            <i className="bi bi-mortarboard-fill"></i>
+                            <select value={filterGrade} onChange={(e) => setFilterGrade(e.target.value)}>
+                                <option value="All">All Grades</option>
+                                {AVAILABLE_GRADES.filter(g => g !== "All").map(g => (
+                                    <option key={g} value={g}>Grade {g}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="filter-item">
+                            <i className="bi bi-bar-chart-steps"></i>
+                            <select value={filterDiff} onChange={(e) => setFilterDiff(e.target.value)}>
+                                <option value="All">All Difficulties</option>
+                                {AVAILABLE_DIFFS.filter(d => d !== "All").map(d => (
+                                    <option key={d} value={d}>{d}</option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="tabs">
+                    {SUBJECT_TABS.map((s) => (
+                    <button
+                        key={s}
+                        className={`tab ${activeTab === s ? "active" : ""}`}
+                        onClick={() => setActiveTab(s)}
+                    >
+                        {s}
+                    </button>
+                    ))}
+                </div>
             </div>
 
             {/* Error and Loading States */}
@@ -237,11 +293,21 @@ export default function Tests() {
                             </div>
 
                             <div className="test-info">
-                                <div className="test-topline">
-                                <span className={`chip chip-${(t.subjectKey || "").toLowerCase()}`}>
-                                    {t.subject}
-                                </span>
-                                <span className="chip chip-level">{t.difficulty}</span>
+                                <div className="test-topline" style={{ flexWrap: 'wrap' }}>
+                                    <span className={`chip chip-${(t.subjectKey || "").toLowerCase()}`}>
+                                        {t.subject}
+                                    </span>
+                                    <span className="chip chip-level">{t.difficulty}</span>
+
+                                    {/* Grade */}
+                                    {t.grade && (
+                                        <span className="chip chip-grade">Grade {t.grade}</span>
+                                    )}
+
+                                    {/* Custom Tags */}
+                                    {t.customTags && t.customTags.map(ct => (
+                                        <span key={ct} className="chip chip-custom">{ct}</span>
+                                    ))}
                                 </div>
 
                                 <h3 className="test-title">{t.title}</h3>
@@ -290,11 +356,21 @@ export default function Tests() {
                         </div>
 
                         <div className="test-info">
-                            <div className="test-topline">
-                            <span className={`chip chip-${(t.subjectKey || "").toLowerCase()}`}>
-                                {t.subject}
-                            </span>
-                            <span className="chip chip-level">{t.difficulty}</span>
+                            <div className="test-topline" style={{ flexWrap: 'wrap' }}>
+                                <span className={`chip chip-${(t.subjectKey || "").toLowerCase()}`}>
+                                    {t.subject}
+                                </span>
+                                <span className="chip chip-level">{t.difficulty}</span>
+
+                                {/* Grade */}
+                                {t.grade && (
+                                    <span className="chip chip-grade">Grade {t.grade}</span>
+                                )}
+
+                                {/* Custom Tags */}
+                                {t.customTags && t.customTags.map(ct => (
+                                    <span key={ct} className="chip chip-custom">{ct}</span>
+                                ))}
                             </div>
 
                             <h3 className="test-title">{t.title}</h3>
@@ -348,6 +424,11 @@ export default function Tests() {
                             {previewTest.grade && (
                                 <span className="chip chip-grade">Grade {previewTest.grade}</span>
                             )}
+                            
+                            {/* Custom Tags */}
+                            {previewTest.customTags && previewTest.customTags.map(ct => (
+                                <span key={ct} className="chip chip-custom">{ct}</span>
+                            ))}
                         </div>
                         <h3 className="tp-title-large">{previewTest.title}</h3>
                         <p className="tp-desc-full">

@@ -28,6 +28,7 @@ import Settings from './components/Settings';
 import TestResultView from "./components/TestResultView";
 import Help from "./components/Help";
 import Leaderboard from "./components/Leaderboard";
+import AdminUsers from "./components/AdminUsers";
 
 const App = () => {
   return (
@@ -60,6 +61,7 @@ const App = () => {
           <Route path="/update-profile" element={<UpdateProfile />} />
           <Route path="/contact" element={<Contact />} />
           <Route path="/apply-instructor" element={<ApplyInstructor />} />
+          <Route path="/admin/users" element={<AdminUsers />} />
           <Route path="/admin/*" element={<AdminDashboard />} />
           <Route path="/instructor" element={<InstructorDashboard />} />
           <Route path="/instructor/tests/new" element={<TestEditor />} />

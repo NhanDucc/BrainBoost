@@ -7,8 +7,26 @@ import { useNavigate } from "react-router-dom";
 import { toAbsolute } from "../utils/url";
 import "../css/Profile.css";
 
+// Constants ====
+
 // List of subjects displayed on the dashboard tables and practice tabs
 const SUBJECTS = ["Mathematics", "Physics", "Chemistry", "English"];
+
+/**
+ * Default empty data structure for the weekly statistics table.
+ * Used as a fallback if the user has no study data for the current week.
+ */
+const defaultWeekStats = [
+    { day: "Mon", Mathematics: 0, Physics: 0, Chemistry: 0, English: 0, minutes: 0 },
+    { day: "Tue", Mathematics: 0, Physics: 0, Chemistry: 0, English: 0, minutes: 0 },
+    { day: "Wed", Mathematics: 0, Physics: 0, Chemistry: 0, English: 0, minutes: 0 },
+    { day: "Thu", Mathematics: 0, Physics: 0, Chemistry: 0, English: 0, minutes: 0 },
+    { day: "Fri", Mathematics: 0, Physics: 0, Chemistry: 0, English: 0, minutes: 0 },
+    { day: "Sat", Mathematics: 0, Physics: 0, Chemistry: 0, English: 0, minutes: 0 },
+    { day: "Sun", Mathematics: 0, Physics: 0, Chemistry: 0, English: 0, minutes: 0 },
+];
+
+// ==== Utility Functions ====
 
 /**
  * Formats a Date object to a standard YYYY-MM-DD string using local time.
@@ -44,19 +62,7 @@ function buildMonth(year, month) {
     return grid;
 }
 
-/**
- * Default empty data structure for the weekly statistics table.
- * Used as a fallback if the user has no study data for the current week.
- */
-const defaultWeekStats = [
-    { day: "Mon", Mathematics: 0, Physics: 0, Chemistry: 0, English: 0, minutes: 0 },
-    { day: "Tue", Mathematics: 0, Physics: 0, Chemistry: 0, English: 0, minutes: 0 },
-    { day: "Wed", Mathematics: 0, Physics: 0, Chemistry: 0, English: 0, minutes: 0 },
-    { day: "Thu", Mathematics: 0, Physics: 0, Chemistry: 0, English: 0, minutes: 0 },
-    { day: "Fri", Mathematics: 0, Physics: 0, Chemistry: 0, English: 0, minutes: 0 },
-    { day: "Sat", Mathematics: 0, Physics: 0, Chemistry: 0, English: 0, minutes: 0 },
-    { day: "Sun", Mathematics: 0, Physics: 0, Chemistry: 0, English: 0, minutes: 0 },
-];
+// Sub-Components ====
 
 /**
  * Component for the Student Dashboard view.
@@ -66,24 +72,28 @@ function StudentDashboard({ user }) {
     const today = new Date();
     const navigate = useNavigate();
 
+    // ---- Data Extraction ----
     // Extract dynamic study data from the user profile, fallback to defaults if missing
     const submittedDays = user?.study?.submittedDays || [];
     const weekStats = user?.weekStats || defaultWeekStats;
     const history = user?.practiceHistory || [];
 
-    // Calendar state
+    // ---- State Management ----
     const [month, setMonth] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
     const [currentDate, setCurrentDate] = useState(new Date(today));
-    
-    // Tab state for the practice history section
     const [activeTab, setActiveTab] = useState("Mathematics");
 
+    // ---- Computed Values ----
     // Memoize the calendar grid calculation so it only runs when the month changes
     const monthCells = useMemo(() => buildMonth(month.getFullYear(), month.getMonth()), [month]);
-
+    
     // Calculate total study minutes across all days in the week
     const minutesTotal = weekStats.reduce((t, r) => t + (r.minutes || 0), 0);
+    
+    // Filter the user's test history based on the currently selected subject tab
+    const displayedHistory = history.filter(h => h.subject === activeTab);
 
+    // ---- Event Handlers ----
     /**
      * Resets the calendar view back to the current real-world month and day.
      */
@@ -93,12 +103,9 @@ function StudentDashboard({ user }) {
         setCurrentDate(todayObj);
     };
 
-    // Filter the user's test history based on the currently selected subject tab
-    const displayedHistory = history.filter(h => h.subject === activeTab);
-
     return (
         <>
-        {/* TOP GRID: Calendar & Weekly Stats */}
+        {/* ==== TOP GRID: Calendar & Weekly Stats ==== */}
         <div className="stu-grid">
 
             {/* Left column: Diligence Calendar */}
@@ -193,7 +200,7 @@ function StudentDashboard({ user }) {
             </div>
         </div>
 
-        {/* BOTTOM SECTION: Practice History */}
+        {/* ==== BOTTOM SECTION: Practice History ==== */}
         <div className="dash-card mt">
             <div className="card-head"><div className="title">Practice history</div></div>
             
@@ -248,6 +255,8 @@ function StudentDashboard({ user }) {
     );
 }
 
+// ==== Main Component ====
+
 /**
  * Main Profile Page Component.
  * Fetches the user profile, determines their role, and conditionally renders 
@@ -256,96 +265,140 @@ function StudentDashboard({ user }) {
 export default function Profile() {
     const navigate = useNavigate();
 
-    // Global user state
+    // ---- Global State ----
     const [user, setUser] = useState({ fullname: "Name", avatarUrl: "", bannerUrl: "", role: null });
     const [error] = useState("");
 
-    // Fetch user profile data on component mount
-    useEffect(() => {
-        (async () => {
-        try {
-            const res = await api.get("/users/me");
-            const u = res.data?.user || res.data || {};
-            setUser({
-                fullname: u.fullname || "Name",
-                avatarUrl: u.avatarUrl || "",
-                bannerUrl: u.bannerUrl || "",
-                updatedAt: u.updatedAt,
-                role: u.role || "student",
-                study: u.study,
-                weekStats: u.weekStats,
-                practiceHistory: u.practiceHistory,
-            });
-        } catch {
-            /* Silently ignore API failures on initial load; let UI handle empty state */
-        }
-        })();
-    }, []);
+    // ---- Instructor State ----
+    const [myTests, setMyTests] = useState([]);
+    const [myCourses, setMyCourses] = useState([]);
+    const [itLoading, setItLoading] = useState(false);
 
-    // Computed boolean flags for role-based rendering
+    // ---- Admin State ----
+    const [adminData, setAdminData] = useState(null);
+    const [unreadMsgs, setUnreadMsgs] = useState([]);
+
+    // Computed Role Flags
     const role = user.role || "student";
     const isStudent = role === "student";
     const isInstructor = role === "instructor";
     const isAdmin = role === "admin";
 
-    // Prepare media URLs, using fallbacks if the user hasn't uploaded custom images
-    const rawAvatar = user?.avatarUrl || defaultAvatar;
-    const avatarSrc = user?.avatarUrl ? rawAvatar : defaultAvatar;
-    const bannerSrc = user?.bannerUrl || "https://via.placeholder.com/1200x300?text=Cover+Image";
+    // ==== Lifecycle Hooks ====
 
-    // State exclusively for Instructors to track tests they have authored
-    const [myTests, setMyTests] = useState([]);
-    const [myCourses, setMyCourses] = useState([]);
-    const [itLoading, setItLoading] = useState(false);
-
-    // Fetch authored tests if the user is an instructor
+    // Fetch current user profile on component mount
     useEffect(() => {
-        if (user.role !== "instructor") return;
+        (async () => {
+            try {
+                const res = await api.get("/users/me");
+                const u = res.data?.user || res.data || {};
+                setUser({
+                    fullname: u.fullname || "Name",
+                    avatarUrl: u.avatarUrl || "",
+                    bannerUrl: u.bannerUrl || "",
+                    updatedAt: u.updatedAt,
+                    role: u.role || "student",
+                    study: u.study,
+                    weekStats: u.weekStats,
+                    practiceHistory: u.practiceHistory,
+                });
+            } catch {
+                /* Silently ignore API failures on initial load; let UI handle empty state */
+            }
+        })();
+    }, []);
+
+    // Fetch specific instructor data if the user holds an instructor role
+    useEffect(() => {
+        if (!isInstructor) return;
+        
         (async () => {
             try {
                 setItLoading(true);
 
-                // Lấy Tests (kèm số lượt attempts)
+                // Fetch tests authored by the instructor (includes attempt counts)
                 const resTests = await fetch(toAbsolute("/api/tests?mine=1"), { credentials: "include" });
                 if (resTests.ok) {
                     const testsData = await resTests.json();
                     setMyTests(Array.isArray(testsData) ? testsData : []);
                 }
 
-                // Lấy Courses
+                // Fetch courses authored by the instructor
                 const resCourses = await fetch(toAbsolute("/api/courses?mine=1"), { credentials: "include" });
                 if (resCourses.ok) {
                     const coursesData = await resCourses.json();
                     setMyCourses(Array.isArray(coursesData) ? coursesData : []);
                 }
-
             } catch (e) {
                 // Ignore gracefully; could implement a toast notification here
             } finally {
                 setItLoading(false);
             }
         })();
-        }, [user.role]);
+    }, [isInstructor]);
+
+    // Fetch specific admin data if the user holds an admin role
+    useEffect(() => {
+        if (!isAdmin) return;
+        
+        const fetchAdminInfo = async () => {
+            try {
+                // Fetch system KPIs and recent activity
+                const statsRes = await api.get("/admin/stats");
+                setAdminData(statsRes.data);
+                
+                // Fetch unresolved support tickets
+                const msgsRes = await api.get("/contact/unread");
+                setUnreadMsgs(msgsRes.data);
+            } catch (err) {
+                console.error("Admin fetch error", err);
+            }
+        };
+        fetchAdminInfo();
+    }, [isAdmin]);
+
+    // ==== Event Handlers ====
+
+    /**
+     * Marks a support ticket as read in the database and updates local UI state.
+     * @param {string} id - The unique ID of the contact message.
+     */
+    const handleMarkMsgRead = async (id) => {
+        try {
+            await api.put(`/contact/${id}/read`);
+            setUnreadMsgs(prev => prev.filter(m => m._id !== id));
+        } catch (err) {
+            alert("Failed to mark as read");
+        }
+    };
+
+    // ==== Derived UI Values ====
+
+    // Prepare media URLs, using fallbacks if the user hasn't uploaded custom images
+    const rawAvatar = user?.avatarUrl || defaultAvatar;
+    const avatarSrc = user?.avatarUrl ? rawAvatar : defaultAvatar;
+    const bannerSrc = user?.bannerUrl || "https://via.placeholder.com/1200x300?text=Cover+Image";
 
     // Compute aggregate statistics for the Instructor view
     const testsTotal = myTests.length;
     const coursesTotal = myCourses.length;
     const questionsTotal = myTests.reduce((t, x) => t + (x.numQuestions || (x.questions?.length || 0)), 0);
     const attemptsTotal = myTests.reduce((t, x) => t + (x.attempts || 0), 0);
-    const subjectSet = new Set(myTests.map(t => t.subject));
-    const recent = myTests.slice(0, 5); // Grab only the 5 most recent tests
+    const recent = myTests.slice(0, 5); // Display only the 5 most recent tests
+
+    // ==== Render ====
 
     return (
         <div className="profile-page">
         <SiteHeader />
 
         <div className="profile-container">
-            {/* Cover Image */}
+            {/* ==== Cover Image ==== */}
             <div className="profile-cover">
                 <img src={bannerSrc} alt="Cover" className="cover-fake-image" />
             </div>
 
-            {/* Avatar & Name */}
+            {/* ==== Avatar & Profile Info ==== */}
             <div className="profile-head">
                 <div className="profile-avatar-wrapper">
                     <img src={avatarSrc} alt="avatar" className="profile-avatar" />
@@ -366,7 +419,7 @@ export default function Profile() {
             {isInstructor && (
             <div className="role-section">
 
-                {/* Quick Action Links */}
+                {/* Instructor Quick Actions */}
                 <div className="role-card">
                     <h3>Instructor quick actions</h3>
                     <div className="qa-row">
@@ -376,7 +429,6 @@ export default function Profile() {
                         <button className="ghost-btn" onClick={() => navigate("/instructor/tests/new")}>
                             <i className="bi bi-file-earmark-plus" /> Add New Test
                         </button>
-                        {/* 1. NÚT ADD NEW COURSE */}
                         <button className="ghost-btn" onClick={() => navigate("/instructor/courses/new")}>
                             <i className="bi bi-journal-plus" /> Add New Course
                         </button>
@@ -384,23 +436,20 @@ export default function Profile() {
                     <p className="role-muted">Create and manage your educational content.</p>
                 </div>
 
-                {/* KPI Statistics */}
+                {/* Instructor KPI Statistics */}
                 <div className="role-cards-stats">
                     <div className="stat-card">
                         <div className="stat-kpi">{testsTotal}</div>
                         <div className="stat-label">Total Tests</div>
                     </div>
-                    {/* 1. KHỐI KPI TOTAL COURSES */}
                     <div className="stat-card">
                         <div className="stat-kpi">{coursesTotal}</div>
                         <div className="stat-label">Total Courses</div>
                     </div>
-                    {/* 2. KHỐI KPI TOTAL QUESTIONS */}
                     <div className="stat-card">
                         <div className="stat-kpi">{questionsTotal}</div>
                         <div className="stat-label">Total Questions</div>
                     </div>
-                    {/* 3. KHỐI KPI TOTAL ATTEMPTS */}
                     <div className="stat-card">
                         <div className="stat-kpi" style={{ color: 'var(--success)' }}>{attemptsTotal}</div>
                         <div className="stat-label">Total Attempts</div>
@@ -462,22 +511,111 @@ export default function Profile() {
             )}
 
             {/* ==== ADMIN VIEW ==== */}
-            {isAdmin && (
+            {isAdmin && adminData && (
             <div className="role-section">
-                <div className="role-card">
-                <h3>Admin console (coming soon)</h3>
-                <p className="role-muted">
-                    Here you will manage users, courses, reports, and platform settings.
-                </p>
+                
+                {/* Admin KPI Statistics */}
+                <div className="role-cards-stats">
+                    <div className="stat-card">
+                        <div className="stat-kpi">{adminData.kpis.totalUsers}</div>
+                        <div className="stat-label">Total Students</div>
+                    </div>
+                    <div className="stat-card">
+                        <div className="stat-kpi">{adminData.kpis.totalInstructors}</div>
+                        <div className="stat-label">Instructors</div>
+                    </div>
+                    <div className="stat-card">
+                        <div className="stat-kpi" style={{ color: adminData.kpis.pendingApps > 0 ? 'var(--error)' : 'var(--primary)' }}>
+                            {adminData.kpis.pendingApps}
+                        </div>
+                        <div className="stat-label">Pending Approvals</div>
+                    </div>
+                    <div className="stat-card">
+                        <div className="stat-kpi">{adminData.kpis.totalContent}</div>
+                        <div className="stat-label">Courses & Tests</div>
+                    </div>
                 </div>
+
+                {/* Admin Command Center / Quick Actions */}
                 <div className="role-card">
-                <h4>Quick links</h4>
-                <ul className="role-list">
-                    <li>User management</li>
-                    <li>Course review queue</li>
-                    <li>System metrics</li>
-                </ul>
+                    <h3><i className="bi bi-lightning-charge-fill"></i> Command Center</h3>
+                    <div className="qa-row">
+                        <button className="primary-btn" onClick={() => navigate("/admin")}>
+                            <i className="bi bi-person-check-fill"></i> Review Instructors
+                        </button>
+                        <button className="ghost-btn" onClick={() => navigate("/admin/users")}>
+                            <i className="bi bi-people-fill"></i> Manage Users
+                        </button>
+                        <button className="ghost-btn" onClick={() => navigate("/tests")}>
+                            <i className="bi bi-collection-play-fill"></i> Manage Content
+                        </button>
+                    </div>
                 </div>
+
+                <div className="stu-grid" style={{ marginTop: '12px' }}>
+                    {/* Unread Support Tickets */}
+                    <div className="col-left">
+                        <div className="dash-card">
+                            <div className="card-head">
+                                <div className="title" style={{ fontSize: '20px' }}>
+                                    <i className="bi bi-envelope-exclamation-fill text-warning"></i> Unread Support Tickets
+                                </div>
+                                <span className="chip" style={{ background: 'var(--error)', color: '#fff' }}>{unreadMsgs.length} New</span>
+                            </div>
+                            
+                            <div className="msg-list" style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '16px' }}>
+                                {unreadMsgs.length === 0 ? (
+                                    <div className="empty" style={{ padding: '20px' }}>All caught up! No unread messages.</div>
+                                ) : (
+                                    unreadMsgs.map(msg => (
+                                        <div key={msg._id} className="recent-item" style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', marginBottom: '8px' }}>
+                                                <strong>{msg.subject}</strong>
+                                                <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{new Date(msg.createdAt).toLocaleDateString()}</span>
+                                            </div>
+                                            <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '8px' }}>
+                                                From: {msg.user?.fullname} ({msg.user?.email}) - Category: {msg.category}
+                                            </div>
+                                            <div style={{ background: 'var(--bg-input)', padding: '10px', borderRadius: '8px', fontSize: '14px', width: '100%', marginBottom: '12px' }}>
+                                                {msg.message}
+                                            </div>
+                                            <button className="ghost-btn" style={{ padding: '6px 12px', fontSize: '12px' }} onClick={() => handleMarkMsgRead(msg._id)}>
+                                                <i className="bi bi-check2-all"></i> Mark as Read
+                                            </button>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Recent Activity Feed */}
+                    <div className="col-right">
+                        <div className="dash-card">
+                            <div className="card-head">
+                                <div className="title" style={{ fontSize: '20px' }}><i className="bi bi-activity text-success"></i> Activity Log</div>
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '16px' }}>
+                                {adminData.recentActivity.length === 0 ? (
+                                    <p className="role-muted">No recent activity.</p>
+                                ) : (
+                                    adminData.recentActivity.map(act => (
+                                        <div key={act.id} style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+                                            <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'var(--bg-object)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)', flexShrink: 0 }}>
+                                                <i className={act.type === 'user' ? "bi bi-person-plus-fill" : "bi bi-file-earmark-plus-fill"}></i>
+                                            </div>
+                                            <div>
+                                                <div style={{ color: 'var(--text-main)', fontSize: '14px', fontWeight: '500' }}>{act.text}</div>
+                                                <div style={{ color: 'var(--text-secondary)', fontSize: '12px', marginTop: '4px' }}>{new Date(act.date).toLocaleString()}</div>
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
             </div>
             )}
         </div>

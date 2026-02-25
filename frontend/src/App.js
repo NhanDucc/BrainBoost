@@ -26,6 +26,7 @@ import CoursePlayer from "./components/CoursePlayer";
 import Learning from "./components/Learning";
 import Settings from './components/Settings';
 import TestResultView from "./components/TestResultView";
+import Help from "./components/Help";
 
 const App = () => {
   return (
@@ -65,6 +66,7 @@ const App = () => {
           <Route path="/instructor/courses/:id/edit" element={<CourseEditor />} />
           <Route path="/learning" element={<Learning />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/help" element={<Help />} />
         </Route>
       </Routes>
     </Router>

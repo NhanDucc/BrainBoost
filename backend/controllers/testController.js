@@ -2,6 +2,8 @@ const axios = require("axios");
 const mongoose = require("mongoose");
 const Test = require("../models/Test");
 const TestResult = require("../models/TestResult");
+const User = require('../models/User');
+const Notification = require('../models/Notification');
 
 const AI_AGENT_URL = process.env.AI_AGENT_URL;
 
@@ -315,6 +317,20 @@ const updateEssayGrade = async (req, res) => {
       // Notify mongoose that the answers array has been modified to trigger a save
       result.markModified('answers'); 
       await result.save();
+
+      // Tìm học sinh sở hữu bài thi này
+      const student = await User.findById(result.student);
+
+      // Kiểm tra xem học sinh có bật tính năng thông báo AI Grading trong Settings không
+      if (student && student.preferences?.notifyAIGrading) {
+          await Notification.create({
+              user: student._id,
+              title: 'AI Grading Completed ✨',
+              message: `Your essay for Question ${questionIdx} has been successfully graded. Score: ${aiData.score}/10.`,
+              type: 'ai_grading',
+              link: `/results/${result._id}`
+          });
+      }
     }
 
     res.json({ message: "Grade updated" });
@@ -390,8 +406,91 @@ const getTestLeaderboard = async (req, res) => {
   }
 };
 
+/**
+ * Xem lại chi tiết kết quả một bài test đã làm (Bao gồm câu hỏi và đáp án đã chọn)
+ * * GET /api/tests/results/:resultId
+ */
+const getTestResultById = async (req, res) => {
+    try {
+        // Lấy TestResult và populate thông tin gốc của bài Test
+        const result = await TestResult.findById(req.params.resultId)
+            .populate('test')
+            .lean();
+            
+        if (!result) return res.status(404).json({ message: "Result not found" });
+        
+        // Chỉ cho phép người làm bài xem lại bài của mình
+        if (String(result.student) !== String(req.userId)) {
+            return res.status(403).json({ message: "Forbidden: You can only view your own results." });
+        }
+        
+        res.json(result);
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ message: "Server error" });
+    }
+};
+
+/**
+ * Kích hoạt AI chấm điểm chạy ngầm (Background Job)
+ * * POST /api/tests/trigger-ai-grading
+ */
+const triggerAIGrading = async (req, res) => {
+    const { resultId, questionIdx } = req.body;
+
+    // 1. Phản hồi ngay lập tức cho Frontend để user có thể tắt trang
+    res.json({ message: "AI grading started in the background." });
+
+    // 2. Chạy ngầm tiến trình gọi AI
+    // (Không dùng await ở block này trong luồng response chính)
+    (async () => {
+        try {
+            const result = await TestResult.findById(resultId).populate('test');
+            if (!result) return;
+
+            const qIndex = parseInt(questionIdx) - 1;
+            const targetAnswer = result.answers[qIndex];
+            const originalQuestion = result.test.questions[qIndex];
+
+            if (!targetAnswer || !originalQuestion) return;
+
+            // Gọi qua Python AI Agent
+            const aiRes = await axios.post(`${AI_AGENT_URL}/grade-essay`, {
+                question: originalQuestion.stem,
+                student_answer: targetAnswer.studentAnswer || "",
+                model_answer: originalQuestion.modelAnswer || ""
+            });
+
+            const aiData = aiRes.data; // { score, feedback, suggestion }
+
+            // Lưu điểm vào DB
+            targetAnswer.score = aiData.score;
+            targetAnswer.aiFeedback = aiData.feedback;
+            targetAnswer.aiSuggestion = aiData.suggestion;
+            
+            result.markModified('answers');
+            await result.save();
+
+            // Gửi thông báo In-app
+            const student = await User.findById(result.student);
+            if (student && student.preferences?.notifyAIGrading) {
+                await Notification.create({
+                    user: student._id,
+                    title: 'AI Grading Completed ✨',
+                    message: `Your essay for Question ${questionIdx} in "${result.test.title}" has been graded. Score: ${aiData.score}/10.`,
+                    type: 'ai_grading',
+                    // SỬA LINK: Dẫn thẳng tới trang xem kết quả thay vì trang làm bài
+                    link: `/results/${result._id}` 
+                });
+            }
+        } catch (err) {
+            console.error("Background AI Grading Failed:", err.message);
+        }
+    })();
+};
+
 module.exports = { 
   createTest, getMyTests, getOneTest, updateTest, deleteTest, 
   listPublicTests, getPublicTestById, gradeEssay, submitTest, updateEssayGrade,
-  getTestLeaderboard,
+  getTestLeaderboard, getTestResultById, triggerAIGrading,
 };

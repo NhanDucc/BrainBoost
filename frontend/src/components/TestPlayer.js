@@ -266,6 +266,9 @@ export default function TestPlayer() {
                     questionIdx: idx, 
                     aiData: aiResult
                 });
+
+                // Phát tín hiệu toàn cục thông báo có thông báo mới
+                window.dispatchEvent(new Event("new_notification"));
             }
         } catch (err) {
             alert("AI Grading failed. Please try again.");
@@ -366,7 +369,9 @@ export default function TestPlayer() {
             const res = await api.post("/tests/submit", payload);
             if (res.data && res.data._id) {
                 setSubmissionId(res.data._id); 
-                localStorage.removeItem(LS_KEY); 
+                localStorage.removeItem(LS_KEY);
+
+                navigate(`/results/${res.data._id}`);
             }
 
             // Fetch the leaderboard immediately after successful submission

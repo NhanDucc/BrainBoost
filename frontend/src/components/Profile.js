@@ -230,7 +230,11 @@ function StudentDashboard({ user }) {
                                     <span className="chip"><i className="bi bi-calendar-event"></i> {new Date(item.completedAt).toLocaleDateString()}</span>
                                 </div>
                             </div>
-                            <div className="r-actions">
+                            <div className="r-actions" style={{ display: 'flex', gap: '8px' }}>
+                                <button className="primary-btn" onClick={() => navigate(`/results/${item.id}`)} style={{ padding: '8px 12px', fontSize: '13px' }}>
+                                    <i className="bi bi-eye"></i> View Details
+                                </button>
+                                
                                 <button className="ghost-btn" onClick={() => navigate(`/tests/public/${item.testId}`)}>
                                     <i className="bi bi-arrow-repeat"></i> Practice Again
                                 </button>

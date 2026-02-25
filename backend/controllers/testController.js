@@ -277,6 +277,22 @@ const submitTest = async (req, res) => {
     // answers: Array of detailed answers sent from the frontend
     // resultSummary: Contains overall score { correctCount, gradableTotal, percent }
 
+    const testObjectId = new mongoose.Types.ObjectId(testId);
+
+    const beforeLeaderboard = await TestResult.aggregate([
+      { $match: { test: testObjectId } },
+      { $sort: { totalScore: -1, timeSpent: 1, completedAt: 1 } },
+      { $group: { _id: "$student", bestScore: { $first: "$totalScore" }, bestTime: { $first: "$timeSpent" } } },
+      { $sort: { bestScore: -1, bestTime: 1 } },
+      { $limit: 10 }
+    ]);
+
+    // Tạo từ điển để nhớ Rank cũ của từng người
+    const rankBefore = {};
+    beforeLeaderboard.forEach((user, index) => {
+        rankBefore[user._id.toString()] = index + 1;
+    });
+
     const newResult = await TestResult.create({
       student: req.userId,
       test: testId,
@@ -286,6 +302,63 @@ const submitTest = async (req, res) => {
       finalPercent: resultSummary.percent,
       timeSpent: timeSpent || 0
     });
+
+    const afterLeaderboard = await TestResult.aggregate([
+      { $match: { test: testObjectId } },
+      { $sort: { totalScore: -1, timeSpent: 1, completedAt: 1 } },
+      { $group: { _id: "$student", bestScore: { $first: "$totalScore" }, bestTime: { $first: "$timeSpent" } } },
+      { $sort: { bestScore: -1, bestTime: 1 } },
+      { $limit: 10 }
+    ]);
+
+    // Chạy ngầm việc gửi thông báo để không làm chậm luồng nộp bài của user hiện tại
+    (async () => {
+      try {
+        const currentUserStr = req.userId.toString();
+        const testInfo = await Test.findById(testId).select('title');
+        const currentUser = await User.findById(req.userId).select('fullname');
+        const afterIds = afterLeaderboard.map(u => u._id.toString());
+
+        // A. Kiểm tra những người trong Top 10 mới xem có ai bị đẩy xuống Rank thấp hơn không
+        for (let i = 0; i < afterLeaderboard.length; i++) {
+          const userIdStr = afterLeaderboard[i]._id.toString();
+          const newRank = i + 1;
+          const oldRank = rankBefore[userIdStr];
+
+          // Nếu người này bị tụt hạng (Ví dụ: old là 1, new là 2) VÀ không phải là chính người vừa nộp bài
+          if (oldRank && newRank > oldRank && userIdStr !== currentUserStr) {
+            const userDoc = await User.findById(userIdStr);
+            if (userDoc && userDoc.preferences?.notifyLeaderboard) {
+              await Notification.create({
+                user: userDoc._id,
+                title: 'Leaderboard Alert!',
+                message: `${currentUser.fullname} just beat your score on "${testInfo.title}"! You dropped to Rank #${newRank}.`,
+                type: 'leaderboard',
+                link: `/tests/${testId}`
+              });
+            }
+          }
+        }
+
+        // B. Kiểm tra những người bị đá văng hẳn ra khỏi Top 10
+        for (const oldUserId in rankBefore) {
+          if (!afterIds.includes(oldUserId) && oldUserId !== currentUserStr) {
+            const userDoc = await User.findById(oldUserId);
+            if (userDoc && userDoc.preferences?.notifyLeaderboard) {
+              await Notification.create({
+                user: userDoc._id,
+                title: 'Leaderboard Alert!',
+                message: `${currentUser.fullname} pushed you out of the Top 10 on "${testInfo.title}". Try again to reclaim your spot!`,
+                type: 'leaderboard',
+                link: `/tests/${testId}`
+              });
+            }
+          }
+        }
+      } catch (error) {
+        console.error("Leaderboard Notification Error:", error);
+      }
+    })();
 
     res.status(201).json(newResult);
   } catch (error) {
@@ -325,7 +398,7 @@ const updateEssayGrade = async (req, res) => {
       if (student && student.preferences?.notifyAIGrading) {
           await Notification.create({
               user: student._id,
-              title: 'AI Grading Completed ✨',
+              title: 'AI Grading Completed',
               message: `Your essay for Question ${questionIdx} has been successfully graded. Score: ${aiData.score}/10.`,
               type: 'ai_grading',
               link: `/results/${result._id}`
@@ -476,7 +549,7 @@ const triggerAIGrading = async (req, res) => {
             if (student && student.preferences?.notifyAIGrading) {
                 await Notification.create({
                     user: student._id,
-                    title: 'AI Grading Completed ✨',
+                    title: 'AI Grading Completed',
                     message: `Your essay for Question ${questionIdx} in "${result.test.title}" has been graded. Score: ${aiData.score}/10.`,
                     type: 'ai_grading',
                     // SỬA LINK: Dẫn thẳng tới trang xem kết quả thay vì trang làm bài

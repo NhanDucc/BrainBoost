@@ -15,7 +15,7 @@
 .form-row input, .form-row select, .form-row textarea {
   border:1px solid var(--border-input); background: var(--bg-input); color: var(--text-main); padding:10px; border-radius:10px; font:inherit;
 }
-.readonly { background: var(--bg-main); border:1px dashed var(--border-color); padding:10px; border-radius:8px; }
+.readonly { background: var(--bg-main); border:1px dashed var(--border-color); padding:10px; border-radius:8px; color: var(--text-main);}
 
 /* tags */
 .chips { display:flex; gap:8px; flex-wrap:wrap; }

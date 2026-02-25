@@ -4,7 +4,6 @@ import SiteHeader from "./Header";
 import SiteFooter from "./Footer";
 import { api } from "../api";
 import FormulaDisplay from "./FormulaDisplay";
-import defaultAvatar from "../images/defaultAvatar.png";
 import "../css/TestPlayer.css";
 
 const ABC = ["A", "B", "C", "D"];
@@ -14,7 +13,6 @@ export default function TestResultView() {
     const navigate = useNavigate();
 
     const [resultData, setResultData] = useState(null);
-    const [leaderboard, setLeaderboard] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [gradingLoading, setGradingLoading] = useState({});
@@ -38,11 +36,8 @@ export default function TestResultView() {
             try {
                 const res = await api.get(`/tests/results/${resultId}`);
                 setResultData(res.data);
-
-                if (res.data && res.data.test) {
-                    const lbRes = await api.get(`/tests/public/${res.data.test._id}/leaderboard`);
-                    setLeaderboard(lbRes.data);
-                }
+                
+                // ĐÃ XÓA LOGIC FETCH LEADERBOARD API Ở ĐÂY CHO NHẸ TRANG
             } catch (err) {
                 setError("Failed to load test result. It may not exist or you don't have permission.");
             } finally {
@@ -52,7 +47,7 @@ export default function TestResultView() {
         fetchData();
     }, [resultId]);
 
-    // Gọi Backend chạy ngầm AI (Đã thay thế alert bằng Toast)
+    // Gọi Backend chạy ngầm AI
     const handleTriggerAIGrading = async (questionIdx) => {
         setGradingLoading(prev => ({ ...prev, [questionIdx]: true }));
         try {
@@ -60,14 +55,12 @@ export default function TestResultView() {
                 resultId: resultId,
                 questionIdx: questionIdx
             });
-            // Hiển thị Toast Thành công
             setToast({
                 show: true,
                 msg: "AI grading started! You can safely leave this page. We'll notify you when it's done.",
                 type: "success"
             });
         } catch (err) {
-            // Hiển thị Toast Lỗi
             setToast({
                 show: true,
                 msg: "Failed to start AI grading. Please try again.",
@@ -83,9 +76,7 @@ export default function TestResultView() {
 
     const { test, answers, totalScore, maxScore, finalPercent } = resultData;
 
-    // ==========================================
     // TÍNH TOÁN 3 CHỈ SỐ ĐÚNG / SAI / BỎ QUA
-    // ==========================================
     let correctCount = 0;
     let incorrectCount = 0;
     let attemptedCount = 0;
@@ -96,7 +87,6 @@ export default function TestResultView() {
                 attemptedCount++;
             }
         } else {
-            // Trắc nghiệm / Đúng sai
             if (ans.studentAnswer != null) {
                 attemptedCount++;
                 if (ans.isCorrect) correctCount++;
@@ -125,7 +115,6 @@ export default function TestResultView() {
                             <div className="res-percent">{finalPercent}% Accuracy</div>
                         </div>
 
-                        {/* 3 CỤC BADGES ĐÃ ĐƯỢC THÊM LẠI VÀO ĐÂY */}
                         <div className="res-stats-badges">
                             <span className="res-badge success"><i className="bi bi-check-circle-fill"></i> {correctCount} Correct</span>
                             <span className="res-badge danger"><i className="bi bi-x-circle-fill"></i> {incorrectCount} Incorrect</span>
@@ -143,39 +132,27 @@ export default function TestResultView() {
                     </div>
 
                     <div className="res-bottom-grid">
-                        {/* LEADERBOARD */}
-                        <div className="res-leaderboard">
-                            <h3 className="lb-title"><i className="bi bi-trophy-fill text-warning"></i> Top Performers</h3>
-                            {leaderboard.length === 0 ? (
-                                <p className="lb-empty" style={{ color: 'var(--text-secondary)' }}>No ranking data yet.</p>
-                            ) : (
-                                <table className="lb-table">
-                                    <thead>
-                                        <tr>
-                                            <th>Rank</th>
-                                            <th>Student</th>
-                                            <th>Score</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {leaderboard.map((lbEntry, idx) => {
-                                            const isAnon = lbEntry.isAnonymous || lbEntry.preferences?.isAnonymous;
-                                            const displayName = isAnon ? "Anonymous Student" : lbEntry.user;
-                                            const displayAvatar = isAnon ? defaultAvatar : (lbEntry.avatar || defaultAvatar);
-                                            return (
-                                                <tr key={idx} className={idx < 3 ? `top-${idx+1}` : ''}>
-                                                    <td className="lb-rank">{idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `#${idx + 1}`}</td>
-                                                    <td className="lb-user">
-                                                        <img src={displayAvatar} alt="avatar" />
-                                                        <span>{displayName}</span>
-                                                    </td>
-                                                    <td className="lb-score">{lbEntry.score}/{lbEntry.maxScore}</td>
-                                                </tr>
-                                            );
-                                        })}
-                                    </tbody>
-                                </table>
-                            )}
+                        
+                        {/* ==========================================
+                            KHỐI ĐIỀU HƯỚNG SANG TRANG LEADERBOARD MỚI
+                            ========================================== */}
+                        <div className="res-leaderboard" style={{ 
+                            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', 
+                            padding: '40px 20px', textAlign: 'center', background: 'var(--bg-card)', 
+                            borderRadius: '16px', border: '1px solid var(--border-color)', height: 'fit-content' 
+                        }}>
+                            <i className="bi bi-trophy-fill text-warning" style={{ fontSize: '50px', marginBottom: '10px' }}></i>
+                            <h3 style={{ color: 'var(--text-main)', marginBottom: '10px' }}>Hall of Fame</h3>
+                            <p style={{ color: 'var(--text-secondary)', marginBottom: '24px', lineHeight: '1.5' }}>
+                                See where you rank among all students who took this test.
+                            </p>
+                            <button 
+                                className="primary-btn" 
+                                onClick={() => navigate(`/tests/public/${test._id}/leaderboard`)}
+                                style={{ width: '100%' }}
+                            >
+                                <i className="bi bi-bar-chart-fill"></i> View Leaderboard
+                            </button>
                         </div>
 
                         {/* DETAILED ANSWERS */}

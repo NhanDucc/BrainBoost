@@ -66,6 +66,15 @@
 .pal-btn.active{ border-color: var(--primary); box-shadow:0 0 0 2px rgba(0,87,255,.15) inset; color: var(--primary); }
 .pal-btn.answered{ background: var(--bg-object); border-color: var(--primary); color: var(--primary-hover); }
 
+.rv-stem {
+  color: var(--text-main);
+  font-size: 16px;
+  line-height: 1.6;
+  margin-bottom: 16px;
+}
+.rv-stem * {
+  color: inherit;
+}
 .rv-title{ margin:14px 0 8px; font-weight:900; color: var(--primary-hover); }
 .rv-list{ display:grid; gap:12px; }
 .rv-item{ border:1px solid var(--border-color); border-radius:12px; padding:12px; background: var(--bg-card); }
@@ -75,14 +84,36 @@
 .rv-badge.ok{ background: var(--bg-object); color: var(--success); border:1px solid var(--success); }
 .rv-badge.bad{ background: var(--bg-object); color: var(--error); border:1px solid var(--error); }
 .rv-badge.na{ background: var(--bg-input); color: var(--text-secondary); border:1px solid var(--border-input); }
-.rv-choices{ list-style:none; margin:8px 0 0; padding:0; display:grid; gap:6px; }
-.rv-choice{ display:flex; align-items:center; gap:8px; padding:8px; border-radius:10px; border:1px solid var(--border-color); }
+.rv-choices {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.rv-choice {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
+  color: var(--text-main);
+  gap: 12px;
+}
 .rv-choice.correct{ background: var(--bg-object); border-color: var(--success); }
 .rv-choice.chosen{ background: var(--bg-object); border-color: var(--error); }
-.rv-index{ width:20px; font-weight:900; color: var(--primary-hover); }
+.rv-index{ width:20px; font-weight:900; color: var(--primary); }
 .rv-tag{ margin-left:auto; font-size:12px; font-weight:800; color: var(--success); }
 .rv-tag.wrong{ color: var(--error); }
-
+.rv-text {
+  flex: 1;
+  color: var(--text-main);
+}
+.rv-text * {
+  color: inherit;
+}
 /* === AI GRADING STYLES === */
 .ai-grade-btn {
   display: inline-flex;

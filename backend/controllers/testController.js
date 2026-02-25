@@ -113,7 +113,19 @@ const getMyTests = async (req, res) => {
   try {
     const mine = String(req.query.mine || "") === "1";
     const query = mine ? { createdBy: req.userId } : {};
+
+    // Lấy danh sách tests
     const list = await Test.find(query).sort({ updatedAt: -1 }).lean();
+
+    // Đếm số lượt làm bài cho từng bài test nếu là giáo viên đang xem bài của mình
+    if (mine) {
+        const TestResult = require("../models/TestResult");
+        for (let test of list) {
+            const attemptsCount = await TestResult.countDocuments({ test: test._id });
+            test.attempts = attemptsCount; // Gắn thêm field attempts vào kết quả trả về
+        }
+    }
+    
     res.json(list);
   } catch (e) {
     console.error(e);

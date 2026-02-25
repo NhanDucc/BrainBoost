@@ -27,6 +27,7 @@ import Learning from "./components/Learning";
 import Settings from './components/Settings';
 import TestResultView from "./components/TestResultView";
 import Help from "./components/Help";
+import Leaderboard from "./components/Leaderboard";
 
 const App = () => {
   return (
@@ -43,6 +44,7 @@ const App = () => {
         <Route path="/courses/:courseId/learn" element={<CoursePlayer />} />
         <Route path="/tests" element={<AllTests />} />
         <Route path="/tests/:id" element={<TestPlayer />} />
+        <Route path="/tests/public/:id/leaderboard" element={<Leaderboard />} />
         <Route path="/privacy-policy" element={<Privacy />} />
         <Route path="/terms-of-use" element={<Terms />} />
         <Route path="/about" element={<AboutUs />} />

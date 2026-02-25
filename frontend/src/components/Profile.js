@@ -257,12 +257,7 @@ export default function Profile() {
     const navigate = useNavigate();
 
     // Global user state
-    const [user, setUser] = useState({
-        fullname: "Name",
-        avatarUrl: "",
-        bannerUrl: "",
-        role: null,
-    });
+    const [user, setUser] = useState({ fullname: "Name", avatarUrl: "", bannerUrl: "", role: null });
     const [error] = useState("");
 
     // Fetch user profile data on component mount
@@ -300,6 +295,7 @@ export default function Profile() {
 
     // State exclusively for Instructors to track tests they have authored
     const [myTests, setMyTests] = useState([]);
+    const [myCourses, setMyCourses] = useState([]);
     const [itLoading, setItLoading] = useState(false);
 
     // Fetch authored tests if the user is an instructor
@@ -308,10 +304,21 @@ export default function Profile() {
         (async () => {
             try {
                 setItLoading(true);
-                const res = await fetch(toAbsolute("/api/tests?mine=1"), { credentials: "include" });
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                const data = await res.json();
-                setMyTests(Array.isArray(data) ? data : []);
+
+                // Lấy Tests (kèm số lượt attempts)
+                const resTests = await fetch(toAbsolute("/api/tests?mine=1"), { credentials: "include" });
+                if (resTests.ok) {
+                    const testsData = await resTests.json();
+                    setMyTests(Array.isArray(testsData) ? testsData : []);
+                }
+
+                // Lấy Courses
+                const resCourses = await fetch(toAbsolute("/api/courses?mine=1"), { credentials: "include" });
+                if (resCourses.ok) {
+                    const coursesData = await resCourses.json();
+                    setMyCourses(Array.isArray(coursesData) ? coursesData : []);
+                }
+
             } catch (e) {
                 // Ignore gracefully; could implement a toast notification here
             } finally {
@@ -322,7 +329,9 @@ export default function Profile() {
 
     // Compute aggregate statistics for the Instructor view
     const testsTotal = myTests.length;
+    const coursesTotal = myCourses.length;
     const questionsTotal = myTests.reduce((t, x) => t + (x.numQuestions || (x.questions?.length || 0)), 0);
+    const attemptsTotal = myTests.reduce((t, x) => t + (x.attempts || 0), 0);
     const subjectSet = new Set(myTests.map(t => t.subject));
     const recent = myTests.slice(0, 5); // Grab only the 5 most recent tests
 
@@ -333,37 +342,25 @@ export default function Profile() {
         <div className="profile-container">
             {/* Cover Image */}
             <div className="profile-cover">
-            <img
-                src={bannerSrc}
-                alt="Cover"
-                className="cover-fake-image"
-            />
+                <img src={bannerSrc} alt="Cover" className="cover-fake-image" />
             </div>
 
             {/* Avatar & Name */}
             <div className="profile-head">
-            <div className="profile-avatar-wrapper">
-                <img src={avatarSrc} alt="avatar" className="profile-avatar" />
-                <button
-                    type="button"
-                    className="information-edit-btn"
-                    onClick={() => navigate("/update-profile")}
-                    aria-label="Edit profile"
-                    title="Edit profile"
-                    >
-                    <i className="bi bi-pencil-fill" />
-                </button>
-            </div>
-            <div className="profile-name">{user.fullname || "Name"}</div>
-            <div className="profile-role-chip">{role}</div>
+                <div className="profile-avatar-wrapper">
+                    <img src={avatarSrc} alt="avatar" className="profile-avatar" />
+                    <button type="button" className="information-edit-btn" onClick={() => navigate("/update-profile")} title="Edit profile">
+                        <i className="bi bi-pencil-fill" />
+                    </button>
+                </div>
+                <div className="profile-name">{user.fullname || "Name"}</div>
+                <div className="profile-role-chip">{role}</div>
             </div>
 
             {error && <div className="profile-error">{error}</div>}
 
             {/* ==== STUDENT VIEW ==== */}
-            {isStudent && (
-            <StudentDashboard user={user} />
-            )}
+            {isStudent && <StudentDashboard user={user} />}
 
             {/* ==== INSTRUCTOR VIEW ==== */}
             {isInstructor && (
@@ -371,71 +368,95 @@ export default function Profile() {
 
                 {/* Quick Action Links */}
                 <div className="role-card">
-                <h3>Instructor quick actions</h3>
-                <div className="qa-row">
-                    <button className="primary-btn" onClick={() => navigate("/instructor")}>
-                    <i className="bi bi-speedometer2" /> Go to Instructor Dashboard
-                    </button>
-                    <button className="ghost-btn" onClick={() => navigate("/instructor/tests/new")}>
-                    <i className="bi bi-plus-lg" /> Add New Test
-                    </button>
-                </div>
-                <p className="role-muted">Create and manage tests from your dashboard.</p>
+                    <h3>Instructor quick actions</h3>
+                    <div className="qa-row">
+                        <button className="primary-btn" onClick={() => navigate("/instructor")}>
+                            <i className="bi bi-speedometer2" /> Dashboard
+                        </button>
+                        <button className="ghost-btn" onClick={() => navigate("/instructor/tests/new")}>
+                            <i className="bi bi-file-earmark-plus" /> Add New Test
+                        </button>
+                        {/* 1. NÚT ADD NEW COURSE */}
+                        <button className="ghost-btn" onClick={() => navigate("/instructor/courses/new")}>
+                            <i className="bi bi-journal-plus" /> Add New Course
+                        </button>
+                    </div>
+                    <p className="role-muted">Create and manage your educational content.</p>
                 </div>
 
                 {/* KPI Statistics */}
-                <div className="role-cards-3">
-                <div className="stat-card">
-                    <div className="stat-kpi">{testsTotal}</div>
-                    <div className="stat-label">Total Tests</div>
-                </div>
-                <div className="stat-card">
-                    <div className="stat-kpi">{questionsTotal}</div>
-                    <div className="stat-label">Total Questions</div>
-                </div>
-                <div className="stat-card">
-                    <div className="stat-kpi">{subjectSet.size}</div>
-                    <div className="stat-label">Subjects Authored</div>
-                </div>
+                <div className="role-cards-stats">
+                    <div className="stat-card">
+                        <div className="stat-kpi">{testsTotal}</div>
+                        <div className="stat-label">Total Tests</div>
+                    </div>
+                    {/* 1. KHỐI KPI TOTAL COURSES */}
+                    <div className="stat-card">
+                        <div className="stat-kpi">{coursesTotal}</div>
+                        <div className="stat-label">Total Courses</div>
+                    </div>
+                    {/* 2. KHỐI KPI TOTAL QUESTIONS */}
+                    <div className="stat-card">
+                        <div className="stat-kpi">{questionsTotal}</div>
+                        <div className="stat-label">Total Questions</div>
+                    </div>
+                    {/* 3. KHỐI KPI TOTAL ATTEMPTS */}
+                    <div className="stat-card">
+                        <div className="stat-kpi" style={{ color: 'var(--success)' }}>{attemptsTotal}</div>
+                        <div className="stat-label">Total Attempts</div>
+                    </div>
                 </div>
 
                 {/* List of Recent Authored Tests */}
                 <div className="role-card">
-                <div className="role-card-head">
-                    <h4>Recent tests</h4>
-                    <button className="link-btn" onClick={() => navigate("/instructor")}>View all</button>
-                </div>
-
-                {itLoading ? (
-                    <div className="empty">Loading…</div>
-                ) : recent.length === 0 ? (
-                    <div className="empty">
-                    You haven’t published any tests yet.
-                    <button className="cta-ghost" onClick={() => navigate("/instructor/tests/new")}>
-                        + Add New Test
-                    </button>
+                    <div className="role-card-head">
+                        <h4>Recent tests</h4>
+                        <button className="link-btn" onClick={() => navigate("/instructor")}>View all</button>
                     </div>
-                ) : (
-                    <div className="recent-list">
-                    {recent.map(t => (
-                        <div key={t._id} className="recent-item">
-                        <div className="r-main">
-                            <div className="r-title">{t.title}</div>
-                            <div className="r-sub">
-                            <span className="chip">{(t.subject || "").toUpperCase()}</span>
-                            {t.grade && <span className="chip">Grade {t.grade}</span>}
-                            <span className="chip">{t.numQuestions || (t.questions?.length || 0)} Qs</span>
-                            </div>
-                        </div>
-                        <div className="r-actions">
-                            <button className="ghost-btn" onClick={() => navigate(`/instructor/tests/${t._id}/edit`)}>
-                            <i className="bi bi-pencil-square" /> Edit
+
+                    {itLoading ? (
+                        <div className="empty">Loading…</div>
+                    ) : recent.length === 0 ? (
+                        <div className="empty">
+                            You haven’t published any tests yet.
+                            <button className="cta-ghost" onClick={() => navigate("/instructor/tests/new")}>
+                                + Add New Test
                             </button>
                         </div>
+                    ) : (
+                        <div className="recent-list">
+                        {recent.map(t => (
+                            <div key={t._id} className="recent-item">
+                                <div className="r-main">
+                                    <div className="r-title">
+                                        {t.title} 
+                                        {/* Badge hiện số lượt làm cho riêng bài này */}
+                                        {t.attempts > 0 && <span style={{ fontSize: '12px', marginLeft: '10px', color: 'var(--success)' }}>({t.attempts} attempts)</span>}
+                                    </div>
+                                    <div className="r-sub">
+                                        <span className="chip">{(t.subject || "").toUpperCase()}</span>
+                                        {t.grade && <span className="chip">Grade {t.grade}</span>}
+                                        <span className="chip">{t.numQuestions || (t.questions?.length || 0)} Qs</span>
+                                    </div>
+                                </div>
+                                
+                                {/* 2. THÊM NÚT XEM RESULTS / LEADERBOARD */}
+                                <div className="r-actions" style={{ display: 'flex', gap: '8px' }}>
+                                    <button 
+                                        className="ghost-btn" 
+                                        onClick={() => navigate(`/tests/public/${t._id}/leaderboard`)}
+                                        title="View student results"
+                                    >
+                                        <i className="bi bi-trophy" /> Results
+                                    </button>
+                                    <button className="ghost-btn" onClick={() => navigate(`/instructor/tests/${t._id}/edit`)}>
+                                        <i className="bi bi-pencil-square" /> Edit
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
                         </div>
-                    ))}
-                    </div>
-                )}
+                    )}
                 </div>
             </div>
             )}

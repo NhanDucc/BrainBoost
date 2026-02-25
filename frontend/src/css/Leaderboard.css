@@ -1,0 +1,114 @@
+.leaderboard-page {
+  background: var(--bg-main);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.lb-container {
+  width: min(900px, 92vw);
+  margin: 40px auto 60px;
+  flex: 1;
+}
+
+.lb-header {
+  text-align: center;
+  margin-bottom: 40px;
+}
+
+.lb-header h1 {
+  font-size: clamp(28px, 4vw, 36px);
+  color: var(--primary);
+  margin: 0 0 10px;
+  font-weight: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.lb-header p {
+  font-size: 18px;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.lb-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  padding: 30px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.05);
+}
+
+.lb-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.lb-table th {
+  text-align: left;
+  padding: 12px 16px;
+  color: var(--text-secondary);
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 2px solid var(--border-color);
+}
+
+.lb-table td {
+  padding: 16px;
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-main);
+  font-weight: 500;
+  vertical-align: middle;
+}
+
+.lb-table tr:last-child td {
+  border-bottom: none;
+}
+
+.lb-table tr:hover td {
+  background: var(--bg-hover);
+}
+
+/* Rank Styling */
+.lb-rank {
+  font-size: 20px;
+  font-weight: 800;
+  width: 80px;
+  text-align: center !important;
+}
+
+/* Huy chương cho Top 3 */
+.top-1 td { background: rgba(250, 204, 21, 0.1) !important; }
+.top-2 td { background: rgba(148, 163, 184, 0.1) !important; }
+.top-3 td { background: rgba(180, 83, 9, 0.1) !important; }
+
+/* User Column */
+.lb-user {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.lb-user img {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid var(--border-color);
+}
+
+.lb-score {
+  font-weight: 800;
+  color: var(--success);
+  font-size: 16px;
+}
+
+.lb-empty {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--text-secondary);
+  font-size: 16px;
+}

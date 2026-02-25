@@ -25,6 +25,7 @@ import TestPlayer from "./components/TestPlayer";
 import CoursePlayer from "./components/CoursePlayer";
 import Learning from "./components/Learning";
 import Settings from './components/Settings';
+import TestResultView from "./components/TestResultView";
 
 const App = () => {
   return (
@@ -52,6 +53,7 @@ const App = () => {
         {/*Auth */}
         <Route element={<RequireAuth />}>
           <Route path="/profile" element={<Profile />} />
+          <Route path="/results/:resultId" element={<TestResultView />} />
           <Route path="/update-profile" element={<UpdateProfile />} />
           <Route path="/contact" element={<Contact />} />
           <Route path="/apply-instructor" element={<ApplyInstructor />} />

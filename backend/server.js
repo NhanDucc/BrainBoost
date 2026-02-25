@@ -18,6 +18,8 @@ const ttsRoutes = require("./routes/ttsRoutes");
 const aiSlidesRoutes = require("./routes/aiSlidesRoutes");
 const lessonChatRoutes = require("./routes/lessonChatRoutes");
 const learningRoutes = require('./routes/learningRoutes');
+const { startCronJobs } = require('./services/cronService');
+const notificationRoutes = require('./routes/notificationRoutes');
 
 const app = express();
 
@@ -54,6 +56,7 @@ app.use("/api/tts", ttsRoutes);                             // Text-to-Speech in
 app.use("/api/ai-slides", aiSlidesRoutes);                  // AI-generated presentation slides
 app.use("/api/lesson-chat", lessonChatRoutes);              // AI Tutor chat within lessons
 app.use('/api/learning', learningRoutes);                   // User learning data (Bookmarks, Mistakes, AI Paths)
+app.use('/api/notifications', notificationRoutes);
 
 // ==== Database Connection & Server Start ====
 mongoose.connect('mongodb://localhost:27017/learning_platform', {
@@ -66,6 +69,10 @@ mongoose.connect('mongodb://localhost:27017/learning_platform', {
 });
 
 const PORT = process.env.PORT || 5000;
+
+// Khởi động các tác vụ chạy ngầm
+startCronJobs(); // Thêm dòng này trước app.listen
+
 app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
 });

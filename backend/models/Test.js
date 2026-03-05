@@ -3,14 +3,15 @@ const mongoose = require("mongoose");
 /** Question schema with 3 types:
  * - mcq:      requires choices[4] + correctIndex (0..3)
  * - boolean:  requires correctBool (true/false)
- * - essay:    optional rubric/modelAnswer, no auto-grade
+ * - short_answer: requires modelAnswer (exact text match, auto-graded)
+ * - essay:    optional rubric/modelAnswer, AI-graded
  */
 
 const QuestionSchema = new mongoose.Schema(
   {
     type: {
       type: String,
-      enum: ["mcq", "boolean", "essay"],
+      enum: ["mcq", "boolean", "short_answer", "essay"],
       default: "mcq",
       required: true,
     },
@@ -49,9 +50,9 @@ const QuestionSchema = new mongoose.Schema(
       required: function () { return this.type === "boolean"; },
     },
 
-    // ESSAY fields (optional)
-    rubric: { type: String, default: "" },        // hướng dẫn chấm
-    modelAnswer: { type: String, default: "" },   // đáp án mẫu / gợi ý
+    // ESSAY & SHORT_ANSWER fields
+    rubric: { type: String, default: "" },
+    modelAnswer: { type: String, default: "" },
 
     // Common
     explanation: { type: String, default: "" },
@@ -72,6 +73,9 @@ QuestionSchema.pre("validate", function (next) {
   }
   if (this.type === "boolean" && typeof this.correctBool !== "boolean") {
     return next(new Error("Boolean question must have correctBool (true/false)."));
+  }
+  if (this.type === "short_answer" && (!this.modelAnswer || !this.modelAnswer.trim())) {
+    return next(new Error("Short answer question must have a correct model answer."));
   }
   next();
 });

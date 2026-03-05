@@ -7,12 +7,18 @@ const Notification = require('../models/Notification');
 
 const AI_AGENT_URL = process.env.AI_AGENT_URL;
 
-// Normalizes and formats question data to ensure consistency before saving to the database
+/**
+ * Normalizes and formats question data to ensure consistency before saving to the database.
+ * Maps incoming raw data into strict schema-compliant objects based on the question type.
+ * @param {Object} q - The raw question object.
+ * @returns {Object} The sanitized and formatted question object.
+ */
 function normalizeQuestion(q) {
   const t = (q.type || "mcq").toLowerCase();
 
-  // Handle Multiple Choice Questions
+  // Handle Multiple Choice Questions (MCQ)
   if (t === "mcq") {
+    // Ensure exactly 4 choices exist and are strings
     const choices = Array.isArray(q.choices) && q.choices.length === 4
       ? q.choices.map(c => String(c ?? "").trim())
       : ["", "", "", ""];
@@ -31,6 +37,7 @@ function normalizeQuestion(q) {
     return {
       type: "boolean",
       stem: String(q.stem || "").trim(),
+      // Support alternative field names for boolean answers
       correctBool: (typeof q.correctBool === "boolean")
         ? q.correctBool
         : (typeof q.answerBool === "boolean" ? q.answerBool : null),
@@ -39,7 +46,18 @@ function normalizeQuestion(q) {
     };
   }
 
-  // Handle Essay Questions
+  // Handle Short Answer Questions
+  if (t === "short_answer") {
+    return {
+      type: "short_answer",
+      stem: String(q.stem || "").trim(),
+      modelAnswer: String(q.modelAnswer || "").trim(),
+      explanation: String(q.explanation || "").trim(),
+      points: Number.isFinite(q.points) ? q.points : 1,
+    };
+  }
+
+  // Handle Essay Questions (AI Graded)
   return {
     type: "essay",
     stem: String(q.stem || "").trim(),
@@ -50,7 +68,12 @@ function normalizeQuestion(q) {
   };
 }
 
-// Validates an array of questions at controller level for early error detection
+/**
+ * Validates an array of questions at the controller level for early error detection.
+ * Ensures required fields are present before attempting database operations.
+ * @param {Array} qs - Array of question objects.
+ * @returns {String|null} Returns an error message string if invalid, or null if valid.
+ */
 function validateQuestions(qs) {
   if (!Array.isArray(qs) || qs.length < 1) return "At least 1 question required.";
   for (let i = 0; i < qs.length; i++) {
@@ -68,25 +91,32 @@ function validateQuestions(qs) {
     if (q.type === "boolean" && typeof q.correctBool !== "boolean") {
       return `Question ${i + 1}: please choose True or False.`;
     }
+
+    if (q.type === "short_answer" && !(q.modelAnswer || "").trim()) {
+      return `Question ${i + 1}: Short answer must have a correct model answer.`;
+    }
   }
   return null;  // No errors
 }
 
 /**
- * Creates a new test with validated questions and required fields.
+ * Creates a new test with validated questions and required metadata.
  * * POST /api/tests
  */
 const createTest = async (req, res) => {
   try {
     const p = req.body || {};
 
+    // Validate required top-level metadata
     if (!p.title || !p.grade || !p.subject)
       return res.status(400).json({ message: "Missing required fields." });
 
+    // Normalize and validate the question array
     const questions = (p.questions || []).map(normalizeQuestion);
     const err = validateQuestions(questions);
     if (err) return res.status(400).json({ message: "Invalid question format.", detail: err });
 
+    // Save to database
     const doc = await Test.create({
       title: String(p.title).trim(),
       grade: String(p.grade).trim(),
@@ -106,23 +136,25 @@ const createTest = async (req, res) => {
 };
 
 /**
- * Retrieves a list of tests created by the currently authenticated user.
+ * Retrieves a list of tests. If '?mine=1' is provided, it fetches tests created 
+ * by the authenticated instructor, including the number of attempts for each test.
  * * GET /api/tests?mine=1
  */
 const getMyTests = async (req, res) => {
   try {
     const mine = String(req.query.mine || "") === "1";
+    // If 'mine' is true, filter by the current user's ID
     const query = mine ? { createdBy: req.userId } : {};
 
-    // Lấy danh sách tests
+    // Fetch the list of tests from database
     const list = await Test.find(query).sort({ updatedAt: -1 }).lean();
 
-    // Đếm số lượt làm bài cho từng bài test nếu là giáo viên đang xem bài của mình
+    // Count the number of student attempts for each test if viewed by the instructor
     if (mine) {
         const TestResult = require("../models/TestResult");
         for (let test of list) {
             const attemptsCount = await TestResult.countDocuments({ test: test._id });
-            test.attempts = attemptsCount; // Gắn thêm field attempts vào kết quả trả về
+            test.attempts = attemptsCount; // Attach attempt count to the response object
         }
     }
     
@@ -134,13 +166,15 @@ const getMyTests = async (req, res) => {
 };
 
 /**
- * Retrieves a single test by ID, checking that the requester is the test creator.
+ * Retrieves a single test by ID and verifies that the requester is the test creator.
  * * GET /api/tests/:id
  */
 const getOneTest = async (req, res) => {
   try {
     const t = await Test.findById(req.params.id).lean();
     if (!t) return res.status(404).json({ message: "Not found" });
+
+    // Authorization check: Only the creator can fetch the test editor details
     if (String(t.createdBy) !== String(req.userId))
       return res.status(403).json({ message: "Forbidden" });
     res.json(t);
@@ -151,7 +185,7 @@ const getOneTest = async (req, res) => {
 };
 
 /**
- * Updates an existing test, checking permissions and validating new questions.
+ * Updates an existing test. Checks permissions and validates new questions before saving.
  * * PUT /api/tests/:id
  */
 const updateTest = async (req, res) => {
@@ -159,13 +193,14 @@ const updateTest = async (req, res) => {
     const doc = await Test.findById(req.params.id);
     if (!doc) return res.status(404).json({ message: "Not found" });
 
-    // Permission check
+    // Authorization check
     if (String(doc.createdBy) !== String(req.userId))
       return res.status(403).json({ message: "Forbidden" });
 
     const p = req.body || {};
     const questions = Array.isArray(p.questions) ? p.questions.map(normalizeQuestion) : null;
     
+    // If questions are provided, validate and update them
     if (questions) {
       const err = validateQuestions(questions);
       if (err) return res.status(400).json({ message: "Invalid question format.", detail: err });
@@ -175,6 +210,7 @@ const updateTest = async (req, res) => {
       doc.numQuestions = p.numQuestions;
     }
 
+    // Update metadata fields, falling back to existing values if not provided
     doc.title = p.title ?? doc.title;
     doc.grade = p.grade ?? doc.grade;
     doc.subject = p.subject ?? doc.subject;
@@ -190,7 +226,7 @@ const updateTest = async (req, res) => {
 };
 
 /**
- * Deletes a test after verifying the user's permissions.
+ * Deletes a test from the database after verifying the user's permissions.
  * * DELETE /api/tests/:id
  */
 const deleteTest = async (req, res) => {
@@ -198,10 +234,11 @@ const deleteTest = async (req, res) => {
     const t = await Test.findById(req.params.id);
     if (!t) return res.status(404).json({ message: "Not found" });
     
-    // Permission check
+    // Authorization check
     if (String(t.createdBy) !== String(req.userId)) {
       return res.status(403).json({ message: "Forbidden" });
     }
+
     await t.deleteOne();
     res.json({ message: "Deleted" });
   } catch (e) {
@@ -211,7 +248,7 @@ const deleteTest = async (req, res) => {
 };
 
 /**
- * Lists public tests with optional filtering by subject and search queries.
+ * Lists public tests for students to view, with optional filtering by subject and search query.
  * * GET /api/public/tests
  */
 const listPublicTests = async (req, res) => {
@@ -219,12 +256,16 @@ const listPublicTests = async (req, res) => {
     const { q = "", subject } = req.query;
     const cond = {};
 
+    // Apply subject filter if provided
     if (subject) cond.subject = subject;
+
+    // Apply search query against title or description (case-insensitive)
     if (q) cond.$or = [
       { title: { $regex: q, $options: "i" } },
       { description: { $regex: q, $options: "i" } },
     ];
 
+    // Fetch and return a lightweight projection of the tests
     const list = await Test.find(cond)
       .select("_id title subject grade numQuestions description tags updatedAt")
       .sort({ updatedAt: -1 })
@@ -238,7 +279,7 @@ const listPublicTests = async (req, res) => {
 };
 
 /**
- * Retrieves a public test by ID for students to take.
+ * Retrieves a public test by ID for students to take (contains full questions).
  * * GET /api/public/tests/:id
  */
 const getPublicTestById = async (req, res) => {
@@ -253,7 +294,8 @@ const getPublicTestById = async (req, res) => {
 };
 
 /**
- * Sends a student's essay answer to the external AI Agent for grading.
+ * Sends a student's essay answer to the external Python AI Agent for grading.
+ * Note: This acts as a proxy between the frontend and the AI microservice.
  * * POST /api/tests/grade-essay
  */
 const gradeEssay = async (req, res) => {
@@ -281,6 +323,7 @@ const gradeEssay = async (req, res) => {
 
 /**
  * Saves the test result when a student submits their test.
+ * Includes background logic to monitor leaderboard changes and send notifications.
  * * POST /api/tests/submit
  */
 const submitTest = async (req, res) => {
@@ -291,6 +334,7 @@ const submitTest = async (req, res) => {
 
     const testObjectId = new mongoose.Types.ObjectId(testId);
 
+    // Fetch Top 10 Leaderboard BEFORE the new submission is saved
     const beforeLeaderboard = await TestResult.aggregate([
       { $match: { test: testObjectId } },
       { $sort: { totalScore: -1, timeSpent: 1, completedAt: 1 } },
@@ -299,12 +343,13 @@ const submitTest = async (req, res) => {
       { $limit: 10 }
     ]);
 
-    // Tạo từ điển để nhớ Rank cũ của từng người
+    // Create a dictionary to map user IDs to their old ranks
     const rankBefore = {};
     beforeLeaderboard.forEach((user, index) => {
         rankBefore[user._id.toString()] = index + 1;
     });
 
+    // Save the new test result to the database
     const newResult = await TestResult.create({
       student: req.userId,
       test: testId,
@@ -315,6 +360,7 @@ const submitTest = async (req, res) => {
       timeSpent: timeSpent || 0
     });
 
+    // Fetch Top 10 Leaderboard AFTER the submission is saved
     const afterLeaderboard = await TestResult.aggregate([
       { $match: { test: testObjectId } },
       { $sort: { totalScore: -1, timeSpent: 1, completedAt: 1 } },
@@ -323,7 +369,8 @@ const submitTest = async (req, res) => {
       { $limit: 10 }
     ]);
 
-    // Chạy ngầm việc gửi thông báo để không làm chậm luồng nộp bài của user hiện tại
+    // Run a background job to send notifications regarding leaderboard changes.
+    // Executed asynchronously so the user gets an immediate API response.
     (async () => {
       try {
         const currentUserStr = req.userId.toString();
@@ -331,13 +378,13 @@ const submitTest = async (req, res) => {
         const currentUser = await User.findById(req.userId).select('fullname');
         const afterIds = afterLeaderboard.map(u => u._id.toString());
 
-        // A. Kiểm tra những người trong Top 10 mới xem có ai bị đẩy xuống Rank thấp hơn không
+        // Check for users in the new Top 10 who dropped in rank
         for (let i = 0; i < afterLeaderboard.length; i++) {
           const userIdStr = afterLeaderboard[i]._id.toString();
           const newRank = i + 1;
           const oldRank = rankBefore[userIdStr];
 
-          // Nếu người này bị tụt hạng (Ví dụ: old là 1, new là 2) VÀ không phải là chính người vừa nộp bài
+          // If rank dropped (e.g., from 1 to 2) AND it's not the user who just submitted
           if (oldRank && newRank > oldRank && userIdStr !== currentUserStr) {
             const userDoc = await User.findById(userIdStr);
             if (userDoc && userDoc.preferences?.notifyLeaderboard) {
@@ -352,7 +399,7 @@ const submitTest = async (req, res) => {
           }
         }
 
-        // B. Kiểm tra những người bị đá văng hẳn ra khỏi Top 10
+        // Check for users who were pushed completely out of the Top 10
         for (const oldUserId in rankBefore) {
           if (!afterIds.includes(oldUserId) && oldUserId !== currentUserStr) {
             const userDoc = await User.findById(oldUserId);
@@ -380,7 +427,8 @@ const submitTest = async (req, res) => {
 };
 
 /**
- * Updates the AI grade, feedback, and suggestion for a specific essay question.
+ * Updates the AI grade, feedback, and suggestion for a specific essay question in an existing result.
+ * Typically called after manual grading trigger from the frontend.
  * * POST /api/tests/update-grade
  */
 const updateEssayGrade = async (req, res) => {
@@ -391,22 +439,21 @@ const updateEssayGrade = async (req, res) => {
     const result = await TestResult.findById(resultId);
     if (!result) return res.status(404).json({ message: "Result not found" });
     
-    // If not found by ID, fall back to index position
+    // Locate the specific answer inside the answers array using the 1-based index
     const targetAnswer = result.answers[questionIdx - 1];
 
     if (targetAnswer) {
+      // Apply AI feedback to the document
       targetAnswer.score = aiData.score;
       targetAnswer.aiFeedback = aiData.feedback;
       targetAnswer.aiSuggestion = aiData.suggestion;
       
-      // Notify mongoose that the answers array has been modified to trigger a save
+      // Notify mongoose that a sub-document array has been modified to ensure changes are saved
       result.markModified('answers'); 
       await result.save();
 
-      // Tìm học sinh sở hữu bài thi này
+      // Send an in-app notification to the student about the newly graded essay
       const student = await User.findById(result.student);
-
-      // Kiểm tra xem học sinh có bật tính năng thông báo AI Grading trong Settings không
       if (student && student.preferences?.notifyAIGrading) {
           await Notification.create({
               user: student._id,
@@ -426,8 +473,8 @@ const updateEssayGrade = async (req, res) => {
 };
 
 /**
- * Fetches the leaderboard for a specific test.
- * Aggregates data so each student only appears once (with their highest score & lowest time).
+ * Fetches the top 10 leaderboard for a specific test.
+ * Uses MongoDB Aggregation to ensure each student only appears once with their best attempt.
  * * GET /api/tests/public/:id/leaderboard
  */
 const getTestLeaderboard = async (req, res) => {
@@ -472,7 +519,8 @@ const getTestLeaderboard = async (req, res) => {
       { $unwind: "$studentInfo" }
     ]);
 
-    // Map the aggregated raw data into a clean structure for the frontend UI
+    // Map the aggregated raw data into a clean structure for the frontend UI,
+    // respecting user privacy preferences for anonymity.
     const leaderboard = leaderboardRaw.map((r, index) => ({
       rank: index + 1,
       user: r.studentInfo.fullname || "Unknown User",
@@ -492,19 +540,20 @@ const getTestLeaderboard = async (req, res) => {
 };
 
 /**
- * Xem lại chi tiết kết quả một bài test đã làm (Bao gồm câu hỏi và đáp án đã chọn)
+ * Retrieves the detailed results of a completed test (including questions and chosen answers).
+ * Ensures students can only view their own test results.
  * * GET /api/tests/results/:resultId
  */
 const getTestResultById = async (req, res) => {
     try {
-        // Lấy TestResult và populate thông tin gốc của bài Test
+        // Fetch TestResult and populate the original test structure
         const result = await TestResult.findById(req.params.resultId)
             .populate('test')
             .lean();
             
         if (!result) return res.status(404).json({ message: "Result not found" });
         
-        // Chỉ cho phép người làm bài xem lại bài của mình
+        // Authorization Check: Only allow the student who took the test to view the results
         if (String(result.student) !== String(req.userId)) {
             return res.status(403).json({ message: "Forbidden: You can only view your own results." });
         }
@@ -517,17 +566,17 @@ const getTestResultById = async (req, res) => {
 };
 
 /**
- * Kích hoạt AI chấm điểm chạy ngầm (Background Job)
+ * Triggers the AI grading process as a background job.
+ * Allows the user to leave the page while the AI microservice processes the essay.
  * * POST /api/tests/trigger-ai-grading
  */
 const triggerAIGrading = async (req, res) => {
     const { resultId, questionIdx } = req.body;
 
-    // 1. Phản hồi ngay lập tức cho Frontend để user có thể tắt trang
+    // Respond immediately so the frontend UI doesn't block/hang
     res.json({ message: "AI grading started in the background." });
 
-    // 2. Chạy ngầm tiến trình gọi AI
-    // (Không dùng await ở block này trong luồng response chính)
+    // Execute the AI call in a detached asynchronous block
     (async () => {
         try {
             const result = await TestResult.findById(resultId).populate('test');
@@ -539,16 +588,16 @@ const triggerAIGrading = async (req, res) => {
 
             if (!targetAnswer || !originalQuestion) return;
 
-            // Gọi qua Python AI Agent
+            // Send payload to Python AI Agent
             const aiRes = await axios.post(`${AI_AGENT_URL}/grade-essay`, {
                 question: originalQuestion.stem,
                 student_answer: targetAnswer.studentAnswer || "",
                 model_answer: originalQuestion.modelAnswer || ""
             });
 
-            const aiData = aiRes.data; // { score, feedback, suggestion }
+            const aiData = aiRes.data; // Expected: { score, feedback, suggestion }
 
-            // Lưu điểm vào DB
+            // Save the AI feedback into the database
             targetAnswer.score = aiData.score;
             targetAnswer.aiFeedback = aiData.feedback;
             targetAnswer.aiSuggestion = aiData.suggestion;
@@ -556,7 +605,7 @@ const triggerAIGrading = async (req, res) => {
             result.markModified('answers');
             await result.save();
 
-            // Gửi thông báo In-app
+            // Dispatch an in-app notification when the background job completes
             const student = await User.findById(result.student);
             if (student && student.preferences?.notifyAIGrading) {
                 await Notification.create({
@@ -564,7 +613,6 @@ const triggerAIGrading = async (req, res) => {
                     title: 'AI Grading Completed',
                     message: `Your essay for Question ${questionIdx} in "${result.test.title}" has been graded. Score: ${aiData.score}/10.`,
                     type: 'ai_grading',
-                    // SỬA LINK: Dẫn thẳng tới trang xem kết quả thay vì trang làm bài
                     link: `/results/${result._id}` 
                 });
             }

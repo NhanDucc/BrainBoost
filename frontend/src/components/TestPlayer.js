@@ -34,11 +34,13 @@ function formatSeconds(s) {
 const ABC = ["A", "B", "C", "D"];
 
 /**
- * Main component for taking a test.
- * Handles the timer, answer recording, session persistence, submission, 
- * AI grading for essays, and displaying the results & leaderboard.
+ * TestPlayer Component
+ * Handles the complete test-taking experience for a student.
+ * Features include: countdown timer, answer recording, session persistence (LocalStorage), 
+ * auto-grading for objective questions, AI grading for essays, and displaying the leaderboard.
  */
 export default function TestPlayer() {
+    // ---- Routing & Parameters ----
     const { id } = useParams();
     const [sp] = useSearchParams();
     const navigate = useNavigate();
@@ -51,32 +53,32 @@ export default function TestPlayer() {
         return Number.isFinite(m) && m > 0 ? m : null;
     }, [sp]);
 
-    // ==== State Management ====
+    // ---- Test Data & UI States ----
     const [paper, setPaper] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
-    const [highlight, setHighlight] = useState(true);   // Toggles UI highlight mode
 
+    // ---- User Progress States ----
     /** * Stores the user's current answers.
      * - For MCQ / Boolean: Stores the selected index (number).
-     * - For Essay: Stores the typed text (string).
+     * - For Short Answer / Essay: Stores the typed text (string).
      */
     const [answers, setAnswers] = useState({});
     const [reviewSet, setReviewSet] = useState(() => new Set());    // Set of question IDs marked for review
     const [pi, setPi] = useState(0);    // Current Part Index
     const [qi, setQi] = useState(0);    // Current Question Index
 
-    // Timer states
+    // ---- Timer States ----
     const [secondsLeft, setSecondsLeft] = useState(minutes ? minutes * 60 : null);
     const timerRef = useRef(null);
     const startTimeRef = useRef(Date.now());    // Tracks when the user started the test
 
-    // Post-submission states
+    // ---- Post-Submission States ----
     const [result, setResult] = useState(null);
     const [showReview, setShowReview] = useState(false);
     const [leaderboard, setLeaderboard] = useState([]);
 
-    // AI Grading states
+    // ---- AI Grading States ----
     const [essayGrades, setEssayGrades] = useState({});
     const [gradingLoading, setGradingLoading] = useState({});
     const [submissionId, setSubmissionId] = useState(null);
@@ -106,8 +108,8 @@ export default function TestPlayer() {
                         type: q.type || "mcq",
                         stem: q.stem,
                     };
-
                     if (base.type === "mcq") {
+
                         return {
                             ...base,
                             choices: q.choices || [],
@@ -117,14 +119,26 @@ export default function TestPlayer() {
                     if (base.type === "boolean") {
                         return {
                             ...base,
-                            choices: ["True", "False"], // Render as 2 choices
+                            choices: ["True", "False"], // Render boolean as 2 explicit choices
                             answer: typeof q.correctBool === "boolean"
                                 ? (q.correctBool ? 0 : 1) // True -> index 0, False -> index 1
                                 : undefined,
                         };
                     }
+                    if (base.type === "short_answer") {
+                        return { 
+                            ...base, 
+                            choices: [],
+                            // Store the original text for automatic exact-match grading later
+                            answer: q.modelAnswer || "", 
+                        };
+                    }
                     // Essay type (Not auto-graded by default)
-                    return { ...base, choices: [] };
+                    return { 
+                        ...base, 
+                        choices: [],
+                        modelAnswer: q.modelAnswer || "", 
+                    };
                 });
 
                 const mapped = {
@@ -201,6 +215,7 @@ export default function TestPlayer() {
 
     const total = flatQuestions.length;
 
+    // Navigates directly to a specific question index
     const gotoIndex = (idx) => {
         if (!paper) return;
         let acc = 0;
@@ -215,6 +230,7 @@ export default function TestPlayer() {
         }
     };
 
+    // Computes the absolute global index of the currently viewed question
     const globalIndex = useMemo(() => {
         if (!paper) return 0;
         let acc = 0;
@@ -222,21 +238,22 @@ export default function TestPlayer() {
         return acc + qi;
     }, [paper, pi, qi]);
 
+    // Extracts the active question object for rendering
     const current = useMemo(() => {
         if (!paper) return null;
         return paper.parts[pi]?.questions?.[qi] ?? null;
     }, [paper, pi, qi]);
 
-    // Set answers
+    // Handlers for recording student answers
     const setAnswerIndex = (qid, idx) => setAnswers((prev) => ({ ...prev, [qid]: idx }));
     const setEssayText = (qid, text) => setAnswers((prev) => ({ ...prev, [qid]: text }));
 
-    const toggleReview = (qid) =>
-        setReviewSet((s) => {
-            const ns = new Set(s);
-            ns.has(qid) ? ns.delete(qid) : ns.add(qid);
-            return ns;
-        });
+    // Determine if a question in the palette has been answered
+    const isAnswered = (q) => {
+        const v = answers[q.id];
+        if (q.type === "essay" || q.type === "short_answer") return typeof v === "string" && v.trim().length > 0;
+        return typeof v === "number";
+    };
 
     // ==== AI Grading & Submission Logic ====
 
@@ -247,6 +264,7 @@ export default function TestPlayer() {
     const handleGradeEssay = async (item) => {
         const { idx, stem, essayAnswer, modelAnswer } = item; 
         
+        // Set loading state for this specific question button
         setGradingLoading(prev => ({ ...prev, [idx]: true }));
         try {
             // Call AI grading endpoint
@@ -267,7 +285,7 @@ export default function TestPlayer() {
                     aiData: aiResult
                 });
 
-                // Phát tín hiệu toàn cục thông báo có thông báo mới
+                // Dispatch global event to trigger notification bell update in Header
                 window.dispatchEvent(new Event("new_notification"));
             }
         } catch (err) {
@@ -279,14 +297,16 @@ export default function TestPlayer() {
     };
 
     /**
-     * Compiles the test results, scores the objective questions, 
-     * and submits the payload to the backend.
+     * Compiles the test results, scores the objective questions locally, 
+     * calculates statistics, and submits the payload to the backend.
      * @param {Boolean} auto - Indicates if the submission was triggered automatically by the timer.
      */
     const handleSubmit = async (auto = false) => {
+        // Map through all questions to evaluate correctness
         const items = flatQuestions.map((q, i) => {
             const chosen = answers[q.id];
 
+            // Ignore essays for auto-grading
             if (q.type === "essay") {
                 return {
                     idx: i + 1,
@@ -298,28 +318,40 @@ export default function TestPlayer() {
                 };
             }
 
-            // Objective questions (MCQ / Boolean)
-            const correct = typeof q.answer === "number" ? q.answer : null;
-            const isCorrect = correct != null && chosen === correct;
+            // Objective questions (MCQ / Boolean / Short Answer)
+            let isCorrect = false;
+            let correct = null;
             
+            if (q.type === "short_answer") {
+                correct = q.answer; 
+                const studentText = (typeof chosen === "string" ? chosen : "").trim().toLowerCase();
+                const correctText = (correct || "").trim().toLowerCase();
+                // Auto-grade by comparing normalized strings (case-insensitive, trimmed)
+                isCorrect = studentText.length > 0 && studentText === correctText;
+            } else {
+                // Auto-grade MCQ / Boolean based on index matching
+                correct = typeof q.answer === "number" ? q.answer : null;
+                isCorrect = correct != null && chosen === correct;
+            }
+
             return {
                 idx: i + 1,
                 type: q.type,
                 stem: q.stem,
                 choices: q.choices,
-                chosen,
+                chosen: chosen !== undefined ? chosen : null,
                 correct,
                 isCorrect,
             };
         });
 
-        // Tally scores
-        const gradableItems = items.filter((it) => it.type === "mcq" || it.type === "boolean");
+        // Calculate Score Statistics
+        const gradableItems = items.filter((it) => ["mcq", "boolean", "short_answer"].includes(it.type));
         const correctCount = gradableItems.filter((x) => x.isCorrect).length;
         const gradableTotal = gradableItems.length;
 
-        const attemptedCount =
-        Object.keys(answers).filter((qid) => {
+        // Calculate Attempted vs Unanswered
+        const attemptedCount = Object.keys(answers).filter((qid) => {
             const q = flatQuestions.find((x) => x.id === qid);
             if (!q) return false;
             if (q.type === "essay") return (answers[qid] || "").trim().length > 0;
@@ -352,8 +384,8 @@ export default function TestPlayer() {
             items,
         });
 
+        // Submit to Database
         try {
-            // Prepare data payload for the server
             const payload = {
                 testId: id,
                 resultSummary: { correctCount, gradableTotal, percent },
@@ -370,7 +402,6 @@ export default function TestPlayer() {
             if (res.data && res.data._id) {
                 setSubmissionId(res.data._id); 
                 localStorage.removeItem(LS_KEY);
-
                 navigate(`/results/${res.data._id}`);
             }
 
@@ -401,12 +432,7 @@ export default function TestPlayer() {
         startTimeRef.current = Date.now(); // Reset the timestamp for the new attempt
     };
 
-    // Determine if a question in the palette has been answered
-    const isAnswered = (q) => {
-        const v = answers[q.id];
-        if (q.type === "essay") return typeof v === "string" && v.trim().length > 0;
-        return typeof v === "number";
-    };
+    // ==== Render ====
 
     return (
         <div className="testplayer-page">
@@ -534,6 +560,7 @@ export default function TestPlayer() {
                                                 {(it.essayAnswer || "").trim() || "— (empty) —"}
                                             </div>
                                             
+                                            {/* Only show AI Grading options if an answer was provided */}
                                             {(it.essayAnswer || "").trim().length > 0 && (
                                                 <div style={{ marginTop: '16px' }}>
                                                     {!essayGrades[it.idx] ? (
@@ -554,6 +581,7 @@ export default function TestPlayer() {
                                                             )}
                                                         </button>
                                                     ) : (
+                                                        // Render AI Feedback results
                                                         <div className="ai-result-box">
                                                             <div className="ai-result-header">
                                                                 <div className="ai-title">
@@ -588,8 +616,21 @@ export default function TestPlayer() {
                                                 </div>
                                             )}
                                         </div>
+                                    ) : it.type === "short_answer" ? (
+                                        /* Short Answer Review UI */
+                                        <div className="rv-essay">
+                                            <div className="rv-essay-label" style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Your answer:</div>
+                                            <div style={{ padding: '12px', background: 'var(--bg-input)', borderRadius: '8px', border: `2px solid ${it.isCorrect ? 'var(--success)' : 'var(--error)'}`, color: 'var(--text-main)', fontSize: '16px', fontWeight: 'bold' }}>
+                                                {(typeof it.chosen === 'string' ? it.chosen : "").trim() || "— (empty) —"}
+                                            </div>
+                                            {!it.isCorrect && (
+                                                <div style={{ marginTop: '10px', color: 'var(--success)', fontWeight: 'bold', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                    <i className="bi bi-check-circle-fill"></i> Correct answer: <span style={{ textDecoration: 'underline' }}>{it.correct}</span>
+                                                </div>
+                                            )}
+                                        </div>
                                     ) : (
-                                        /* Objective Choices UI */
+                                        /* Objective Choices (MCQ/Boolean) Review UI */
                                         <ul className="rv-choices">
                                             {it.choices.map((c, ci) => {
                                                 const isCorrect = ci === it.correct;
@@ -634,7 +675,7 @@ export default function TestPlayer() {
 
                 <div className="tp-body">
                 {/* Left Area: Main Question Content */}
-                <div className={`tp-content ${highlight ? "highlight-on" : ""}`}>
+                <div className={`tp-content`}>
                     <div className="tp-part-name">{paper.parts[pi].name}</div>
 
                     <div className="tp-question">
@@ -695,11 +736,23 @@ export default function TestPlayer() {
                             </div>
                         )}
 
+                        {/* Short Answer Input */}
+                        {current.type === "short_answer" && (
+                            <div className="short-answer-box" style={{ marginTop: '16px' }}>
+                                <input
+                                    type="text"
+                                    placeholder="Type your short answer here…"
+                                    value={typeof answers[current.id] === "string" ? answers[current.id] : ""}
+                                    onChange={(e) => setEssayText(current.id, e.target.value)}
+                                    style={{ width: '100%', padding: '14px 16px', borderRadius: '12px', border: '1px solid var(--border-input)', background: 'var(--bg-input)', color: 'var(--text-main)', fontSize: '16px', fontWeight: 'bold', outline: 'none' }}
+                                />
+                            </div>
+                        )}
+                        
                         {/* Essay Text Area Input */}
                         {current.type === "essay" && (
                             <div className="essay-box">
                             <textarea
-                                rows={6}
                                 placeholder="Write your answer here…"
                                 value={typeof answers[current.id] === "string" ? answers[current.id] : ""}
                                 onChange={(e) => setEssayText(current.id, e.target.value)}

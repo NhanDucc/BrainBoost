@@ -1,19 +1,26 @@
-import React from "react";
 import "../css/Footer.css";
 
+/**
+ * SiteFooter Component
+ * Renders the global footer displayed at the bottom of the application.
+ * Contains brand information, contact details, navigation links, and legal documents.
+ */
 const SiteFooter = () => {
   return (
     <footer className="site-footer">
+      {/* ==== Main Footer Content ==== */}
       <div className="footer-grid">
-        {/* Brand + Contact */}
+
+        {/* Brand & Contact Information Column */}
         <section className="footer-brand">
           <h3 className="f-title">BrainBoost</h3>
           <p className="f-desc">
-            BrainBoost is an online learning platform for students from grade 1 to 3,
-            helping them learn Math, English, Physics, Chemistry well with modern AI support.
+            BrainBoost is an online learning platform for students from elementary to high school,
+            helping them excel in subjects like Math, English, Physics, and Chemistry with the support of advanced artificial intelligence.
           </p>
 
           <ul className="f-contact">
+            {/* Location */}
             <li>
               <span className="f-icon" aria-hidden="true">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
@@ -23,6 +30,7 @@ const SiteFooter = () => {
               </span>
               <span>Da Nang City</span>
             </li>
+            {/* Email Contact */}
             <li>
               <span className="f-icon" aria-hidden="true">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
@@ -35,7 +43,7 @@ const SiteFooter = () => {
           </ul>
         </section>
 
-        {/* About column */}
+        {/* About Navigation Column */}
         <nav className="footer-col" aria-label="About BrainBoost">
           <h4 className="f-title">About BrainBoost</h4>
           <ul>
@@ -46,7 +54,7 @@ const SiteFooter = () => {
           </ul>
         </nav>
 
-        {/* Information column */}
+        {/* Platform Information & Resources Column */}
         <nav className="footer-col" aria-label="BrainBoost Information">
           <h4 className="f-title">BrainBoost Information</h4>
           <ul>
@@ -58,7 +66,9 @@ const SiteFooter = () => {
         </nav>
       </div>
 
-        <div className="footer-bottom centered two-rows">
+      {/* ==== Footer Bottom (Copyright & Legal Links) ==== */}
+      <div className="footer-bottom centered two-rows">
+        {/* Dynamically generates the current year for the copyright notice */}
         <p className="legal">© {new Date().getFullYear()} BrainBoost. All rights reserved.</p>
 
         <div className="footer-links">
@@ -68,7 +78,7 @@ const SiteFooter = () => {
             <span className="sep">•</span>
             <a href="/cookies">Cookies</a>
         </div>
-        </div>
+      </div>
     </footer>
   );
 };

@@ -32,18 +32,22 @@ const formatTimeAgo = (dateString) => {
 
 // ==== Main Component ====
 
+/**
+ * SiteHeader Component
+ * The global navigation bar that handles user routing, responsive mobile menus,
+ * real-time notifications, and user authentication state (login/logout).
+ */
 const SiteHeader = () => {
-  // UI States for dropdown menus
+  // ---- UI States ----
   const [showMenu, setShowMenu] = useState(false);
   const [showNotif, setShowNotif] = useState(false);
-  
-  // Data States
+  const [showMobileNav, setShowMobileNav] = useState(false);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
+
+  // ---- Data States ----
   const [notifications, setNotifications] = useState([]);
   
-  // Modal State for logout confirmation
-  const [showLogoutModal, setShowLogoutModal] = useState(false);
-  
-  // Global context and routing
+  // ---- Global Context & Routing ----
   const { user, fetchMe, signOut } = useUser();
   const navigate = useNavigate();
 
@@ -80,7 +84,9 @@ const SiteHeader = () => {
 
   // ==== API & Event Handlers ====
 
-  // Fetches the latest notifications for the logged-in user from the server
+  /**
+   * Fetches the latest notifications for the logged-in user from the server.
+   */
   const fetchNotifications = async () => {
     try {
       const res = await api.get('/notifications');
@@ -94,8 +100,7 @@ const SiteHeader = () => {
   const unreadCount = notifications.filter(n => !n.isRead).length;
 
   /**
-   * Toggles the user profile menu
-   * Closes the notification menu if it's open
+   * Toggles the user profile menu and ensures the notification menu is closed.
    */
   const handleToggleMenu = () => {
     setShowMenu(v => !v);
@@ -103,22 +108,24 @@ const SiteHeader = () => {
   };
 
   /**
-   * Toggles the notification menu
-   * Closes the user profile menu if it's open
+   * Toggles the notification menu and ensures the user profile menu is closed.
    */
   const handleToggleNotif = () => {
     setShowNotif(v => !v);
     setShowMenu(false);
   };
 
-  // Initiates the logout process by showing the confirmation modal
+  /**
+   * Initiates the logout process by hiding menus and showing the confirmation modal.
+   */
   const handleLogoutClick = () => {
     setShowMenu(false); // Đóng menu dropdown
     setShowLogoutModal(true); // Mở Modal xác nhận lên
   };
 
-  // Executes the actual logout API call, clears user context, and redirects to home
-  const confirmLogout = async () => {
+  /**
+   * Executes the actual logout API call, clears local user context, and redirects to the homepage.
+   */  const confirmLogout = async () => {
     try {
       await api.post("/auth/logout");
     } finally {
@@ -129,11 +136,12 @@ const SiteHeader = () => {
   };
 
   /**
-   * Handles navigation to the contact page
-   * Redirects unauthenticated users to the login page first, preserving their intended destination
+   * Handles navigation to the contact page.
+   * Redirects unauthenticated users to the login page first, preserving their intended destination.
    */
   const goContact = (e) => {
     e.preventDefault();
+    setShowMobileNav(false);  // Close mobile menu if open
     if (user) {
       navigate('/contact');
     } else {
@@ -141,12 +149,14 @@ const SiteHeader = () => {
     }
   };
 
-  // Marks all notifications as read in the database and updates the local state
+  /**
+   * Marks all notifications as read in the database and updates the local state.
+   */
   const handleMarkAllRead = async (e) => {
-    e.stopPropagation(); // Prevent the dropdown from closing
+    e.stopPropagation(); // Prevent the dropdown from closing when clicking the button
     try {
       await api.put('/notifications/read');
-      // Update local state to instantly remove the unread styling/badge
+      // Update local state to instantly remove the unread styling and badge
       setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
     } catch (err) {
       console.error("Failed to mark notifications as read");
@@ -189,10 +199,17 @@ const SiteHeader = () => {
   return (
     <>
       <header className="header">
-        <a className="logo" href="/">BrainBoost</a>
 
-        {/* ==== Main Navigation Links ==== */}
-        <nav>
+        {/* ==== Left Section: Mobile Menu Button & Logo ==== */}
+        <div className="header-left">
+          <button className="mobile-menu-btn" onClick={() => setShowMobileNav(!showMobileNav)}>
+            <i className={`bi ${showMobileNav ? 'bi-x' : 'bi-list'}`}></i>
+          </button>
+          <a className="logo" href="/">BrainBoost</a>
+        </div>
+
+        {/* ==== Center Section: Main Navigation (Responsive Drawer) ==== */}
+        <nav className={`main-nav ${showMobileNav ? 'open' : ''}`}>
           {user?.role === 'admin' && <a href="/admin">Admin</a>}
           {(user?.role === 'instructor' || user?.role === 'admin') && <a href="/instructor">Teaching</a>}
           <a href="/courses">Courses</a>
@@ -201,10 +218,11 @@ const SiteHeader = () => {
           <a href="/contact" onClick={goContact}>Contact</a>
         </nav>
 
+        {/* ==== Right Section: Notifications & User Avatar ==== */}
         <div className="header-right">
           {user ? (
             <>
-              {/* ==== Notification Bell ==== */}
+              {/* --- Notification Bell --- */}
               <div className="notif-menu">
                 <div className="notif-icon-btn" onClick={handleToggleNotif}>
                   <i className="bi bi-bell-fill"></i>
@@ -255,7 +273,7 @@ const SiteHeader = () => {
                 )}
               </div>
 
-              {/* ==== User Profile Menu ==== */}
+              {/* --- User Profile Menu --- */}
               <div className="user-menu">
                 <img
                   src={avatarSrc}
@@ -315,6 +333,12 @@ const SiteHeader = () => {
           )}
         </div>
       </header>
+
+      {/* ==== Mobile Navigation Backdrop Overlay ==== */}
+      {/* Darkens the background when the mobile menu drawer is open */}
+      {showMobileNav && (
+        <div className="mobile-nav-backdrop" onClick={() => setShowMobileNav(false)}></div>
+      )}
 
       {/* ==== Logout  Confirmation Modal ==== */}
       {showLogoutModal && (

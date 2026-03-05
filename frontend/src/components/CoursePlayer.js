@@ -5,7 +5,13 @@ import SiteFooter from "./Footer";
 import { api } from "../api";
 import "../css/CoursePlayer.css";
 
-// Build sections/lessons from course
+// ==== Utility Functions ====
+
+/**
+ * Constructs a structured syllabus (sections and lessons) from the raw course data.
+ * @param {Object} course - The raw course data from the backend.
+ * @returns {Array} Formatted syllabus array.
+ */
 const buildSyllabus = (course) => {
   if (Array.isArray(course?.sections) && course.sections.length) {
     return course.sections.map((sec, idx) => ({
@@ -16,7 +22,12 @@ const buildSyllabus = (course) => {
   return [];
 };
 
-// Build one big TTS string from AI slides
+/**
+ * Compiles text content from AI slides into a single, continuous string 
+ * for the Text-to-Speech (TTS) engine to read aloud.
+ * @param {Array} slides - Array of AI slide objects.
+ * @returns {String} Concatenated string for TTS.
+ */
 const buildSlidesTts = (slides) => {
   if (!Array.isArray(slides) || !slides.length) return "";
 
@@ -26,12 +37,12 @@ const buildSlidesTts = (slides) => {
       const bullets = Array.isArray(s.bullets)
         ? s.bullets.map((b) => String(b || "").trim()).filter(Boolean)
         : [];
+
+      // Use explicit TTS text if the instructor provided it
       const explicit = (s.ttsText || "").toString().trim();
+      if (explicit) return explicit;
 
-      if (explicit) {
-        return explicit;
-      }
-
+      // Otherwise, build the text from the slide title and bullets
       const parts = [];
       if (title) parts.push(`Slide ${idx + 1}: ${title}`);
       if (bullets.length) parts.push(bullets.join(". "));
@@ -43,10 +54,16 @@ const buildSlidesTts = (slides) => {
   return pieces.join(". ");
 };
 
+/**
+ * CoursePlayer Component
+ * The main learning interface where students can view documents, interact with AI slides,
+ * take personal notes, listen to text-to-speech, and chat with an AI assistant.
+ */
 export default function CoursePlayer() {
   const { courseId } = useParams();
   const navigate = useNavigate();
 
+  // ==== Course Data State ====
   const [course, setCourse] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -54,37 +71,36 @@ export default function CoursePlayer() {
   const [activeSec, setActiveSec] = useState(0);
   const [activeLesson, setActiveLesson] = useState(0);
 
-  // ==== Auth state ====
+  // ==== Authentication State ====
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
 
-  // UI Ask AI
-  const [showChat, setShowChat] = useState(false);
+  // ==== Notes State ====
+  const [showNotes, setShowNotes] = useState(false);
+  const [lessonNote, setLessonNote] = useState("");
+
+  // ==== AI Chat State ====
   const [chatMessages, setChatMessages] = useState([
     {
       from: "ai",
-      text:
-        "Hi, I'm BrainBoost Assistant. Ask me about this lesson and I will answer based on the uploaded content.",
+      text: "Hi, I'm BrainBoost Assistant. Ask me about this lesson and I will answer based on the uploaded content.",
     },
   ]);
   const [chatInput, setChatInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
 
-  // ==== TTS state ====
+  // ==== Text-to-Speech (TTS) State ====
   const [ttsStatus, setTtsStatus] = useState("idle");
   const [ttsText, setTtsText] = useState("");
   const utteranceRef = useRef(null);
 
-  // ==== View mode ====
+  // ==== UI View State ====
   const [viewMode, setViewMode] = useState("original");
-
-  // ==== AI slides ====
   const [activeSlide, setActiveSlide] = useState(0);
 
-  // ===== TRACKING PROGRESS (ĐỒNG HỒ BẤM GIỜ HỌC) =====
-  const startTimeRef = useRef(Date.now());
-
-  // ===== Helpers =====
+  /**
+   * Cancels any currently playing text-to-speech audio and resets the status.
+   */
   const stopTts = () => {
     if (typeof window === "undefined" || !window.speechSynthesis) return;
     window.speechSynthesis.cancel();
@@ -92,6 +108,10 @@ export default function CoursePlayer() {
     setTtsStatus("idle");
   };
 
+  /**
+   * Parses a URL to extract the base path without query parameters or hash fragments.
+   * Useful for determining file extensions (e.g., .pdf, .txt).
+   */
   const getUrlParts = (url) => {
     if (!url) return { full: "", forExt: "" };
     const full = url.trim();
@@ -109,9 +129,9 @@ export default function CoursePlayer() {
     return { full, forExt };
   };
 
-  // ===== Hooks =====
+  // ===== Lifecycle Hooks =====
 
-  // Check current user (ĐÃ SỬA LỖI TOKEN)
+  // Verify user authentication status on mount
   useEffect(() => {
     let cancelled = false;
     async function checkAuth() {
@@ -128,12 +148,12 @@ export default function CoursePlayer() {
     return () => { cancelled = true; };
   }, []);
 
-  // Cleanup TTS on unmount
+  // Cleanup TTS audio when the component is unmounted
   useEffect(() => {
     return () => stopTts();
   }, []);
 
-  // Load course (ĐÃ SỬA DÙNG API)
+  // Fetch course data based on the URL parameter
   useEffect(() => {
     let cancelled = false;
     async function fetchCourse() {
@@ -159,6 +179,7 @@ export default function CoursePlayer() {
     return () => { cancelled = true; };
   }, [courseId]);
 
+  // Derived properties for the current lesson
   const syllabus = course ? buildSyllabus(course) : [];
   const currentSection = syllabus[activeSec] || { lessons: [] };
   const currentLesson = currentSection.lessons[activeLesson] || null;
@@ -172,62 +193,67 @@ export default function CoursePlayer() {
   const lessonUseAiSlides = currentLesson && currentLesson.useAiSlides && hasAiSlides;
   const canPlayAudio = (viewMode === "ai" && lessonUseAiSlides) || (viewMode === "original" && lessonUseOriginal && lessonHasFile);
 
-  // Reset khi đổi bài học
+  // Reset component state when switching lessons & Load saved notes
   useEffect(() => {
+    // Determine the optimal default view mode for the newly selected lesson
     if (!currentLesson) setViewMode("original");
     else if (lessonUseOriginal) setViewMode("original");
     else if (!lessonUseOriginal && lessonUseAiSlides) setViewMode("ai");
     else setViewMode("original");
 
+    // Reset interactive states
     setActiveSlide(0);
     setTtsText("");
     stopTts();
 
+    // Load locally saved notes for this specific lesson
+    const savedNote = localStorage.getItem(`note_${courseId}_${activeSec}_${activeLesson}`);
+    setLessonNote(savedNote || "");
+
+    // Reset the AI chat thread
     setChatMessages([{ from: "ai", text: "Hi, I'm BrainBoost Assistant. Ask me about this lesson and I will answer based on the uploaded content." }]);
     setChatInput("");
     setChatLoading(false);
-  }, [activeSec, activeLesson, courseId]);
+  }, [activeSec, activeLesson, courseId, currentLesson]);
 
-  // THUẬT TOÁN ĐO THỜI GIAN HỌC VÀ GỬI VỀ BACKEND
+  // Lesson time tracking algorithm
   useEffect(() => {
-      // Nếu chưa đăng nhập hoặc chưa load xong bài thì không chạy
-      if (!isLoggedIn || !courseId || !currentLesson) return;
+    // Do not track if user is not logged in or data is incomplete
+    if (!isLoggedIn || !courseId || !currentLesson) return;
 
-      const payload = {
-          lessonKey: `s${activeSec}:l${activeLesson}`,
-          timeSpent: 1 // Mỗi lần gửi sẽ cộng thêm 1 phút vào Database
-      };
+    const payload = { lessonKey: `s${activeSec}:l${activeLesson}`, timeSpent: 1 };
 
-      // 1. Lưu điểm danh lần đầu: Sau khi học sinh ở trang 10 giây (tránh spam click)
-      const initialTimer = setTimeout(() => {
-          api.post(`/courses/${courseId}/progress`, payload)
-             .catch(e => console.log("Lỗi lưu tiến độ:", e));
-      }, 10000); 
+    // Initial ping after 10 seconds (prevents tracking users who just skip through quickly)
+    const initialTimer = setTimeout(() => {
+      api.post(`/courses/${courseId}/progress`, payload).catch(e => console.log(e));
+    }, 10000); 
 
-      // 2. Auto-save liên tục: Cứ mỗi 60 giây (1 phút) sẽ ngầm báo Backend cộng thêm 1 phút
-      const interval = setInterval(() => {
-          api.post(`/courses/${courseId}/progress`, payload)
-             .catch(e => console.log("Lỗi lưu tiến độ:", e));
-      }, 60000);
+    // Periodic ping every 60 seconds to accurately log total study time
+    const interval = setInterval(() => {
+      api.post(`/courses/${courseId}/progress`, payload).catch(e => console.log(e));
+    }, 60000);
 
-      // Cleanup: Xóa các bộ đếm khi chuyển sang bài khác hoặc tắt trang
-      return () => {
-          clearTimeout(initialTimer);
-          clearInterval(interval);
-      };
+    // Cleanup timers when the lesson changes or component unmounts
+    return () => { clearTimeout(initialTimer); clearInterval(interval); };
   }, [activeSec, activeLesson, courseId, isLoggedIn, currentLesson]);
 
-  // ===== TTS (doc gốc + AI slides) =====
-  const loadLessonText = async () => {
-    if (!currentLesson || !currentLesson.contentUrl) {
-      alert("No document to read.");
-      return "";
-    }
-    if (!lessonUseOriginal) {
-      alert("The teacher has disabled the original document for this lesson.");
-      return "";
-    }
+  // ==== Event Handlers ====
 
+  /**
+   * Handles user typing in the Notes area and auto-saves to LocalStorage.
+   */
+  const handleNoteChange = (e) => {
+    const val = e.target.value;
+    setLessonNote(val);
+    localStorage.setItem(`note_${courseId}_${activeSec}_${activeLesson}`, val);
+  };
+
+  /**
+   * Extracts or prepares text from the original document for TTS playback.
+   */
+  const loadLessonText = async () => {
+    if (!currentLesson || !currentLesson.contentUrl) { alert("No document to read."); return ""; }
+    if (!lessonUseOriginal) { alert("The teacher has disabled the original document for this lesson."); return ""; }
     if (ttsStatus === "speaking" || ttsStatus === "paused") return ttsText;
 
     setTtsStatus("loading");
@@ -238,6 +264,7 @@ export default function CoursePlayer() {
 
       const lower = forExt.toLowerCase();
 
+      // Read raw text files directly
       if (lower.endsWith(".txt")) {
         const res = await fetch(full);
         if (!res.ok) throw new Error(`Cannot load text file (HTTP ${res.status}).`);
@@ -246,6 +273,7 @@ export default function CoursePlayer() {
         setTtsText(text); setTtsStatus("ready"); return text;
       }
 
+      // Request backend to extract text from PDFs or Office documents
       const res = await api.get(`/tts/extract?url=${encodeURIComponent(full)}`);
       const text = res.data.text || "";
       if (!text.trim()) throw new Error("No readable text returned from server.");
@@ -258,11 +286,13 @@ export default function CoursePlayer() {
     }
   };
 
+  /**
+   * Toggles the playback state (Play/Pause/Resume) of the Text-to-Speech engine.
+   */
   const handlePlayPause = async () => {
     if (!currentLesson) return;
     if (typeof window === "undefined" || !("speechSynthesis" in window)) {
-      alert("Your browser does not support text-to-speech.");
-      return;
+      alert("Your browser does not support text-to-speech."); return;
     }
 
     if (ttsStatus === "speaking") { window.speechSynthesis.pause(); setTtsStatus("paused"); return; }
@@ -270,6 +300,7 @@ export default function CoursePlayer() {
 
     let text = ttsText;
 
+    // Build or fetch text if not already loaded
     if (!text) {
       if (viewMode === "ai" && lessonUseAiSlides) {
         const slides = Array.isArray(currentLesson.aiSlides) ? currentLesson.aiSlides : [];
@@ -282,11 +313,11 @@ export default function CoursePlayer() {
         text = await loadLessonText();
         if (!text) return;
       } else {
-        alert("This view has no content that can be read aloud.");
-        return;
+        alert("This view has no content that can be read aloud."); return;
       }
     }
 
+    // Configure and start speech
     const u = new SpeechSynthesisUtterance(text);
     u.lang = "en-US"; 
     u.rate = 1.0;
@@ -299,7 +330,11 @@ export default function CoursePlayer() {
     setTtsStatus("speaking");
   };
 
-  // ===== Viewers =====
+  // ==== View Renderers ====
+
+  /**
+   * Renders the iframe viewer for original documents (PDF, DOCX, PPTX).
+   */
   const renderDocViewer = () => {
     if (!currentLesson || !currentLesson.contentUrl || !lessonUseOriginal) {
       return (
@@ -312,18 +347,26 @@ export default function CoursePlayer() {
     if (!full) return (<div className="doc-empty"><p>No document uploaded for this lesson yet.</p></div>);
 
     const lower = forExt.toLowerCase();
+
+    // Render PDFs using Google Docs Viewer
     if (lower.endsWith(".pdf")) {
       const pdfViewerUrl = `https://docs.google.com/gview?url=${encodeURIComponent(full)}&embedded=true`;
       return <iframe src={pdfViewerUrl} title={currentLesson.title || "Lesson document"} className="doc-frame" />;
     }
+    // Render Office formats using Microsoft Office Viewer
     if (lower.endsWith(".ppt") || lower.endsWith(".pptx") || lower.endsWith(".doc") || lower.endsWith(".docx")) {
       const officeUrl = `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(full)}`;
       return <iframe src={officeUrl} title={currentLesson.title || "Lesson document"} className="doc-frame" />;
     }
+    // Fallback renderer
     const viewerUrl = `https://docs.google.com/gview?url=${encodeURIComponent(full)}&embedded=true`;
+
     return <iframe src={viewerUrl} title={currentLesson.title || "Lesson document"} className="doc-frame" />;
   };
 
+  /**
+   * Renders the interactive UI for AI-generated slides.
+   */
   const renderAiSlides = () => {
     const slides = currentLesson && Array.isArray(currentLesson.aiSlides) ? currentLesson.aiSlides : [];
     if (!lessonUseAiSlides) return (<div className="doc-empty"><p>AI slides are not enabled for this lesson.</p></div>);
@@ -355,17 +398,26 @@ export default function CoursePlayer() {
     );
   };
 
+  /**
+   * Determines which viewer to display based on the active tab/viewMode.
+   */
   const renderActiveView = () => {
     if (!currentLesson) return (<div className="doc-empty"><p>Select a lesson from the left to start learning.</p></div>);
     if (!lessonHasFile && !lessonUseAiSlides) return (<div className="doc-empty"><p>No document or AI slides are available for this lesson yet.</p></div>);
     if (viewMode === "ai" && lessonUseAiSlides) return renderAiSlides();
     if (viewMode === "original" && lessonUseOriginal) return renderDocViewer();
+
+    // Fallbacks if preferred mode is disabled
     if (lessonUseOriginal) return renderDocViewer();
     if (lessonUseAiSlides) return renderAiSlides();
     return (<div className="doc-empty"><p>This lesson does not have any enabled view.</p></div>);
   };
 
-  // ===== Chat with AI (ĐÃ SỬA DÙNG API POST) =====
+  // ==== Chat / AI Assistant Handlers ====
+
+  /**
+   * Submits a message to the AI agent specifically contextualized to the current lesson.
+   */
   const handleSendChat = async (e) => {
     e.preventDefault();
     const text = chatInput.trim();
@@ -404,16 +456,19 @@ export default function CoursePlayer() {
     }
   };
 
+  // Derive dynamic label for the audio controls
   const audioStatusText =
     ttsStatus === "loading" ? "Preparing audio for this lesson…"
       : ttsStatus === "speaking" ? "Reading aloud – press Pause to stop."
       : ttsStatus === "paused" ? "Audio paused – press Resume."
       : ttsStatus === "ready" && ttsText ? "Audio ready – press Play to listen again."
-      : viewMode === "ai" && lessonUseAiSlides ? "Press Play to listen to the AI slides for this lesson."
+      : viewMode === "ai" && lessonUseAiSlides ? "Press Play to listen to the AI slides."
       : lessonUseOriginal && lessonHasFile ? "Press Play to listen to the original document."
       : "Audio is not available for this lesson yet.";
 
   const chatDisabled = !currentLesson || !authChecked || !isLoggedIn;
+
+  // ==== Loading & Error Rendering ====
 
   if (loading) {
     return (
@@ -438,18 +493,7 @@ export default function CoursePlayer() {
     );
   }
 
-  if (error && !course) {
-    return (
-      <div className="learning-page">
-        <SiteHeader />
-        <main className="learning-container">
-          <p className="error-text">Error: {error}</p>
-          <button className="btn-secondary" onClick={() => navigate("/courses")}>← Back to Courses</button>
-        </main>
-        <SiteFooter />
-      </div>
-    );
-  }
+  // ==== Main Layout Rendering ====
 
   return (
     <div className="learning-page">
@@ -464,7 +508,10 @@ export default function CoursePlayer() {
           <span>Learn</span>
         </nav>
 
+        {/* 3-Column Layout: Sidebar (Syllabus) | Main (Content) | Tools (AI & Notes) */}
         <div className="learning-layout">
+            
+          {/* Column 1: Syllabus Sidebar */}
           <aside className="learning-sidebar">
             <h2 className="course-title">{course.title}</h2>
             <p className="course-sub">Choose a lesson. The content will appear on the right.</p>
@@ -498,7 +545,9 @@ export default function CoursePlayer() {
             </div>
           </aside>
 
+          {/* Column 2: Main Lesson Content */}
           <section className="learning-main">
+            {/* View Mode Toggle */}
             <div className="viewer-mode-tabs">
               <button
                 type="button"
@@ -518,53 +567,77 @@ export default function CoursePlayer() {
               </button>
             </div>
 
+            {/* Document/Slide Renderer */}
             <div className="doc-container">{renderActiveView()}</div>
 
             <div className="audio-bar"><span className="audio-label">{audioStatusText}</span></div>
 
+            {/* Content Actions (Audio & Notes Toggle) */}
             <div className="controls-row">
               <button type="button" className="btn-primary" onClick={handlePlayPause} disabled={ttsStatus === "loading" || !canPlayAudio}>
-                {ttsStatus === "loading" ? "Loading text…" : ttsStatus === "speaking" ? "Pause" : ttsStatus === "paused" ? "Resume" : "Play / Pause"}
+                <i className={`bi ${ttsStatus === "speaking" ? "bi-pause-circle-fill" : "bi-play-circle-fill"}`}></i> {ttsStatus === "loading" ? "Loading text…" : ttsStatus === "speaking" ? "Pause" : ttsStatus === "paused" ? "Resume" : "Play Audio"}
               </button>
-              <button type="button" className="btn-outline" onClick={() => { if (!chatDisabled) setShowChat(true); }} disabled={chatDisabled}>
-                Ask AI
+              <button type="button" className="btn-outline" onClick={() => setShowNotes(!showNotes)}>
+                <i className="bi bi-pencil-square"></i> {showNotes ? "Hide Notes" : "Take Notes"}
               </button>
             </div>
-
-            {authChecked && !isLoggedIn && (
-              <p className="ai-login-hint">Sign in to your BrainBoost account to chat with the AI assistant for this lesson.</p>
-            )}
           </section>
+
+          {/* Column 3: Learning Tools (Notes & AI Chat) */}
+          <aside className="learning-tools-panel">
+              {/* Personal Notes Box (Toggled visibility) */}
+              {showNotes && (
+                  <div className="notes-container">
+                      <div className="notes-header">
+                          <h3><i className="bi bi-journal-text text-primary"></i> Personal Notes</h3>
+                          <span className="notes-hint">Auto-saved locally</span>
+                      </div>
+                      <textarea 
+                          className="notes-textarea" 
+                          placeholder="Type your notes for this lesson here..."
+                          value={lessonNote}
+                          onChange={handleNoteChange}
+                      ></textarea>
+                  </div>
+              )}
+
+              {/* AI Chat Box (Always visible layout) */}
+              <div className="ai-chat-panel">
+                  <header className="ai-modal-header">
+                      <h3><i className="bi bi-robot text-primary"></i> BrainBoost AI</h3>
+                  </header>
+
+                  <div className="ai-modal-body">
+                      {chatMessages.map((m, idx) => (
+                          <div key={idx} className={`ai-msg ai-msg-${m.from === "user" ? "user" : "ai"}`}>
+                              <div className="ai-msg-bubble">{m.text}</div>
+                          </div>
+                      ))}
+                      {authChecked && !isLoggedIn && (
+                          <div className="ai-login-hint">Sign in to your account to chat.</div>
+                      )}
+                  </div>
+
+                  {/* Chat Input Form */}
+                  <form className="ai-input-row" onSubmit={handleSendChat}>
+                      <input 
+                          type="text" 
+                          placeholder="Ask about this lesson..." 
+                          value={chatInput} 
+                          onChange={(e) => setChatInput(e.target.value)} 
+                          disabled={chatLoading || chatDisabled} 
+                      />
+                      <button type="submit" className="btn-primary" disabled={chatLoading || chatDisabled}>
+                          {chatLoading ? "..." : <i className="bi bi-send-fill"></i>}
+                      </button>
+                  </form>
+              </div>
+          </aside>
+
         </div>
       </main>
 
       <SiteFooter />
-
-      {showChat && (
-        <div className="ai-modal-backdrop" onClick={(e) => { if (e.target.classList.contains("ai-modal-backdrop")) setShowChat(false); }}>
-          <div className="ai-modal">
-            <header className="ai-modal-header">
-              <h3>AI Assistant</h3>
-              <button type="button" className="ai-close-btn" onClick={() => setShowChat(false)}>✕</button>
-            </header>
-
-            <div className="ai-modal-body">
-              {chatMessages.map((m, idx) => (
-                <div key={idx} className={`ai-msg ai-msg-${m.from === "user" ? "user" : "ai"}`}>
-                  <div className="ai-msg-bubble">{m.text}</div>
-                </div>
-              ))}
-            </div>
-
-            <form className="ai-input-row" onSubmit={handleSendChat}>
-              <input type="text" placeholder="Ask about this lesson..." value={chatInput} onChange={(e) => setChatInput(e.target.value)} disabled={chatLoading} />
-              <button type="submit" className="btn-primary" disabled={chatLoading}>
-                {chatLoading ? "Thinking..." : "Send"}
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

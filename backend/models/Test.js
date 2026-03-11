@@ -82,20 +82,57 @@ QuestionSchema.pre("validate", function (next) {
 
 const TestSchema = new mongoose.Schema(
   {
-    title: { type: String, required: true },
-    grade: { type: String, required: true }, // keep string for flexibility
+    title: { 
+      type: String, 
+      required: true 
+    },
+
+    grade: { 
+      type: String, 
+      required: true 
+    },
+
     subject: {
       type: String,
       enum: ["math", "english", "physics", "chemistry"],
       required: true
     },
-    tags: { type: [String], default: [] },     // ["Easy", "Medium", ...]
-    description: { type: String, default: "" },
-    numQuestions: { type: Number, required: true },
-    questions: { type: [QuestionSchema], required: true },
 
-    // who created
-    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" }
+    tags: { 
+      type: [String], 
+      default: [] 
+    },
+
+    description: { 
+      type: String, 
+      default: "" 
+    },
+
+    numQuestions: { 
+      type: Number, 
+      required: true 
+    },
+
+    questions: { 
+      type: [QuestionSchema], 
+      required: true 
+    },
+
+    visibility: { 
+        type: String, 
+        enum: ["pending", "published", "rejected"], 
+        default: "pending" 
+    },
+
+    adminFeedback: { 
+      type: String, 
+      default: "" 
+    },
+
+    createdBy: { 
+      type: mongoose.Schema.Types.ObjectId, 
+      ref: "User" 
+    }
   },
   { timestamps: true }
 );

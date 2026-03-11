@@ -5,7 +5,10 @@ const TestResult = require("../models/TestResult");
 const User = require('../models/User');
 const Notification = require('../models/Notification');
 
+// Retrieve the AI microservice URL from environment variables
 const AI_AGENT_URL = process.env.AI_AGENT_URL;
+
+// ==== Utility & Helper Functions ====
 
 /**
  * Normalizes and formats question data to ensure consistency before saving to the database.
@@ -99,9 +102,12 @@ function validateQuestions(qs) {
   return null;  // No errors
 }
 
+// ==== Test Management Controllers ====
+
 /**
- * Creates a new test with validated questions and required metadata.
  * * POST /api/tests
+ * Creates a new test with validated questions and required metadata.
+ * Initializes the test with a "pending" visibility to enforce Admin moderation.
  */
 const createTest = async (req, res) => {
   try {
@@ -126,6 +132,8 @@ const createTest = async (req, res) => {
       numQuestions: questions.length,
       questions,
       createdBy: req.userId || null,
+      visibility: "pending",
+      adminFeedback: ""
     });
 
     res.status(201).json({ id: doc._id, message: "Created" });
@@ -185,8 +193,9 @@ const getOneTest = async (req, res) => {
 };
 
 /**
- * Updates an existing test. Checks permissions and validates new questions before saving.
  * * PUT /api/tests/:id
+ * Updates an existing test. Checks permissions and validates new questions.
+ * Returns the test to a "pending" status to ensure the newly edited content is reviewed.
  */
 const updateTest = async (req, res) => {
   try {
@@ -217,8 +226,12 @@ const updateTest = async (req, res) => {
     doc.tags = Array.isArray(p.tags) ? p.tags : doc.tags;
     doc.description = p.description ?? doc.description;
 
+    // Reset moderation status automatically when an instructor edits the test
+    doc.visibility = "pending";
+    doc.adminFeedback = "";
+
     await doc.save();
-    res.json({ message: "Updated" });
+    res.json({ message: "Test updated and submitted for review." });
   } catch (e) {
     console.error(e);
     res.status(400).json({ message: "Invalid question format.", error: e.message });
@@ -247,14 +260,19 @@ const deleteTest = async (req, res) => {
   }
 };
 
+// ==== Student Facing Controllers ====
+
 /**
- * Lists public tests for students to view, with optional filtering by subject and search query.
  * * GET /api/public/tests
+ * Lists public tests for students to view, with optional filtering by subject and search query.
+ * Enforces security by only returning tests with the "published" visibility status.
  */
 const listPublicTests = async (req, res) => {
   try {
     const { q = "", subject } = req.query;
-    const cond = {};
+
+    // Core security rule: Only fetch tests that have been approved by an Admin
+    const cond = { visibility: "published" };
 
     // Apply subject filter if provided
     if (subject) cond.subject = subject;
@@ -622,8 +640,58 @@ const triggerAIGrading = async (req, res) => {
     })();
 };
 
+// ==== Admin Moderation Controllers ====
+
+/**
+ * * GET /api/tests/admin/list
+ * Admin only route: Retrieves tests based on their approval status (pending, published, rejected).
+ * Populates instructor details so admins know who submitted the test content.
+ */
+const getAdminTests = async (req, res) => {
+    try {
+        const { status = "pending" } = req.query;
+        const tests = await Test.find({ visibility: status })
+            .populate('createdBy', 'fullname email')
+            .sort({ updatedAt: -1 })
+            .lean();
+        res.json(tests);
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ message: "Server error" });
+    }
+};
+
+/**
+ * * PATCH /api/tests/admin/:id/review
+ * Admin only route: Approves or Rejects a test submission.
+ * Saves admin feedback directly to the test document if rejected, to help instructors fix issues.
+ */
+const reviewTest = async (req, res) => {
+    try {
+        const { status, note } = req.body;
+
+        // Prevent invalid statuses from polluting the database
+        if (!["published", "rejected"].includes(status)) {
+            return res.status(400).json({ message: "Invalid status" });
+        }
+
+        const t = await Test.findById(req.params.id);
+        if (!t) return res.status(404).json({ message: "Test not found" });
+
+        // Apply moderation decision
+        t.visibility = status;
+        t.adminFeedback = note || "";   // Store rejection reason (if any)
+        await t.save();
+
+        res.json({ message: `Test ${status}` });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ message: "Server error" });
+    }
+};
+
 module.exports = { 
   createTest, getMyTests, getOneTest, updateTest, deleteTest, 
   listPublicTests, getPublicTestById, gradeEssay, submitTest, updateEssayGrade,
-  getTestLeaderboard, getTestResultById, triggerAIGrading,
+  getTestLeaderboard, getTestResultById, triggerAIGrading, getAdminTests, reviewTest,
 };

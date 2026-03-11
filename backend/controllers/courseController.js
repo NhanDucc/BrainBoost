@@ -9,7 +9,8 @@ const AI_AGENT_URL = process.env.AI_AGENT_URL
 /**
  * * POST /api/courses
  * Creates a new course in the database.
- * Validates required metadata and initializes the course with a "published" visibility.
+ * Validates required metadata and initializes the course with a "pending" visibility
+ * to ensure it goes through the Admin approval workflow before going live.
  */
 const createCourse = async (req, res) => {
     try {
@@ -38,10 +39,11 @@ const createCourse = async (req, res) => {
             learn: Array.isArray(p.learn) ? p.learn : [],
             sections,
             createdBy: req.userId,
-            visibility: "published"
+            visibility: "pending",
+            adminFeedback: ""
         });
 
-        res.status(201).json({ id: doc._id, message: "Created" });
+        res.status(201).json({ id: doc._id, message: "Course submitted for review." });
     } catch (e) {
         console.error("createCourse error:", e);
         res.status(500).json({ message: "Server error" });
@@ -73,7 +75,8 @@ const getCourse = async (req, res) => {
 /**
  * * PATCH /api/courses/:id
  * Updates an existing course.
- * Verifies ownership before applying the requested partial updates to the database.
+ * If the course is updated by the instructor, it automatically returns to the "pending" state 
+ * to be reviewed by the Admin again, ensuring no unapproved content goes live.
  */
 const updateCourse = async (req, res) => {
     try {
@@ -102,6 +105,11 @@ const updateCourse = async (req, res) => {
         if (Array.isArray(p.sections) && p.sections.length > 0) {
             c.sections = p.sections;
         }
+
+        // Reset moderation status: Automatically change to pending when an instructor edits the course
+        c.visibility = "pending";
+        // Clear previous rejection feedback so Admin can review fresh
+        c.adminFeedback = "";
 
         await c.save();
         res.json({ message: "Updated" });
@@ -161,7 +169,9 @@ const listCourses = async (req, res) => {
         hours: null,               
         updatedAt: c.updatedAt,
         createdAt: c.createdAt,
-        sections: c.sections || [], 
+        sections: c.sections || [],
+        visibility: c.visibility,
+        adminFeedback: c.adminFeedback
       };
     });
 
@@ -481,7 +491,59 @@ const markLessonProgress = async (req, res) => {
   }
 };
 
+// ==== Admin Moderation Controllers ====
+
+/**
+ * * GET /api/courses/admin/list
+ * Admin only route: Retrieves courses based on their approval status (pending, published, rejected).
+ * Populates instructor details so admins know who submitted the content.
+ */
+const getAdminCourses = async (req, res) => {
+    try {
+        const { status = "pending" } = req.query;
+        const courses = await Course.find({ visibility: status })
+            .populate('createdBy', 'fullname email') // Pull instructor contact info
+            .sort({ updatedAt: -1 })
+            .lean();
+        res.json(courses);
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ message: "Server error" });
+    }
+};
+
+/**
+ * * PATCH /api/courses/admin/:id/review
+ * Admin only route: Approves or Rejects a course submission.
+ * Saves admin feedback directly to the course document if rejected, to help instructors fix issues.
+ */
+const reviewCourse = async (req, res) => {
+    try {
+        const { status, note } = req.body;
+
+        // Prevent invalid statuses from polluting the database
+        if (!["published", "rejected"].includes(status)) {
+            return res.status(400).json({ message: "Invalid status" });
+        }
+
+        const c = await Course.findById(req.params.id);
+        if (!c) return res.status(404).json({ message: "Course not found" });
+
+        // Apply moderation decision
+        c.visibility = status;
+        // Store rejection reason (if any)
+        c.adminFeedback = note || "";
+        await c.save();
+
+        res.json({ message: `Course ${status}` });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ message: "Server error" });
+    }
+};
+
 module.exports = {
   createCourse, getCourse, updateCourse, listCourses, listPublicCourses,
   getPublicCourseById, deleteCourse, generateLessonSlides, createLearningPath, markLessonProgress,
+  getAdminCourses, reviewCourse, 
 };

@@ -8,7 +8,7 @@ import "../css/TestEditor.css";
 
 // ==== Constants & Configurations ====
 
-// List of available subjects for the test
+// Predefined list of subjects for the test categorization
 const SUBJECTS = [
   { key: "math", name: "Mathematics" },
   { key: "english", name: "English" },
@@ -19,7 +19,7 @@ const SUBJECTS = [
 // Default difficulty tags available for quick selection
 const DIFFICULTY_TAGS = ["Easy", "Medium", "Hard"];
 
-// Supported question types in the test builder
+// Supported question types in the test builder dropdowns
 const Q_TYPES = [
   { key: "mcq", label: "Multiple choice" },
   { key: "boolean", label: "True / False" },
@@ -39,10 +39,10 @@ const emptyQuestion = (i) => ({
   
   // Fields specific to Multiple Choice Questions (MCQ)
   choices: ["", "", "", ""],
-  correctIndex: null, // Number from 0 to 3 representing A, B, C, or D
+  correctIndex: null,         // Number from 0 to 3 representing A, B, C, or D
 
   // Field specific to True/False Questions
-  correctBool: null,  // Boolean: true | false
+  correctBool: null,          // Boolean: true | false
   
   // Field specific to Essay & Short Answer Questions
   modelAnswer: "",
@@ -61,7 +61,7 @@ const emptyQuestion = (i) => ({
 export default function TestEditor() {
   // ---- Routing & Context ----
   const { id } = useParams();
-  const isEdit = Boolean(id); // Determines if we are editing an existing test or creating a new one
+  const isEdit = Boolean(id); // Determines if we are editing an existing test (PATCH) or creating a new one (POST)
   const navigate = useNavigate();
 
   // ---- Test Metadata States ----
@@ -72,15 +72,16 @@ export default function TestEditor() {
   const [description, setDescription] = useState("");
 
   // ---- Questions State ----
-  const [numQuestions, setNumQuestions] = useState(10);
+  const [numQuestions, setNumQuestions] = useState(10); // Determines the length of the questions array
   const [questions, setQuestions] = useState(() =>
+    // Initialize array with 10 empty question objects by default
     Array.from({ length: 10 }, (_, i) => emptyQuestion(i))
   );
 
   // ---- UI & Process States ----
-  const [saving, setSaving] = useState(false);
-  const [toast, setToast] = useState(null);   // Manages success/error popup notifications
-  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);        // Disables save button during API call
+  const [toast, setToast] = useState(null);           // Manages success/error popup notifications
+  const [loading, setLoading] = useState(false);      // Controls loading spinner during initial data fetch
   const [newTagInput, setNewTagInput] = useState(""); // Holds the value for manually typed custom tags
 
   // ==== Lifecycle Hooks ====
@@ -91,6 +92,7 @@ export default function TestEditor() {
   // Fetch existing test data if the component mounts in Edit Mode
   useEffect(() => {
     if (!isEdit) return;
+
     (async () => {
       setLoading(true);
       try {
@@ -114,6 +116,7 @@ export default function TestEditor() {
           return {
             type,
             stem: q.stem || `Question ${i + 1} content`,
+            // Ensure choices array always has exactly 4 items for MCQ
             choices: type === "mcq"
               ? (Array.isArray(q.choices) && q.choices.length === 4 ? q.choices : ["", "", "", ""])
               : ["", "", "", ""],
@@ -136,24 +139,26 @@ export default function TestEditor() {
     })();
   }, [isEdit, id]);
 
-  // Synchronize the `questions` array length with the `numQuestions` state
+  // Synchronize the `questions` array length with the `numQuestions` input state
   useEffect(() => {
-    // Keep number of questions between 1 and 200 to prevent performance issues
+    // Keep number of questions between 1 and 200 to prevent performance issues/browser crashing
     const n = Math.max(1, Math.min(200, Number(numQuestions) || 1));
+    
     setQuestions((prev) => {
       const next = [...prev];
       if (next.length < n) {
-        // If the number increased, append new empty question templates
+        // If the number increased, append new empty question templates to the end
         for (let i = next.length; i < n; i++) next.push(emptyQuestion(i));
       } else if (next.length > n) {
-        // If the number decreased, slice the array to remove excess items
+        // If the number decreased, slice the array to remove excess items from the end
         next.length = n;
       }
-      return next.map((q) => ({ ...q })); // Return shallow copy to trigger React re-render
+      // Return a shallow copy of each object to properly trigger React re-renders
+      return next.map((q) => ({ ...q })); 
     });
   }, [numQuestions]);
 
-  // ==== Event Handlers ====
+  // ==== Tag Management Handlers ====
 
   /**
    * Toggles a predefined tag on click. Removes it if it exists, adds it if it doesn't.
@@ -166,7 +171,7 @@ export default function TestEditor() {
    * Triggered by pressing the 'Enter' key or clicking the "Add Tag" button.
    */
     const handleAddCustomTag = (e) => {
-    // Prevent default form submission if triggered via Enter key
+    // Prevent default form submission if triggered via Enter key inside the form
     if (e.key === 'Enter' || e.type === 'click') {
       e.preventDefault();
       const newTag = newTagInput.trim();
@@ -177,7 +182,7 @@ export default function TestEditor() {
     }
   };
 
-  // ==== Event Handlers ====
+  // ==== Question Data Mutation Handlers ====
 
   // Updates the main text/content (stem) of a specific question
   const onChangeStem = (qi, val) =>
@@ -195,7 +200,7 @@ export default function TestEditor() {
       const n = [...prev];
       const base = { ...n[qi], type };
       
-      // Hard reset fields depending on the newly selected type
+      // Hard reset fields depending on the newly selected type to avoid data leakage
       if (type === "mcq") {
         base.choices = base.choices?.length === 4 ? [...base.choices] : ["", "", "", ""];
         base.correctIndex = null;
@@ -222,6 +227,7 @@ export default function TestEditor() {
   const onChangeChoice = (qi, ci, val) =>
     setQuestions((prev) => {
       const n = [...prev];
+      // Deep copy the choices array to prevent state mutation bugs
       const q = { ...n[qi], choices: [...(n[qi].choices || ["", "", "", ""])] };
       q.choices[ci] = val;
       n[qi] = q;
@@ -260,7 +266,7 @@ export default function TestEditor() {
       return n;
     });
 
-  // ===== Validation & Submission =====
+  // ==== Validation & Submission ====
 
   /**
    * Validates the entire test form before allowing a network request.
@@ -268,20 +274,24 @@ export default function TestEditor() {
    * @returns {String|null} Error message string if invalid, or null if perfectly valid.
    */
   const validate = () => {
+    // Check global metadata
     if (!title.trim()) return "Please enter a test title.";
     if (!grade.toString().trim()) return "Please enter a grade/level.";
     if (!subject) return "Please select a subject.";
     if (questions.length < 1) return "Please add at least 1 question.";
 
+    // Validate individual questions based on their selected type
     for (let i = 0; i < questions.length; i++) {
       const q = questions[i];
       if (!q.stem || !q.stem.trim()) return `Question ${i + 1}: stem is required.`;
 
       if (q.type === "mcq") {
+        // Validate all 4 choices are filled
         for (let j = 0; j < 4; j++) {
           if (!q.choices[j] || !q.choices[j].trim())
             return `Question ${i + 1}: choice ${String.fromCharCode(65 + j)} is empty.`;
         }
+        // Validate an answer was selected
         if (!Number.isInteger(q.correctIndex))
           return `Question ${i + 1}: please select the correct answer.`;
       } else if (q.type === "boolean") {
@@ -291,7 +301,7 @@ export default function TestEditor() {
         if (!q.modelAnswer || !q.modelAnswer.trim())
           return `Question ${i + 1}: please provide the exact correct answer for auto-grading.`;
       } else if (q.type === "essay") {
-        // modelAnswer is optional for essays
+        // modelAnswer/rubric is optional for essays, so no strict validation needed here
       }
     }
     return null;
@@ -310,7 +320,8 @@ export default function TestEditor() {
 
     setSaving(true);
     try {
-      // Deep normalize payload to ensure perfectly clean data is sent to the backend
+      // Deep normalize payload to ensure perfectly clean data is sent to the backend.
+      // This prevents submitting empty fields that belong to other question types.
       const qs = questions.map((q) => {
         if (q.type === "mcq") {
           return {
@@ -380,7 +391,7 @@ export default function TestEditor() {
     }
   };
 
-  // ===== UI Sub-components =====
+  // ==== Inline Sub-components ====
 
   /**
    * Component to dynamically render the correct input fields
@@ -483,7 +494,7 @@ export default function TestEditor() {
           <div className="empty">Loading…</div>
         ) : (
           <>
-            {/* Test Metadata Section */}
+            {/* ---- Test Metadata Section ---- */}
             <section className="card">
               <h3>Test information</h3>
               <div className="form-grid">
@@ -571,7 +582,7 @@ export default function TestEditor() {
               </div>
             </section>
 
-            {/* Questions Builder Section */}
+            {/* ---- Questions Builder Section ---- */}
             <section className="card">
               <h3>Questions</h3>
 
@@ -624,7 +635,8 @@ export default function TestEditor() {
               <div className="actions">
                 <button className="ghost-btn" onClick={() => navigate("/instructor")}>Cancel</button>
                 <button className="primary-btn" disabled={saving} onClick={handleSubmit}>
-                  {saving ? (isEdit ? "Updating…" : "Publishing…") : (isEdit ? "Update" : "Publish test")}
+                  {/* Change text based on moderation workflow */}
+                  {saving ? "Submitting..." : (isEdit ? "Update & Submit for Review" : "Submit for Review")}
                 </button>
               </div>
             </section>

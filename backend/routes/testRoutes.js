@@ -3,7 +3,7 @@ const router = express.Router();
 const { 
     createTest, getMyTests, getOneTest, updateTest, deleteTest, 
     listPublicTests, getPublicTestById, gradeEssay, submitTest, updateEssayGrade,
-    getTestLeaderboard, getTestResultById, triggerAIGrading,
+    getTestLeaderboard, getTestResultById, triggerAIGrading, getAdminTests, reviewTest,
 } = require("../controllers/testController");
 const { auth, authorize } = require("../middleware/auth");
 
@@ -11,6 +11,10 @@ const { auth, authorize } = require("../middleware/auth");
 router.get("/public", listPublicTests);
 router.get("/public/:id", getPublicTestById);
 router.get("/public/:id/leaderboard", getTestLeaderboard);
+
+// Admin routes
+router.get("/admin/list", auth, authorize("admin"), getAdminTests);
+router.patch("/admin/:id/review", auth, authorize("admin"), reviewTest);
 
 // Protected routes for instructors
 router.get("/", auth, authorize("instructor"), getMyTests);

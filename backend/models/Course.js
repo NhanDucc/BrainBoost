@@ -95,38 +95,72 @@ const CourseSchema = new mongoose.Schema(
             required: true, 
             trim: true 
         },
-        // URL-friendly string for routing (e.g., "basic-math-101")
+
         slug: { 
             type: String, 
             default: "", 
             trim: true 
         },
+
         subject: {
             type: String,
             enum: ["math", "english", "physics", "chemistry"],
             required: true,
         },
-        grade: { type: String, required: true, trim: true },
-        
-        // Array of key skills/outcomes displayed in the "What you'll learn" section
-        learn: { type: [String], default: [] },
-        
-        // Legacy/Custom duration text (e.g., "3 months"). If empty, the system auto-calculates total minutes.
-        durationText: { type: String, default: "" },
-        
-        description: { type: String, default: "" },
-        tags: { type: [String], default: [] },
-        
-        // Course price in USD. Null or 0 implies the course is free.
-        price: { type: Number, min: 0, default: null },
 
-        visibility: { type: String, default: "published" },
-        coverUrl: { type: String, default: "" },
+        grade: { 
+            type: String, 
+            required: true, 
+            trim: true 
+        },
+        
+        learn: { 
+            type: [String], 
+            default: [] 
+        },
+        
+        durationText: { 
+            type: String, 
+            default: "" 
+        },
+        
+        description: { 
+            type: String, 
+            default: "" 
+        },
 
-        // The nested curriculum structure
-        sections: { type: [SectionSchema], default: [] },
+        tags: { 
+            type: [String], 
+            default: [] 
+        },
 
-        // Reference to the User (Instructor) who created the course
+        price: { 
+            type: Number, 
+            min: 0, 
+            default: null 
+        },
+
+        visibility: { 
+            type: String,
+            enum: ["pending", "published", "rejected"],
+            default: "pending" 
+        },
+        
+        adminFeedback: { 
+            type: String, 
+            default: "" 
+        },
+
+        coverUrl: { 
+            type: String, 
+            default: "" 
+        },
+
+        sections: { 
+            type: [SectionSchema], 
+            default: [] 
+        },
+
         createdBy: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "User",

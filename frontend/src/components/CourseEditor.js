@@ -9,7 +9,7 @@ import "../css/CourseEditor.css";
 // ==== Constants & Helper Functions ====
 
 /** * Predefined list of subjects. 
- * Can be expanded or fetched from a database in the future. 
+ * Can be expanded or fetched dynamically from a database in the future. 
  */
 const SUBJECTS = [
   { key: "math", name: "Mathematics" },
@@ -27,12 +27,12 @@ const LESSON_TYPES = [
 /** Allowed file extensions for document and presentation uploads */
 const LESSON_FILE_EXTS = [".pdf", ".doc", ".docx", ".txt", ".ppt", ".pptx"];
 
-/** Validates if a string is a valid MongoDB ObjectId */
+/** Validates if a string is a valid MongoDB ObjectId (24-character hex string) */
 const isMongoId = (val) =>
   typeof val === "string" && /^[0-9a-fA-F]{24}$/.test(val);
 
 /** * Factory function to generate an empty, default Lesson object.
- * Used when a teacher clicks "+ Lesson" in the builder.
+ * Used when an instructor clicks "+ Lesson" in the curriculum builder.
  */
 const emptyLesson = () => ({
   title: "",
@@ -46,7 +46,7 @@ const emptyLesson = () => ({
   showOriginalToStudents: true,
 });
 
-/** * Factory function to generate an empty Section object.
+/** * Factory function to generate an empty Section object containing one default lesson.
  */
 const emptySection = (i) => ({
   title: `Section ${i + 1}`,
@@ -56,8 +56,8 @@ const emptySection = (i) => ({
 // ==== Main Component ====
 
 export default function CourseEditor() {
-const { user } = useUser();
-  const { id } = useParams(); // If ID is present, we are in Edit Mode; otherwise Create Mode
+  const { user } = useUser();
+  const { id } = useParams(); // If ID is present in URL, we are in Edit Mode; otherwise Create Mode
   const isEdit = Boolean(id);
   const navigate = useNavigate();
 
@@ -70,6 +70,7 @@ const { user } = useUser();
   const [toast, setToast] = useState(null); // Manages success/error popup messages
 
   // ---- Course Metadata States ----
+  // These represent the top-level details of the course
   const [title, setTitle] = useState("");
   const [slug, setSlug] = useState("");
   const [subject, setSubject] = useState(SUBJECTS[0].key);
@@ -81,16 +82,18 @@ const { user } = useUser();
   const [learn, setLearn] = useState(["", "", "", ""]); // "What you'll learn" bullet points
 
   // ---- Curriculum Builder States ----
+  // Manages the deeply nested array of Sections -> Lessons
   const [sections, setSections] = useState([emptySection(0)]);
-  const [uploadingLesson, setUploadingLesson] = useState(null); // Tracks which lesson is currently uploading a file
-  const [aiGeneratingLesson, setAiGeneratingLesson] = useState(null); // Tracks which lesson is generating AI slides
+  const [uploadingLesson, setUploadingLesson] = useState(null); // Tracks which specific lesson is currently uploading a file
+  const [aiGeneratingLesson, setAiGeneratingLesson] = useState(null); // Tracks which lesson is currently generating AI slides
 
-  // Scroll to top on initial mount
+  // Scroll to top on initial mount to ensure user starts at the top of the form
   useEffect(() => { window.scrollTo(0, 0); }, []);
 
-  // ==== Data Fetching (Edit Mode) ====
+  // ==== Edit Mode ====
 
   useEffect(() => {
+    // If we are creating a new course, skip fetching
     if (!isEdit) return;
 
     (async () => {
@@ -103,7 +106,7 @@ const { user } = useUser();
         }
         const c = await res.json();
 
-        // Populate metadata states
+        // Populate metadata states with fetched data, using fallbacks for safety
         setTitle(c.title || "");
         setSlug(c.slug || "");
         setSubject(c.subject || SUBJECTS[0].key);
@@ -114,7 +117,7 @@ const { user } = useUser();
         setCoverUrl(c.coverUrl || "");
         setLearn(Array.isArray(c.learn) && c.learn.length > 0 ? c.learn : ["", "", "", ""]);
 
-        // Populate curriculum states, applying fallback defaults if data is missing
+        // Populate curriculum states, applying fallback defaults if nested data is missing
         setSections(
           Array.isArray(c.sections) && c.sections.length
             ? c.sections.map((s) => ({
@@ -128,6 +131,7 @@ const { user } = useUser();
                   originalDocType: ls.originalDocType || "",
                   aiSlides: Array.isArray(ls.aiSlides) ? ls.aiSlides : [],
                   useAiSlides: !!ls.useAiSlides,
+                  // Ensure older records that didn't have this boolean default to true
                   showOriginalToStudents:
                     typeof ls.showOriginalToStudents === "boolean"
                       ? ls.showOriginalToStudents
@@ -146,16 +150,19 @@ const { user } = useUser();
     // eslint-disable-next-line
   }, [isEdit, id]);
 
-  // ====== Curriculum Builder Operations ====== //
+  // ==== Curriculum Builder Operations ====
 
+  /** Adds a new empty section to the end of the curriculum */
   const addSection = () =>
     setSections((prev) => [...prev, emptySection(prev.length)]);
 
+  /** Removes a section by index, preventing deletion if it's the only section left */
   const removeSection = (si) =>
     setSections((prev) =>
       prev.length === 1 ? prev : prev.filter((_, i) => i !== si)
     );
 
+  /** Updates the title of a specific section */
   const changeSectionTitle = (si, val) =>
     setSections((prev) => {
       const n = [...prev];
@@ -163,6 +170,7 @@ const { user } = useUser();
       return n;
     });
 
+  /** Adds a new empty lesson to a specific section */
   const addLesson = (si) =>
     setSections((prev) => {
       const n = [...prev];
@@ -171,6 +179,7 @@ const { user } = useUser();
       return n;
     });
 
+  /** Removes a lesson by index from a specific section, maintaining a minimum of 1 lesson */
   const removeLesson = (si, li) =>
     setSections((prev) => {
       const n = [...prev];
@@ -181,7 +190,9 @@ const { user } = useUser();
       return n;
     });
 
-  /** Updates specific properties of a lesson without overwriting the whole object */
+  /** * Updates specific properties of a lesson without overwriting the whole object.
+   * Takes a 'patch' object containing the fields to update.
+   */
   const setLesson = (si, li, patch) =>
     setSections((prev) => {
       const n = [...prev];
@@ -191,12 +202,12 @@ const { user } = useUser();
       return n;
     });
 
-  // ==== File Upload Handler ==== //
+  // ==== File Upload Handler ====
 
   const handleLessonFileChange = async (si, li, file) => {
     if (!file) return;
 
-    // Validate file extension against allowed types
+    // Validate file extension against allowed types to prevent malicious uploads
     const lowerName = file.name.toLowerCase();
     const ok = LESSON_FILE_EXTS.some((ext) => lowerName.endsWith(ext));
     if (!ok) {
@@ -230,7 +241,7 @@ const { user } = useUser();
       const url = data.url || "";
       const mime = (data.mimeType || file.type || "").toLowerCase();
 
-      // Determine document type to help the frontend select the correct viewer iframe
+      // Determine document type string to help the frontend select the correct viewer iframe later
       let docType = "";
       if (mime.includes("pdf")) docType = "pdf";
       else if (
@@ -241,7 +252,7 @@ const { user } = useUser();
       else if (mime.includes("presentation") || mime.includes("powerpoint"))
         docType = "pptx";
 
-      // Update the lesson state with the returned Cloudinary URLs
+      // Update the target lesson state with the returned Cloudinary URLs
       setLesson(si, li, {
         contentUrl: url,
         originalDocUrl: url,
@@ -259,10 +270,10 @@ const { user } = useUser();
     }
   };
 
-  // ==== AI Slide Generation Handler ==== //
+  // ==== AI Slide Generation Handler ====
 
   const handleGenerateSlides = async (si, li, lesson) => {
-    // Prerequisites for AI generation
+    // Prerequisites for AI generation: Opt-in must be checked and a document must be uploaded
     if (!lesson.useAiSlides) {
       setToast({
         type: "error",
@@ -289,8 +300,9 @@ const { user } = useUser();
       let endpoint;
       let body;
 
-      // Determine API endpoint based on whether the course is saved or brand new
+      // Determine API endpoint based on whether the course is saved in DB or is brand new
       if (hasValidCourseId) {
+        // Use the course-specific endpoint to read existing document text
         endpoint = toAbsolute(
           `/api/courses/${id}/sections/${si}/lessons/${li}/gen-slides`
         );
@@ -298,6 +310,7 @@ const { user } = useUser();
           numSlides: 10,
         });
       } else {
+        // Use the generic generation endpoint providing the raw document URL
         endpoint = toAbsolute("/api/ai-slides/generate");
         body = JSON.stringify({
           docUrl: lesson.originalDocUrl,
@@ -343,8 +356,9 @@ const { user } = useUser();
     }
   };
 
-  // ==== Validation & Submission ==== //
+  // ==== Validation & Submission ====
 
+  /** Validates all required fields before allowing submission */
   const validate = () => {
     if (!canEdit) return "Forbidden";
     if (!title.trim()) return "Please enter course title.";
@@ -380,7 +394,7 @@ const { user } = useUser();
 
     setSaving(true);
     try {
-      // Construct the payload, cleaning up empty arrays and whitespace
+      // Construct the payload, cleaning up empty arrays, strings, and whitespace
       const payload = {
         title: title.trim(),
         slug: slug.trim(),
@@ -413,6 +427,7 @@ const { user } = useUser();
       const url = isEdit
         ? toAbsolute(`/api/courses/${id}`)
         : toAbsolute(`/api/courses`);
+      
       const res = await fetch(url, {
         method: isEdit ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
@@ -427,7 +442,7 @@ const { user } = useUser();
 
       setToast({ type: "success", msg: isEdit ? "Updated." : "Created." });
 
-      // Redirect back to dashboard upon successful creation/update
+      // Redirect back to instructor dashboard upon successful creation/update
       setTimeout(() => navigate("/instructor"), 700);
     } catch (e) {
       setToast({ type: "error", msg: `Save failed: ${e.message}` });
@@ -439,6 +454,7 @@ const { user } = useUser();
 
   // ==== Render ====
 
+  // Render access denied state if user lacks permissions
   if (!canEdit) {
     return (
       <div className="course-page">
@@ -466,7 +482,7 @@ const { user } = useUser();
           <div className="empty">Loading…</div>
         ) : (
           <>
-            {/* ===== Meta Information Form ===== */}
+            {/* ==== Meta Information Form ==== */}
             <section className="card">
               <h3>Course information</h3>
               <div className="form-grid">
@@ -612,7 +628,7 @@ const { user } = useUser();
               </div>
             </section>
 
-            {/* ===== Curriculum Builder ===== */}
+            {/* ==== Curriculum Builder ==== */}
             <section className="card">
               <h3>Curriculum</h3>
 
@@ -873,12 +889,10 @@ const { user } = useUser();
                   onClick={handleSubmit}
                 >
                   {saving
-                    ? isEdit
-                      ? "Updating…"
-                      : "Publishing…"
+                    ? "Submitting..."
                     : isEdit
-                    ? "Update"
-                    : "Publish course"}
+                    ? "Update & Submit for Review"
+                    : "Submit for Review"}
                 </button>
               </div>
             </section>

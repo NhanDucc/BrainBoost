@@ -1,101 +1,302 @@
-.admin-page.settings-wrap{
+.admin-page.settings-wrap {
   min-height: calc(100vh - 140px);
-  background:var(--bg-main);
-  padding:32px 16px;
-  display:grid;
-  place-items:start center;
+  background: var(--bg-main);
+  padding: 32px 16px;
+  display: grid;
+  place-items: start center;
 }
 
-.admin-page .settings-card{
-  width:min(1100px,96vw);
-  background:var(--bg-card);
-  border-radius:16px;
-  border:2px solid var(--border-color);
-  box-shadow:0 16px 40px rgba(0,0,0,.05);
-  padding:18px 18px 24px;
+.admin-page .settings-card {
+  width: min(1100px, 96vw);
+  background: var(--bg-card);
+  border-radius: 16px;
+  border: 2px solid var(--border-color);
+  box-shadow: 0 16px 40px rgba(0,0,0,.05);
+  padding: 18px 18px 24px;
 }
 
-.admin-page .settings-card h2{
-  margin:0 0 10px;
-  font-size:28px;
-  font-weight:800;
-  color:var(--text-main);
+.admin-page .settings-card h2 {
+  margin: 0 0 15px;
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--text-main);
 }
 
-.admin-page .ad-tabs{ display:flex; gap:8px; margin:6px 0 12px; flex-wrap:wrap; }
-.admin-page .ad-tabs .ad-tab{ all:unset; }
-
-.admin-page .settings-card > div:first-of-type{ display:flex; gap:8px; flex-wrap:wrap; }
-.admin-page .settings-card > div:first-of-type > button,
-.admin-page .ad-tabs .ad-tab{
-  background:var(--bg-object);
-  color:var(--primary-hover);
-  border:1px solid var(--border-color);
-  border-radius:10px;
-  padding:6px 12px;
-  font-weight:700;
-  cursor:pointer;
-  transition:background .15s, color .15s, border-color .15s, transform .02s;
-}
-.admin-page .settings-card > div:first-of-type > button.active,
-.admin-page .ad-tabs .ad-tab.active,
-.admin-page .settings-card > div:first-of-type > button:hover{
-  background:var(--primary); color:#fff; border-color:var(--primary);
-}
-.admin-page .settings-card > div:first-of-type > button:active{ transform:translateY(1px); }
-
-.admin-page .results-table-wrap{ overflow-x:auto; border-radius:12px; }
-.admin-page .results-table{
-  width:100%;
-  border-collapse:separate;
-  border-spacing:0 8px;
-}
-.admin-page .results-table thead th{
-  background:var(--bg-object);
-  color:var(--primary-hover);
-  text-align:left;
-  padding:12px;
-  font-weight:800;
-}
-.admin-page .results-table tbody tr{
-  background:var(--bg-card);
-  border:1px solid var(--border-color);
-  transition:box-shadow .15s, transform .05s;
+/* ===== MAIN TABS (Courses / Tests / Applications) ===== */
+.admin-main-tabs {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 20px;
+  border-bottom: 2px solid var(--border-color);
+  padding-bottom: 12px;
+  flex-wrap: wrap;
 }
 
-.admin-page .results-table td{ padding:12px; color:var(--text-main); }
-.admin-page .results-table tbody tr td[colspan]{
-  text-align:center; color:var(--text-secondary); padding:24px 12px; background:transparent; border:none;
+.admin-main-tabs .main-tab {
+  padding: 10px 18px;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 800;
+  font-size: 0.95rem;
+  background: var(--bg-input);
+  color: var(--text-main);
+  transition: all 0.2s ease;
 }
 
-.admin-page .results-table td button{
-  appearance:none;
-  border:0;
-  border-radius:10px;
-  padding:8px 12px;
-  font-weight:700;
-  cursor:pointer;
-  color:#fff;
-  box-shadow:0 4px 12px rgba(0,0,0,.15);
-  transition:filter .15s, transform .02s;
+.admin-main-tabs .main-tab:hover:not(.active) {
+  background: var(--bg-hover);
+  color: var(--primary);
 }
-.admin-page .results-table td button:active{ transform:translateY(1px); }
 
-.admin-page .results-table td button{ background:var(--primary); }
+.admin-main-tabs .main-tab.active {
+  background: var(--primary);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(0, 87, 255, 0.2);
+}
 
-.admin-page .results-table td button:first-child{ background:var(--success); }
-.admin-page .results-table td button:last-child { background:var(--error); }
-.admin-page .results-table td button + button{ margin-left:8px; }
-.admin-page .results-table td button:hover{ filter:brightness(.95); }
+/* ===== SUB TABS (Pending / Approved / Rejected) ===== */
+.admin-sub-tabs {
+  display: flex;
+  gap: 8px;
+  margin: 10px 0 16px 0;
+  flex-wrap: wrap;
+}
 
-@media (max-width:920px){
-  .admin-page .results-table thead{ display:none; }
-  .admin-page .results-table tbody tr{
-    display:grid;
-    grid-template-columns:1fr;
-    row-gap:6px;
-    padding:10px 12px;
+.admin-sub-tabs button {
+  background: var(--bg-object);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 8px 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.admin-sub-tabs button:hover:not(.active) {
+  background: var(--bg-hover);
+  color: var(--text-main);
+}
+
+.admin-sub-tabs button.active {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+}
+
+.settings-msg {
+  color: var(--success);
+  background: rgba(16, 185, 129, 0.1);
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-weight: 800;
+  margin-bottom: 16px;
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+/* ===== TABLE STYLES ===== */
+.admin-page .results-table-wrap { overflow-x: auto; border-radius: 12px; }
+.admin-page .results-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0 8px;
+}
+.admin-page .results-table thead th {
+  background: var(--bg-object);
+  color: var(--primary-hover);
+  text-align: left;
+  padding: 12px 14px;
+  font-weight: 800;
+}
+.admin-page .results-table tbody tr {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  transition: box-shadow .15s, transform .05s;
+}
+.admin-page .results-table tbody tr:hover {
+  box-shadow: 0 4px 12px rgba(0,0,0,.04);
+}
+
+.admin-page .results-table td { padding: 12px 14px; color: var(--text-main); vertical-align: middle; }
+.admin-page .results-table tbody tr td[colspan] {
+  text-align: center; color: var(--text-secondary); padding: 30px 12px; background: transparent; border: none;
+}
+
+/* Action Buttons in Table */
+.action-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.admin-page .results-table td button {
+  appearance: none;
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-weight: 700;
+  font-size: 0.85rem;
+  cursor: pointer;
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(0,0,0,.1);
+  transition: filter .15s, transform .02s;
+}
+.admin-page .results-table td button:active { transform: translateY(1px); }
+
+/* Nút đầu tiên (Approve) tự động nhận màu xanh success */
+.admin-page .results-table td button:first-child { background: var(--success); }
+/* Nút thứ hai (Reject) tự động nhận màu đỏ error */
+.admin-page .results-table td button:last-child { background: var(--error); }
+.admin-page .results-table td button:hover { filter: brightness(.9); }
+
+/* Status Labels */
+.status-label {
+  display: inline-block;
+  font-weight: 800;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.status-label.approved, 
+.status-label.published {
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--success);
+}
+.status-label.rejected {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--error);
+}
+
+@media (max-width: 920px) {
+  .admin-page .results-table thead { display: none; }
+  .admin-page .results-table tbody tr {
+    display: grid;
+    grid-template-columns: 1fr;
+    row-gap: 8px;
+    padding: 14px;
   }
-  .admin-page .results-table td{ padding:6px 0; }
-  .admin-page .results-table td:last-child{ margin-top:6px; }
+  .admin-page .results-table td { padding: 4px 0; }
+}
+
+/* ===== CUSTOM MODAL STYLES ===== */
+.modal-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(15, 23, 42, 0.6); /* Nền tối mờ */
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 16px;
+}
+
+.modal-content {
+  background: var(--bg-card);
+  width: 100%;
+  max-width: 480px;
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--border-color);
+  animation: modalFadeIn 0.25s ease-out forwards;
+}
+
+@keyframes modalFadeIn {
+  from { opacity: 0; transform: translateY(20px) scale(0.95); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.modal-header {
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.modal-header i {
+  color: var(--error);
+  font-size: 24px;
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--text-main);
+}
+
+.modal-body p {
+  margin: 0 0 12px 0;
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.modal-body textarea {
+  width: 100%;
+  height: 120px;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border-input);
+  background: var(--bg-input);
+  color: var(--text-main);
+  font-family: inherit;
+  font-size: 0.95rem;
+  resize: none;
+  outline: none;
+  transition: all 0.2s;
+}
+
+.modal-body textarea:focus {
+  border-color: var(--error);
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.15);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.modal-btn-cancel {
+  background: transparent;
+  color: var(--text-main);
+  border: 1px solid var(--border-color);
+  padding: 10px 18px;
+  border-radius: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.modal-btn-cancel:hover {
+  background: var(--bg-hover);
+}
+
+.modal-btn-confirm {
+  background: var(--error);
+  color: #fff;
+  border: none;
+  padding: 10px 18px;
+  border-radius: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2);
+  transition: all 0.2s;
+}
+
+.modal-btn-confirm:hover {
+  background: #dc2626; /* Đỏ đậm hơn khi hover */
+  transform: translateY(-1px);
+}
+
+.modal-btn-confirm:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
 }

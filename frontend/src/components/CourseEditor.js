@@ -6,7 +6,11 @@ import { toAbsolute } from "../utils/url";
 import { useUser } from "../context/UserContext";
 import "../css/CourseEditor.css";
 
-/** Gợi ý subject/grade – có thể chỉnh theo hệ thống của bạn */
+// ==== Constants & Helper Functions ====
+
+/** * Predefined list of subjects. 
+ * Can be expanded or fetched from a database in the future. 
+ */
 const SUBJECTS = [
   { key: "math", name: "Mathematics" },
   { key: "english", name: "English" },
@@ -14,26 +18,26 @@ const SUBJECTS = [
   { key: "chemistry", name: "Chemistry" },
 ];
 
-// CHỈ còn 2 loại: Lesson & Quiz
+/** Supported lesson types in the curriculum builder */
 const LESSON_TYPES = [
   { key: "lesson", name: "Lesson" },
   { key: "quiz", name: "Quiz" },
 ];
 
-// Các đuôi file được phép upload cho lesson (document + slide)
+/** Allowed file extensions for document and presentation uploads */
 const LESSON_FILE_EXTS = [".pdf", ".doc", ".docx", ".txt", ".ppt", ".pptx"];
 
-// helper: check Mongo ObjectId format
+/** Validates if a string is a valid MongoDB ObjectId */
 const isMongoId = (val) =>
   typeof val === "string" && /^[0-9a-fA-F]{24}$/.test(val);
 
-// lesson “rỗng” cho builder
+/** * Factory function to generate an empty, default Lesson object.
+ * Used when a teacher clicks "+ Lesson" in the builder.
+ */
 const emptyLesson = () => ({
   title: "",
   type: "lesson",
-  // dùng cho QUIZ: thời gian làm (phút). Với lesson sẽ để rỗng.
   durationMin: "",
-  // URL tài nguyên chính (document / slide / v.v.)
   contentUrl: "",
   originalDocUrl: "",
   originalDocType: "",
@@ -42,60 +46,64 @@ const emptyLesson = () => ({
   showOriginalToStudents: true,
 });
 
+/** * Factory function to generate an empty Section object.
+ */
 const emptySection = (i) => ({
   title: `Section ${i + 1}`,
   lessons: [emptyLesson()],
 });
 
+// ==== Main Component ====
+
 export default function CourseEditor() {
-  const { user } = useUser();
-  const { id } = useParams(); // undefined => new
+const { user } = useUser();
+  const { id } = useParams(); // If ID is present, we are in Edit Mode; otherwise Create Mode
   const isEdit = Boolean(id);
   const navigate = useNavigate();
 
-  // Chỉ admin/instructor được vào
-  const canEdit =
-    user && (user.role === "admin" || user.role === "instructor");
+  // Role-based Access Control: Only admins and instructors can access this editor
+  const canEdit = user && (user.role === "admin" || user.role === "instructor");
 
+  // ---- UI & Network States ----
   const [loading, setLoading] = useState(isEdit);
   const [saving, setSaving] = useState(false);
-  const [toast, setToast] = useState(null);
+  const [toast, setToast] = useState(null); // Manages success/error popup messages
 
-  // Meta
+  // ---- Course Metadata States ----
   const [title, setTitle] = useState("");
   const [slug, setSlug] = useState("");
   const [subject, setSubject] = useState(SUBJECTS[0].key);
   const [grade, setGrade] = useState("");
   const [tags, setTags] = useState([]);
   const [price, setPrice] = useState("");
-
   const [description, setDescription] = useState("");
   const [coverUrl, setCoverUrl] = useState("");
+  const [learn, setLearn] = useState(["", "", "", ""]); // "What you'll learn" bullet points
 
-  // Builder
+  // ---- Curriculum Builder States ----
   const [sections, setSections] = useState([emptySection(0)]);
-  const [uploadingLesson, setUploadingLesson] = useState(null);
-  const [aiGeneratingLesson, setAiGeneratingLesson] = useState(null);
+  const [uploadingLesson, setUploadingLesson] = useState(null); // Tracks which lesson is currently uploading a file
+  const [aiGeneratingLesson, setAiGeneratingLesson] = useState(null); // Tracks which lesson is generating AI slides
 
-  useEffect(() => {
-    window.scrollTo(0, 0);
-  }, []);
+  // Scroll to top on initial mount
+  useEffect(() => { window.scrollTo(0, 0); }, []);
 
-  // Load khi edit
+  // ==== Data Fetching (Edit Mode) ====
+
   useEffect(() => {
     if (!isEdit) return;
+
     (async () => {
       setLoading(true);
       try {
-        const res = await fetch(toAbsolute(`/api/courses/${id}`), {
-          credentials: "include",
-        });
+        const res = await fetch(toAbsolute(`/api/courses/${id}`), { credentials: "include", });
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
           throw new Error(data?.message || `HTTP ${res.status}`);
         }
         const c = await res.json();
 
+        // Populate metadata states
         setTitle(c.title || "");
         setSlug(c.slug || "");
         setSubject(c.subject || SUBJECTS[0].key);
@@ -104,7 +112,9 @@ export default function CourseEditor() {
         setPrice(c.price ?? "");
         setDescription(c.description || "");
         setCoverUrl(c.coverUrl || "");
+        setLearn(Array.isArray(c.learn) && c.learn.length > 0 ? c.learn : ["", "", "", ""]);
 
+        // Populate curriculum states, applying fallback defaults if data is missing
         setSections(
           Array.isArray(c.sections) && c.sections.length
             ? c.sections.map((s) => ({
@@ -136,7 +146,8 @@ export default function CourseEditor() {
     // eslint-disable-next-line
   }, [isEdit, id]);
 
-  // ====== Builder ops ====== //
+  // ====== Curriculum Builder Operations ====== //
+
   const addSection = () =>
     setSections((prev) => [...prev, emptySection(prev.length)]);
 
@@ -164,12 +175,13 @@ export default function CourseEditor() {
     setSections((prev) => {
       const n = [...prev];
       const list = [...n[si].lessons];
-      if (list.length === 1) return prev; // giữ tối thiểu 1
+      if (list.length === 1) return prev; // Enforce minimum 1 lesson per section
       list.splice(li, 1);
       n[si] = { ...n[si], lessons: list };
       return n;
     });
 
+  /** Updates specific properties of a lesson without overwriting the whole object */
   const setLesson = (si, li, patch) =>
     setSections((prev) => {
       const n = [...prev];
@@ -179,10 +191,12 @@ export default function CourseEditor() {
       return n;
     });
 
-  // ====== Upload lesson document/slide ====== //
+  // ==== File Upload Handler ==== //
+
   const handleLessonFileChange = async (si, li, file) => {
     if (!file) return;
 
+    // Validate file extension against allowed types
     const lowerName = file.name.toLowerCase();
     const ok = LESSON_FILE_EXTS.some((ext) => lowerName.endsWith(ext));
     if (!ok) {
@@ -196,6 +210,8 @@ export default function CourseEditor() {
 
     try {
       setUploadingLesson(`${si}-${li}`);
+
+      // Prepare form data for the backend Multer/Cloudinary upload endpoint
       const fd = new FormData();
       fd.append("file", file);
 
@@ -214,6 +230,7 @@ export default function CourseEditor() {
       const url = data.url || "";
       const mime = (data.mimeType || file.type || "").toLowerCase();
 
+      // Determine document type to help the frontend select the correct viewer iframe
       let docType = "";
       if (mime.includes("pdf")) docType = "pdf";
       else if (
@@ -224,6 +241,7 @@ export default function CourseEditor() {
       else if (mime.includes("presentation") || mime.includes("powerpoint"))
         docType = "pptx";
 
+      // Update the lesson state with the returned Cloudinary URLs
       setLesson(si, li, {
         contentUrl: url,
         originalDocUrl: url,
@@ -241,9 +259,10 @@ export default function CourseEditor() {
     }
   };
 
-  // ====== Generate AI slides for a lesson ====== //
+  // ==== AI Slide Generation Handler ==== //
+
   const handleGenerateSlides = async (si, li, lesson) => {
-    // Phải bật "Allow BrainBoost to generate AI slides"
+    // Prerequisites for AI generation
     if (!lesson.useAiSlides) {
       setToast({
         type: "error",
@@ -253,7 +272,6 @@ export default function CourseEditor() {
       return;
     }
 
-    // Vẫn cần tài liệu gốc
     if (!lesson.originalDocUrl) {
       setToast({
         type: "error",
@@ -271,8 +289,8 @@ export default function CourseEditor() {
       let endpoint;
       let body;
 
+      // Determine API endpoint based on whether the course is saved or brand new
       if (hasValidCourseId) {
-        // Đang edit course đã lưu trong Mongo → dùng route có courseId
         endpoint = toAbsolute(
           `/api/courses/${id}/sections/${si}/lessons/${li}/gen-slides`
         );
@@ -280,7 +298,6 @@ export default function CourseEditor() {
           numSlides: 10,
         });
       } else {
-        // Đang tạo course mới (chưa có id) → fallback route cũ /api/ai-slides/generate
         endpoint = toAbsolute("/api/ai-slides/generate");
         body = JSON.stringify({
           docUrl: lesson.originalDocUrl,
@@ -303,6 +320,7 @@ export default function CourseEditor() {
 
       const slides = Array.isArray(data.slides) ? data.slides : [];
 
+      // Update lesson state with the generated slides array
       setLesson(si, li, {
         aiSlides: slides,
         useAiSlides: true,
@@ -325,7 +343,8 @@ export default function CourseEditor() {
     }
   };
 
-  // ====== Validation ====== //
+  // ==== Validation & Submission ==== //
+
   const validate = () => {
     if (!canEdit) return "Forbidden";
     if (!title.trim()) return "Please enter course title.";
@@ -333,6 +352,8 @@ export default function CourseEditor() {
     if (!subject) return "Please select a subject.";
     if (!description.trim()) return "Please enter course description.";
     if (!sections.length) return "Please add at least 1 section.";
+
+    // Deep validation for curriculum structure
     for (let i = 0; i < sections.length; i++) {
       const s = sections[i];
       if (!s.title.trim()) return `Section ${i + 1}: title is required.`;
@@ -349,7 +370,6 @@ export default function CourseEditor() {
     return null;
   };
 
-  // ====== Submit ====== //
   const handleSubmit = async () => {
     const err = validate();
     if (err) {
@@ -360,6 +380,7 @@ export default function CourseEditor() {
 
     setSaving(true);
     try {
+      // Construct the payload, cleaning up empty arrays and whitespace
       const payload = {
         title: title.trim(),
         slug: slug.trim(),
@@ -369,16 +390,13 @@ export default function CourseEditor() {
         tags,
         price: price === "" ? null : Number(price),
         coverUrl,
+        learn: learn.map(s => s.trim()).filter(Boolean),
         sections: sections.map((s) => ({
           title: s.title.trim(),
           lessons: s.lessons.map((L) => ({
             title: L.title.trim(),
             type: L.type,
-            // durationMin bây giờ dùng cho QUIZ time
-            durationMin:
-              L.type === "quiz" && L.durationMin !== ""
-                ? Number(L.durationMin)
-                : null,
+            durationMin: L.durationMin !== "" ? Number(L.durationMin) : 0,
             contentUrl: (L.contentUrl || "").trim(),
             originalDocUrl: (L.originalDocUrl || "").trim(),
             originalDocType: L.originalDocType || "",
@@ -408,6 +426,8 @@ export default function CourseEditor() {
       }
 
       setToast({ type: "success", msg: isEdit ? "Updated." : "Created." });
+
+      // Redirect back to dashboard upon successful creation/update
       setTimeout(() => navigate("/instructor"), 700);
     } catch (e) {
       setToast({ type: "error", msg: `Save failed: ${e.message}` });
@@ -416,6 +436,8 @@ export default function CourseEditor() {
       setSaving(false);
     }
   };
+
+  // ==== Render ====
 
   if (!canEdit) {
     return (
@@ -444,7 +466,7 @@ export default function CourseEditor() {
           <div className="empty">Loading…</div>
         ) : (
           <>
-            {/* ===== Meta ===== */}
+            {/* ===== Meta Information Form ===== */}
             <section className="card">
               <h3>Course information</h3>
               <div className="form-grid">
@@ -456,6 +478,7 @@ export default function CourseEditor() {
                   />
                 </label>
 
+                {/* Slug Inputs */}
                 <label className="form-row">
                   <span>Slug (optional)</span>
                   <input
@@ -465,6 +488,7 @@ export default function CourseEditor() {
                   />
                 </label>
 
+                {/* Subject Inputs */}
                 <label className="form-row">
                   <span>Subject</span>
                   <select
@@ -479,6 +503,7 @@ export default function CourseEditor() {
                   </select>
                 </label>
 
+                {/* Grade Inputs */}
                 <label className="form-row">
                   <span>Grade/Level</span>
                   <input
@@ -487,6 +512,7 @@ export default function CourseEditor() {
                   />
                 </label>
 
+                {/* Description Inputs */}
                 <label className="form-row full">
                   <span>Description</span>
                   <textarea
@@ -496,6 +522,7 @@ export default function CourseEditor() {
                   />
                 </label>
 
+                {/* Tags Inputs */}
                 <label className="form-row">
                   <span>Tags (comma separated)</span>
                   <input
@@ -511,6 +538,7 @@ export default function CourseEditor() {
                   />
                 </label>
 
+                {/* Price Inputs */}
                 <label className="form-row">
                   <span>Price (optional)</span>
                   <input
@@ -523,7 +551,8 @@ export default function CourseEditor() {
                   />
                 </label>
 
-                <div className="form-row full">
+                {/* Cover Image URL Inputs */}
+                <label className="form-row full">
                   <span>Cover image URL (optional)</span>
                   <input
                     className="url-input"
@@ -536,17 +565,58 @@ export default function CourseEditor() {
                       src={coverUrl}
                       alt="cover"
                       className="cover-preview"
+                      style={{maxWidth: '200px'}}
                     />
                   )}
+                </label>
+
+                {/* "What you'll learn" Goals Inputs */}
+                <div className="form-row full">
+                  <span>What you'll learn</span>
+                  <p style={{fontSize: '13px', color: 'var(--text-secondary)', margin: '0 0 8px 0'}}>
+                    Add key skills students will gain. Leave input empty to ignore.
+                  </p>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                    {learn.map((item, idx) => (
+                      <div key={idx} style={{ display: 'flex', gap: '8px' }}>
+                        <input
+                          placeholder={`Goal ${idx + 1}`}
+                          value={item}
+                          onChange={(e) => {
+                            const newLearn = [...learn];
+                            newLearn[idx] = e.target.value;
+                            setLearn(newLearn);
+                          }}
+                          style={{ flex: 1 }}
+                        />
+                        <button 
+                          type="button" 
+                          className="mini danger" 
+                          onClick={() => setLearn(learn.filter((_, i) => i !== idx))}
+                          title="Remove"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <button 
+                    type="button" 
+                    className="ghost-btn" 
+                    style={{ width: 'fit-content', marginTop: '8px' }}
+                    onClick={() => setLearn([...learn, ""])}
+                  >
+                    + Add more goal
+                  </button>
                 </div>
               </div>
             </section>
 
-            {/* ===== Builder ===== */}
+            {/* ===== Curriculum Builder ===== */}
             <section className="card">
               <h3>Curriculum</h3>
 
-              {/* Hộp chú ý cho giáo viên – hiển thị 1 lần ở đầu card */}
+              {/* Instructor Hints & Instructions */}
               <div className="upload-hints">
                 <div className="upload-hints-title">
                   Teaching files & AI slides
@@ -623,48 +693,27 @@ export default function CourseEditor() {
                             }
                           />
 
-                          {/* Lesson / Quiz */}
-                          <select
-                            className="ls-type"
-                            value={ls.type}
-                            onChange={(e) => {
-                              const newType = e.target.value;
-                              const patch = { type: newType };
-                              // nếu chuyển từ quiz → lesson thì xoá thời gian
-                              if (newType !== "quiz") {
-                                patch.durationMin = "";
-                              }
-                              setLesson(si, li, patch);
-                            }}
-                          >
-                            {LESSON_TYPES.map((t) => (
-                              <option key={t.key} value={t.key}>
-                                {t.name}
-                              </option>
-                            ))}
+                          <select className="ls-type" value={ls.type} onChange={(e) => setLesson(si, li, { type: e.target.value })}>
+                            {LESSON_TYPES.map((t) => (<option key={t.key} value={t.key}>{t.name}</option>))}
                           </select>
 
-                          {/* Chỉ hiện ô thời gian khi là Quiz */}
-                          {ls.type === "quiz" ? (
-                            <input
-                              className="ls-dur"
-                              type="number"
-                              min="0"
-                              placeholder="Quiz min"
-                              value={ls.durationMin ?? ""}
-                              onChange={(e) =>
-                                setLesson(si, li, {
-                                  durationMin: e.target.value,
-                                })
-                              }
-                            />
-                          ) : (
-                            <div /> /* giữ layout */
-                          )}
+                          {/* Shared duration input for both lessons and quizzes */}
+                          <input
+                            className="ls-dur"
+                            type="number"
+                            min="0"
+                            placeholder="Mins"
+                            title={ls.type === 'lesson' ? 'Estimated time to learn (mins)' : 'Time limit for quiz (mins)'}
+                            value={ls.durationMin ?? ""}
+                            onChange={(e) =>
+                              setLesson(si, li, {
+                                durationMin: e.target.value,
+                              })
+                            }
+                          />
 
-                          {/* Khối resource: checkbox + upload */}
+                          {/* Resource Block: Access checkboxes and File Uploader */}
                           <div className="ls-resource">
-                            {/* 2 checkbox chế độ hiển thị */}
                             <div className="lesson-switch-row">
                               <label className="lesson-switch-label">
                                 <input
@@ -697,7 +746,7 @@ export default function CourseEditor() {
                               </label>
                             </div>
 
-                            {/* Upload file */}
+                            {/* File Upload Controls */}
                             <div className="ls-file-actions">
                               <label className="mini">
                                 Upload teaching file
@@ -738,7 +787,7 @@ export default function CourseEditor() {
                               )}
                             </div>
 
-                            {/* Nút tạo slide + trạng thái */}
+                            {/* AI Slide Generation Trigger */}
                             <div className="lesson-ai-actions">
                               <button
                                 type="button"
@@ -772,6 +821,7 @@ export default function CourseEditor() {
                                 )}
                             </div>
 
+                            {/* Live status preview of the lesson modes */}
                             {(ls.originalDocUrl || ls.aiSlides?.length) && (
                               <div className="lesson-ai-preview">
                                 <div className="lesson-ai-preview-title">
@@ -836,6 +886,7 @@ export default function CourseEditor() {
         )}
       </main>
 
+      {/* Global toast notification system */}
       {toast && <div className={`toast ${toast.type}`}>{toast.msg}</div>}
       <SiteFooter />
     </div>

@@ -5,400 +5,350 @@ import SiteHeader from "./Header";
 import SiteFooter from "./Footer";
 import "../css/CourseDetail.css";
 
-/* ---------- helpers ---------- */
-const mmssToMinutes = (s) => {
-    // "11:35" => 12 (round seconds up to the next minute)
-    if (!s || typeof s !== "string") return 0;
-    const [m = "0", sec = "0"] = s.split(":");
-    const mi = parseInt(m, 10) || 0;
-    const se = parseInt(sec, 10) || 0;
-    return mi + (se > 0 ? 1 : 0);
-};
+// ==== Helper Functions ====
 
+/**
+ * Converts a total number of minutes into a human-readable string.
+ * Example: 90 -> "01 hrs 30 mins", 45 -> "45 mins"
+ * @param {Number} mins - Total duration in minutes.
+ * @returns {String} Formatted time string.
+ */
 const minutesToText = (mins) => {
+    if (!mins || isNaN(mins) || mins === 0) return "0 mins";
     const h = Math.floor(mins / 60);
     const m = mins % 60;
     const pad = (n) => (n < 10 ? `0${n}` : `${n}`);
-    return h ? `${pad(h)} hrs ${pad(m)} mins` : `${m} mins`;
+    return h > 0 ? `${pad(h)} hrs ${pad(m)} mins` : `${m} mins`;
 };
 
-/** Build syllabus từ dữ liệu thật trong course.
- *  Nếu không có sections thì fallback sang syllabus mock như cũ.
- *  Output: [{ title, lessons: [{ title, duration, type, locked }] }]
+/**
+ * Safely parses the raw course object from the database into a structured syllabus array.
+ * Extracts sections and lessons, falling back to safe defaults if data is missing.
+ * @param {Object} course - The raw course data from the backend.
+ * @returns {Array} An array of formatted section objects.
  */
 const buildSyllabus = (course) => {
-    // Ưu tiên dùng sections lưu trong MongoDB
     if (Array.isArray(course?.sections) && course.sections.length) {
         return course.sections.map((sec, idx) => ({
-        title: sec.title || `Section ${idx + 1}`,
-        lessons: Array.isArray(sec.lessons)
-            ? sec.lessons.map((l) => ({
-                title: l.title || "Lesson",
-                duration: l.duration || "",
-                type: l.contentType || "video",
-                locked: !!l.locked,
-            }))
-            : [],
+            title: sec.title || `Section ${idx + 1}`,
+            lessons: Array.isArray(sec.lessons)
+                ? sec.lessons.map((l) => ({
+                    title: l.title || "Lesson",
+                    durationMin: Number(l.durationMin) || 0, // Ensure duration is parsed as a Number
+                    type: l.type || "lesson",                // Identifies if it's a "lesson" or "quiz"
+                    locked: !!l.locked,                      // Premium/locked status (if applicable)
+                }))
+                : [],
         }));
     }
-
-    // Nếu course đã có syllabus sẵn thì dùng luôn
-    if (Array.isArray(course?.syllabus) && course.syllabus.length) {
-        return course.syllabus;
-    }
-
-    // Subject-flavored section names (optional)
-    const fallbackBySubject = {
-        math: [
-        "Core concepts you must know",
-        "Problem-solving strategies",
-        "Practice sets & quizzes",
-        "Exam preparation",
-        ],
-        physics: [
-        "Measurement & kinematics",
-        "Forces & energy",
-        "Electricity & waves",
-        "Exam training",
-        ],
-        chemistry: [
-        "Particles & bonding",
-        "Equations & stoichiometry",
-        "Organic basics",
-        "Exam training",
-        ],
-        english: [
-        "Grammar fundamentals",
-        "Reading skills",
-        "Writing & speaking",
-        "Exam training",
-        ],
-    };
-
-    const names =
-        course?.curriculum?.length >= 3
-        ? course.curriculum
-        : fallbackBySubject[course?.subject] || [
-            "Introduction",
-            "Main topics",
-            "Practice & review",
-            "Final wrap-up",
-            ];
-
-    const makeLessons = (n) =>
-        Array.from({ length: n }).map((_, i) => ({
-        title:
-            i === 0
-            ? "Lesson 1 – Overview"
-            : i === 1
-            ? "Lesson 2 – Key ideas"
-            : "Downloadable/Notes",
-        duration: i === 0 ? "11:35" : i === 1 ? "10:34" : "01:00",
-        type: i === 2 ? "doc" : "video",
-        locked: i !== 0, // only first is previewable (demo)
-        }));
-
-    return names.map((name, idx) => ({
-        title: `${idx + 1}. ${name}`,
-        lessons: makeLessons(idx === 0 ? 3 : idx === 1 ? 3 : idx === 2 ? 4 : 2),
-    }));
+    return []; // Return an empty array to prevent map() errors in the UI
 };
 
+// ==== Main Component ====
+
+/**
+ * CourseDetail Component
+ * Public-facing page that displays the landing/preview information of a course.
+ * Shows the curriculum, duration, price, and allows the student to enroll.
+ */
 export default function CourseDetail() {
+    // ---- Routing Hooks ----
     const { courseId } = useParams();
     const navigate = useNavigate();
 
-    const [openSection, setOpenSection] = useState(0);
-    const [expandAll, setExpandAll] = useState(false);
-
+    // ---- Data & Network States ----
     const [course, setCourse] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
 
-    // Scroll lên top khi vào trang
+    // ---- UI States ----
+    const [expandedSections, setExpandedSections] = useState([0]);
+
+    // ==== Data Fetching ====
+
     useEffect(() => {
-    let cancelled = false;
+        // Used to prevent state updates if the component unmounts
+        let cancelled = false;
 
-    async function fetchCourse() {
-        setLoading(true);
-        setError("");
+        async function fetchCourse() {
+            setLoading(true);
+            setError("");
 
-        try {
-        const res = await fetch(
-            toAbsolute(`/api/courses/public/${courseId}`)
-        );
+            try {
+                // Fetch public course details from the backend
+                const res = await fetch(toAbsolute(`/api/courses/public/${courseId}`));
 
-        if (!res.ok) {
-            if (res.status === 404) {
-            if (!cancelled) {
-                setCourse(null);
-                setError("not-found");
+                if (!res.ok) {
+                    if (res.status === 404) {
+                        if (!cancelled) {
+                            setCourse(null);
+                            setError("not-found");
+                        }
+                        return;
+                    }
+                    const body = await res.json().catch(() => ({}));
+                    throw new Error(body.message || "Failed to load course");
+                }
+
+                const data = await res.json();
+                if (!cancelled) setCourse(data);
+            } catch (err) {
+                if (!cancelled) setError(err.message || "Failed to load course");
+            } finally {
+                if (!cancelled) setLoading(false);
             }
-            return;
-            }
-            const body = await res.json().catch(() => ({}));
-            throw new Error(body.message || "Failed to load course");
         }
 
-        const data = await res.json();
-        if (!cancelled) setCourse(data);
-        } catch (err) {
-        if (!cancelled) setError(err.message || "Failed to load course");
-        } finally {
-        if (!cancelled) setLoading(false);
-        }
-    }
+        fetchCourse();
 
-    fetchCourse();
-    return () => {
-        cancelled = true;
-    };
+        // Cleanup function to prevent memory leaks
+        return () => {
+            cancelled = true;
+        };
     }, [courseId]);
 
-    /* ---------- states: loading / error / not-found ---------- */
+    // ==== Loading & Errors
+
     if (loading) {
         return (
-        <div className="course-detail-page">
-            <SiteHeader />
-            <main className="course-detail course-container">
-            <p>Loading course...</p>
-            </main>
-            <SiteFooter />
-        </div>
+            <div className="course-detail-page">
+                <SiteHeader />
+                <main className="course-detail course-container">
+                    <p>Loading course...</p>
+                </main>
+                <SiteFooter />
+            </div>
         );
     }
 
     if (error === "not-found" || (!course && !loading)) {
         return (
-        <div className="course-detail-page">
-            <SiteHeader />
-            <div className="course-detail course-container">
-            <p>Course not found.</p>
-            <button className="ghost-btn" onClick={() => navigate("/courses")}>
-                ← Back to Courses
-            </button>
+            <div className="course-detail-page">
+                <SiteHeader />
+                <div className="course-detail course-container">
+                    <p>Course not found.</p>
+                    <button className="ghost-btn" onClick={() => navigate("/courses")}>
+                        ← Back to Courses
+                    </button>
+                </div>
+                <SiteFooter />
             </div>
-            <SiteFooter />
-        </div>
         );
     }
 
     if (error && !course) {
         return (
-        <div className="course-detail-page">
-            <SiteHeader />
-            <div className="course-detail course-container">
-            <p style={{ color: "#FA5252" /* Error color */ }}>
-                Error: {error}
-            </p>
-            <button className="ghost-btn" onClick={() => navigate("/courses")}>
-                ← Back to Courses
-            </button>
+            <div className="course-detail-page">
+                <SiteHeader />
+                <div className="course-detail course-container">
+                    <p style={{ color: "#FA5252" }}>
+                        Error: {error}
+                    </p>
+                    <button className="ghost-btn" onClick={() => navigate("/courses")}>
+                        ← Back to Courses
+                    </button>
+                </div>
+                <SiteFooter />
             </div>
-            <SiteFooter />
-        </div>
         );
     }
 
-    // Từ đây trở xuống chắc chắn đã có course
+    // ==== Derived Data Calculations ====
+
     const syllabus = buildSyllabus(course || {});
 
-    // totals
+    // IIFE to calculate overall curriculum statistics (total sections, lessons, and duration)
     const totals = (() => {
         let sections = syllabus.length;
         let lessons = 0;
-        let mins = 0;
+        let totalMins = 0;
         syllabus.forEach((s) => {
-        lessons += s.lessons.length;
-        s.lessons.forEach((l) => (mins += mmssToMinutes(l.duration)));
+            lessons += s.lessons.length;
+            s.lessons.forEach((l) => (totalMins += l.durationMin));
         });
-        return { sections, lessons, minsText: minutesToText(mins) };
+        return { sections, lessons, minsText: minutesToText(totalMins) };
     })();
 
+    // Check if the course is completely free
     const isFree = !course.priceUSD || Number(course.priceUSD) === 0;
+
+    // ==== Accordion Handlers ====
+
+    // Check if the number of expanded sections matches the total number of sections
+    const isAllExpanded = syllabus.length > 0 && expandedSections.length === syllabus.length;
+
+    /**
+     * Toggles the state of all sections simultaneously.
+     * If all are open, it collapses them. Otherwise, it expands all of them.
+     */
+    const toggleExpandAll = () => {
+        if (isAllExpanded) {
+            setExpandedSections([]); // Collapse all by emptying the array
+        } else {
+            setExpandedSections(syllabus.map((_, i) => i)); // Expand all by storing every index
+        }
+    };
+
+    /**
+     * Toggles the expanded/collapsed state of a single specific section.
+     * @param {Number} idx - The index of the section being toggled.
+     */
+    const toggleSection = (idx) => {
+        setExpandedSections((prev) =>
+            prev.includes(idx)
+                ? prev.filter((i) => i !== idx)     // If currently open, remove it from the array (collapse)
+                : [...prev, idx]                    // If currently closed, add it to the array (expand)
+        );
+    };
+
+    // ==== Render ====
 
     return (
         <div className="course-detail-page">
-        <SiteHeader />
+            <SiteHeader />
 
-        <main className="course-detail course-container">
-            {/* Breadcrumb */}
-            <nav className="breadcrumb">
-            <Link to="/courses">Courses</Link>
-            <span>›</span>
-            <span>{course.title}</span>
-            </nav>
+            <main className="course-detail course-container">
+                {/* ---- Breadcrumb Navigation ---- */}
+                <nav className="breadcrumb">
+                    <Link to="/courses">Courses</Link>
+                    <span>›</span>
+                    <span>{course.title}</span>
+                </nav>
 
-            {/* Top layout */}
-            <section className="detail-grid">
-            {/* Left column */}
-            <div className="detail-left">
-                <h1 className="dc-title">{course.title}</h1>
+                <section className="detail-grid">
+                    {/* ==== Left Column: Main Content ==== */}
+                    <div className="detail-left">
+                        <h1 className="dc-title">{course.title}</h1>
 
-                {course.description && (
-                <p className="dc-subtitle">{course.description}</p>
-                )}
-
-                {/* What you'll learn */}
-                <div className="learn-block">
-                <h3>What you’ll learn</h3>
-                <div className="learn-grid">
-                    {(course.learn || [
-                    "Core foundations of the subject",
-                    "Essential terms and key concepts",
-                    "Basic models and architectures",
-                    "Better intuition for problem solving",
-                    ]).map((t, i) => (
-                    <div className="learn-item" key={i}>
-                        <span className="tick">✓</span>
-                        <span>{t}</span>
-                    </div>
-                    ))}
-                </div>
-                </div>
-
-                {/* Curriculum / Accordion */}
-                <div className="curriculum-block">
-                <div className="curriculum-head">
-                    <h3>Course content</h3>
-                    <div className="cur-stats">
-                    <strong>{totals.sections}</strong> sections •{" "}
-                    <strong>{totals.lessons}</strong> lessons •{" "}
-                    <strong>{totals.minsText}</strong>
-                    </div>
-                    <button
-                    className="link-btn"
-                    onClick={() => setExpandAll((v) => !v)}
-                    >
-                    {expandAll ? "Collapse all" : "Expand all"}
-                    </button>
-                </div>
-
-                <div className="accordion">
-                    {syllabus.map((sec, idx) => {
-                    const opened = expandAll || openSection === idx;
-                    return (
-                        <div className="acc-section" key={idx}>
-                        <button
-                            className={`acc-head ${opened ? "open" : ""}`}
-                            onClick={() =>
-                            setOpenSection((p) => (p === idx ? -1 : idx))
-                            }
-                        >
-                            <span className="acc-sign">
-                            {opened ? "−" : "+"}
-                            </span>
-                            <span className="acc-title">{sec.title}</span>
-                            <span className="acc-count">
-                            {sec.lessons.length} lessons
-                            </span>
-                        </button>
-
-                        {opened && (
-                            <ul className="acc-list">
-                            {sec.lessons.map((l, i) => (
-                                <li className="acc-row" key={i}>
-                                <i
-                                    className={`bi ${
-                                    l.type === "doc"
-                                        ? "bi-file-earmark-text-fill icon-doc"
-                                        : "bi-play-circle-fill icon-video"
-                                    }`}
-                                    aria-hidden="true"
-                                />
-                                <span className="acc-lesson">{l.title}</span>
-                                <span className="acc-duration">
-                                    {l.duration}
-                                </span>
-                                </li>
-                            ))}
-                            </ul>
+                        {course.description && (
+                            <p className="dc-subtitle">{course.description}</p>
                         )}
+
+                        {/* ---- What you'll learn Section ---- */}
+                        <div className="learn-block">
+                            <h3>What you’ll learn</h3>
+                            <div className="learn-grid">
+                                {(course.learn && course.learn.length > 0 ? course.learn : [
+                                    "Core foundations of the subject",
+                                    "Essential terms and key concepts",
+                                    "Basic models and architectures",
+                                    "Better intuition for problem solving",
+                                ]).map((t, i) => (
+                                    <div className="learn-item" key={i}>
+                                        <span className="tick">✓</span>
+                                        <span>{t}</span>
+                                    </div>
+                                ))}
+                            </div>
                         </div>
-                    );
-                    })}
-                </div>
-                </div>
-            </div>
 
-            {/* Right column */}
-            <aside className="detail-right">
-                <div className="right-card">
-                <div className="right-thumb">
-                    <img
-                    src={course.coverUrl || ""}
-                    alt={course.title}
-                    style={{ objectFit: "cover" }}
-                    />
-                </div>
+                        {/* ---- Curriculum / Accordion Section ---- */}
+                        <div className="curriculum-block">
+                            <div className="curriculum-head">
+                                <h3>Course content</h3>
+                                <div className="cur-stats">
+                                    {totals.sections} sections •{" "}
+                                    {totals.lessons} lessons •{" "}
+                                    {totals.minsText}
+                                </div>
+                                <button
+                                    className="link-btn"
+                                    onClick={toggleExpandAll}
+                                >
+                                    {isAllExpanded ? "Collapse all" : "Expand all"}
+                                </button>
+                            </div>
 
-                <div className="right-price">
-                    {isFree ? (
-                    <span className="price-free">Free</span>
-                    ) : (
-                    <span className="price-paid">${course.priceUSD}</span>
-                    )}
-                </div>
+                            <div className="accordion">
+                                {syllabus.map((sec, idx) => {
+                                    // Check if this specific section is in the expanded state array
+                                    const opened = expandedSections.includes(idx); // Kiểm tra xem section có trong mảng mở không
+                                    return (
+                                        <div className="acc-section" key={idx}>
+                                            <button 
+                                                className={`acc-head ${opened ? "open" : ""}`} 
+                                                onClick={() => toggleSection(idx)}
+                                            >
+                                                <span className="acc-sign">{opened ? "−" : "+"}</span>
+                                                <span className="acc-title">{sec.title}</span>
+                                                <span className="acc-count">{sec.lessons.length} lessons</span>
+                                            </button>
 
-                <button
-                    className="enroll-btn"
-                    onClick={() => navigate(`/courses/${courseId}/learn`)}
-                >
-                    Enroll
-                </button>
+                                            {opened && (
+                                                <ul className="acc-list">
+                                                    {sec.lessons.map((l, i) => (
+                                                        <li className="acc-row" key={i}>
+                                                            {/* HIỂN THỊ ĐÚNG ICON VÀ MÀU DỰA VÀO TYPE */}
+                                                            <i
+                                                                className={`bi ${l.type === "quiz" ? "bi-question-circle-fill" : "bi-play-circle-fill"}`}
+                                                                aria-hidden="true"
+                                                                style={{ color: l.type === 'quiz' ? '#ff7a00' : 'var(--primary)', fontSize: '18px' }}
+                                                            />
+                                                            <span className="acc-lesson">{l.title}</span>
+                                                            <span className="acc-duration" style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                                                                {l.durationMin > 0 ? `${l.durationMin} mins` : "—"}
+                                                            </span>
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </div>
 
-                <ul className="right-facts">
-                    <li>
-                    <i
-                        className="bi bi-trophy-fill rf-ico"
-                        aria-hidden="true"
-                    ></i>
-                    Level: <strong>{course.level || "All levels"}</strong>
-                    </li>
-                    <li>
-                    <i
-                        className="bi bi-book-fill rf-ico"
-                        aria-hidden="true"
-                    ></i>
-                    Lessons:{" "}
-                    <strong>
-                        {course.lessons ||
-                        (Array.isArray(course.sections)
-                            ? course.sections.reduce(
-                                (sum, s) =>
-                                sum +
-                                (Array.isArray(s.lessons)
-                                    ? s.lessons.length
-                                    : 0),
-                                0
-                            )
-                            : 0)}
-                    </strong>
-                    </li>
-                    <li>
-                    <i
-                        className="bi bi-alarm-fill rf-ico"
-                        aria-hidden="true"
-                    ></i>
-                    Duration:{" "}
-                    <strong>
-                        {course.hours ? `${course.hours} hours` : totals.minsText}
-                    </strong>
-                    </li>
-                    <li>
-                    <i
-                        className="bi bi-globe2 rf-ico"
-                        aria-hidden="true"
-                    ></i>
-                    Access: <strong>Anytime, anywhere</strong>
-                    </li>
-                </ul>
-                </div>
-            </aside>
-            </section>
-        </main>
+                    {/* ==== Right Column: Sticky Sidebar ==== */}
+                    <aside className="detail-right">
+                        <div className="right-card">
+                            <div className="right-thumb">
+                                <img
+                                    src={course.coverUrl || "/img/course-placeholder.jpg"}
+                                    alt={course.title}
+                                    style={{ objectFit: "cover" }}
+                                />
+                            </div>
 
-        <SiteFooter />
+                            <div className="right-price">
+                                {isFree ? (
+                                    <span className="price-free">Free</span>
+                                ) : (
+                                    <span className="price-paid">${course.priceUSD}</span>
+                                )}
+                            </div>
+
+                            <button
+                                className="enroll-btn"
+                                onClick={() => navigate(`/courses/${courseId}/learn`)}
+                            >
+                                Enroll
+                            </button>
+
+                            <ul className="right-facts">
+                                <li>
+                                    <i className="bi bi-trophy-fill rf-ico" aria-hidden="true"></i>
+                                    Level: <strong>{course.grade || "All levels"}</strong>
+                                </li>
+                                <li>
+                                    <i className="bi bi-book-fill rf-ico" aria-hidden="true"></i>
+                                    Lessons: <strong>{totals.lessons}</strong>
+                                </li>
+                                <li>
+                                    <i className="bi bi-alarm-fill rf-ico" aria-hidden="true"></i>
+                                    Duration: <strong>{totals.minsText}</strong>
+                                </li>
+                                <li>
+                                    <i className="bi bi-globe2 rf-ico" aria-hidden="true"></i>
+                                    Access: <strong>Anytime, anywhere</strong>
+                                </li>
+                            </ul>
+                        </div>
+                    </aside>
+                </section>
+            </main>
+
+            <SiteFooter />
         </div>
     );
 }

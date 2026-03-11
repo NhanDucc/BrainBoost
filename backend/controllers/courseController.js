@@ -3,20 +3,29 @@ const axios = require("axios");
 const mongoose = require("mongoose");
 const LessonProgress = require("../models/LessonProgress");
 
+// Retrieve the AI microservice URL from environment variables
 const AI_AGENT_URL = process.env.AI_AGENT_URL
 
-// POST /api/courses
+/**
+ * * POST /api/courses
+ * Creates a new course in the database.
+ * Validates required metadata and initializes the course with a "published" visibility.
+ */
 const createCourse = async (req, res) => {
     try {
         const p = req.body || {};
+
+        // Validate required fields before proceeding
         if (!p.title || !p.subject || !p.grade || !p.description) {
             return res.status(400).json({ message: "Missing required fields." });
         }
+
         const sections = Array.isArray(p.sections) ? p.sections : [];
         if (sections.length < 1) {
             return res.status(400).json({ message: "Add at least 1 section." });
         }
 
+        // Create and save the new course document
         const doc = await Course.create({
             title: p.title.trim(),
             slug: (p.slug || "").trim(),
@@ -26,6 +35,7 @@ const createCourse = async (req, res) => {
             tags: Array.isArray(p.tags) ? p.tags : [],
             price: p.price ?? null,
             coverUrl: p.coverUrl || "",
+            learn: Array.isArray(p.learn) ? p.learn : [],
             sections,
             createdBy: req.userId,
             visibility: "published"
@@ -38,14 +48,21 @@ const createCourse = async (req, res) => {
     }
 };
 
-// GET /api/courses/:id
+/**
+ * * GET /api/courses/:id
+ * Retrieves a specific course by its ID for editing purposes.
+ * Ensures that only the creator (instructor) can access the raw course data.
+ */
 const getCourse = async (req, res) => {
   try {
     const c = await Course.findById(req.params.id).lean();
     if (!c) return res.status(404).json({ message: "Not found" });
+
+    // Authorization check: Verify if the requester is the course creator
     if (String(c.createdBy) !== String(req.userId)) {
       return res.status(403).json({ message: "Forbidden" });
     }
+
     res.json(c);
   } catch (e) {
     console.error(e);
@@ -53,16 +70,24 @@ const getCourse = async (req, res) => {
   }
 };
 
-// PATCH /api/courses/:id
+/**
+ * * PATCH /api/courses/:id
+ * Updates an existing course.
+ * Verifies ownership before applying the requested partial updates to the database.
+ */
 const updateCourse = async (req, res) => {
     try {
         const c = await Course.findById(req.params.id);
         if (!c) return res.status(404).json({ message: "Not found" });
+
+        // Authorization check
         if (String(c.createdBy) !== String(req.userId)) {
-        return res.status(403).json({ message: "Forbidden" });
+          return res.status(403).json({ message: "Forbidden" });
         }
 
         const p = req.body || {};
+
+        // Conditionally update fields if they are provided in the payload
         c.title = p.title ?? c.title;
         c.slug = p.slug ?? c.slug;
         c.subject = p.subject ?? c.subject;
@@ -71,7 +96,12 @@ const updateCourse = async (req, res) => {
         c.tags = Array.isArray(p.tags) ? p.tags : c.tags;
         c.price = p.price ?? c.price;
         c.coverUrl = p.coverUrl ?? c.coverUrl;
-        if (Array.isArray(p.sections) && p.sections.length > 0) c.sections = p.sections;
+        c.learn = Array.isArray(p.learn) ? p.learn : c.learn;
+        
+        // Completely replace sections if a valid array is provided
+        if (Array.isArray(p.sections) && p.sections.length > 0) {
+            c.sections = p.sections;
+        }
 
         await c.save();
         res.json({ message: "Updated" });
@@ -81,20 +111,26 @@ const updateCourse = async (req, res) => {
     }
 };
 
-// GET /api/courses
+/**
+ * * GET /api/courses
+ * Lists courses based on search queries or filters.
+ * Used primarily for the Instructor Dashboard (mine=1) to view their own courses.
+ */
 const listCourses = async (req, res) => {
   try {
     const { q = "", subject } = req.query;
-    const mine = String(req.query.mine || "") === "1";
+    const mine = String(req.query.mine || "") === "1";  // Flag to fetch only the user's courses
 
     const cond = {};
     if (subject) cond.subject = subject;
 
+    // Filter by the logged-in user if 'mine' flag is present
     if (mine) {
       if (!req.userId) return res.status(401).json({ message: "Unauthorized" });
       cond.createdBy = req.userId;
     }
 
+    // Apply regex search on title, description, or tags (case-insensitive)
     if (q) {
       cond.$or = [
         { title: { $regex: q, $options: "i" } },
@@ -105,25 +141,27 @@ const listCourses = async (req, res) => {
 
     const rows = await Course.find(cond).sort({ updatedAt: -1 }).lean();
 
-    // Chuẩn hoá dữ liệu trả về cho AllCourses/Instructor
+    // Format the output payload
     const data = rows.map((c) => {
       const sections = Array.isArray(c.sections) ? c.sections : [];
+      // Calculate the total number of lessons across all sections
       const lessons = sections.reduce((acc, s) => acc + ((s.lessons || []).length), 0);
+      
       return {
         id: String(c._id),
-        _id: c._id,                // để tab instructor dùng trực tiếp
+        _id: c._id,                
         title: c.title,
         subject: c.subject,
         grade: c.grade,
         coverUrl: c.coverUrl || "",
         description: c.description || "",
         tags: c.tags || [],
-        priceUSD: c.price ?? 0,    // client đang hiển thị priceUSD
+        priceUSD: c.price ?? 0,    
         lessons,
-        hours: null,               // chưa tính giờ => để null
+        hours: null,               
         updatedAt: c.updatedAt,
         createdAt: c.createdAt,
-        sections: c.sections || [], // tab instructor cần tính lessons
+        sections: c.sections || [], 
       };
     });
 
@@ -134,16 +172,18 @@ const listCourses = async (req, res) => {
   }
 };
 
-// GET /api/courses/public
+/**
+ * * GET /api/courses/public
+ * Retrieves a list of published courses for students.
+ * Aggregates total lessons and calculates total estimated hours automatically.
+ */
 const listPublicCourses = async (req, res) => {
   try {
     const { q = "", subject } = req.query;
-
-    // chỉ lấy course đã publish
-    const cond = { visibility: "published" };
+    const cond = { visibility: "published" }; // Only fetch published courses
 
     if (subject) {
-      cond.subject = subject;  // math / english / physics / chemistry
+      cond.subject = subject;  
     }
 
     const term = q.trim();
@@ -163,6 +203,7 @@ const listPublicCourses = async (req, res) => {
       let lessonCount = 0;
       let totalMinutes = 0;
 
+      // Map through the documents to calculate dynamic totals (lessons and hours)
       sections.forEach((s) => {
         (s.lessons || []).forEach((l) => {
           lessonCount += 1;
@@ -172,9 +213,10 @@ const listPublicCourses = async (req, res) => {
         });
       });
 
+      // Convert total minutes into hours (rounded to 1 decimal place)
       const hours =
         totalMinutes > 0
-          ? Math.round((totalMinutes / 60) * 10) / 10 // làm tròn 1 chữ số thập phân
+          ? Math.round((totalMinutes / 60) * 10) / 10
           : null;
 
       return {
@@ -195,7 +237,11 @@ const listPublicCourses = async (req, res) => {
   }
 };
 
-// GET /api/courses/public/:id
+/**
+ * * GET /api/courses/public/:id
+ * Fetches detailed information for a specific published course.
+ * Used on the Course Preview page to display the syllabus and metadata.
+ */
 const getPublicCourseById = async (req, res) => {
   try {
     const c = await Course.findById(req.params.id).lean();
@@ -204,12 +250,12 @@ const getPublicCourseById = async (req, res) => {
     }
 
     const sections = Array.isArray(c.sections) ? c.sections : [];
+    // Count total lessons
     const lessons = sections.reduce(
       (acc, s) => acc + ((s.lessons || []).length),
       0
     );
 
-    // Chuẩn hóa dữ liệu giống format listCourses trả về
     const course = {
       id: String(c._id),
       _id: c._id,
@@ -221,10 +267,11 @@ const getPublicCourseById = async (req, res) => {
       tags: c.tags || [],
       priceUSD: c.price ?? 0,
       lessons,
-      hours: null,          // hiện chưa có tổng giờ, để null
+      hours: null,          
       updatedAt: c.updatedAt,
       createdAt: c.createdAt,
-      sections,             // để trang CourseDetail dùng làm syllabus
+      sections,             
+      learn: c.learn || [],   // The "What you'll learn" features array
     };
 
     res.json(course);
@@ -234,7 +281,11 @@ const getPublicCourseById = async (req, res) => {
   }
 };
 
-// DELETE /api/courses/:id
+/**
+ * * DELETE /api/courses/:id
+ * Deletes a course from the database.
+ * Security: Only the course owner or an admin can perform this action.
+ */
 const deleteCourse = async (req, res) => {
   try {
     const c = await Course.findById(req.params.id);
@@ -242,6 +293,8 @@ const deleteCourse = async (req, res) => {
 
     const isOwner = String(c.createdBy) === String(req.userId);
     const isAdmin = String(req.userRole) === "admin";
+
+    // Validate authorization
     if (!isOwner && !isAdmin) return res.status(403).json({ message: "Forbidden" });
 
     await c.deleteOne();
@@ -252,7 +305,10 @@ const deleteCourse = async (req, res) => {
   }
 };
 
-// POST /api/courses/:courseId/sections/:secIndex/lessons/:lessonIndex/gen-slides
+/**
+ * * POST /api/courses/:courseId/sections/:secIndex/lessons/:lessonIndex/gen-slides
+ * Forwards lesson text to the external Python AI Agent to automatically generate presentation slides.
+ */
 async function generateLessonSlides(req, res) {
   try {
     const { courseId, secIndex, lessonIndex } = req.params;
@@ -265,6 +321,7 @@ async function generateLessonSlides(req, res) {
     const sectionIdx = parseInt(secIndex, 10);
     const lessonIdx = parseInt(lessonIndex, 10);
 
+    // Locate the exact course, section, and lesson
     const course = await Course.findById(courseId);
     if (!course) {
       return res.status(404).json({ message: "Course not found" });
@@ -281,6 +338,7 @@ async function generateLessonSlides(req, res) {
 
     const lesson = section.lessons[lessonIdx];
 
+    // Ensure there is textual content available for the AI to summarize
     if (!lesson.lessonText) {
       return res.status(400).json({
         message:
@@ -288,7 +346,7 @@ async function generateLessonSlides(req, res) {
       });
     }
 
-    // Payload gửi sang ai-agent
+    // Construct the payload for the Python microservice
     const payload = {
       lesson_id: `${courseId}:s${sectionIdx}:l${lessonIdx}`,
       lesson_title: lesson.title || course.title || "Untitled lesson",
@@ -296,23 +354,23 @@ async function generateLessonSlides(req, res) {
       num_slides: numSlides || 8,
     };
 
-    // Gọi sang AI agent: /generate-slides
+    // Forward the request to the AI agent
     const resp = await axios.post(
       `${AI_AGENT_URL}/generate-slides`,
       payload,
-      { timeout: 60000 }
+      { timeout: 60000 }    // Extended timeout for AI processing
     );
 
     const slidesFromAgent = resp.data?.slides || [];
 
-    // Map lại theo schema AiSlide trong Course.js
+    // Map the returned slides to the schema format
     lesson.aiSlides = slidesFromAgent.map((s, idx) => ({
       index: typeof s.index === "number" ? s.index : idx,
       title: s.title || `Slide ${idx + 1}`,
       bullets: Array.isArray(s.bullets) ? s.bullets : [],
       ttsText:
         s.ttsText ||
-        (Array.isArray(s.bullets) ? s.bullets.join(". ") : ""),
+        (Array.isArray(s.bullets) ? s.bullets.join(". ") : ""),   // Fallback Text-to-Speech text
       imagePrompt: s.imagePrompt || "",
     }));
 
@@ -327,18 +385,21 @@ async function generateLessonSlides(req, res) {
   }
 };
 
-// POST /api/courses/learning-path
+/**
+ * * POST /api/courses/learning-path
+ * Analyzes a user's typed goal and recommends a personalized learning path 
+ * by calling the external AI Agent.
+ */
 async function createLearningPath (req, res) {
     try {
         const { goal } = req.body;
         if (!goal) return res.status(400).json({ message: "Please tell us your goal." });
 
-        // 1. Lấy danh sách khóa học (chỉ lấy field cần thiết để nhẹ payload)
+        // Retrieve all available published courses to feed into the AI
         const courses = await Course.find({ visibility: 'published' })
             .select('_id title subject grade description')
             .lean();
 
-        // Map _id thành id string cho gọn
         const availableCourses = courses.map(c => ({
             id: c._id.toString(),
             title: c.title,
@@ -347,7 +408,7 @@ async function createLearningPath (req, res) {
             description: c.description || ""
         }));
 
-        // 2. Gọi AI Agent
+        // Send the user goal and course inventory to the AI Agent
         const aiResponse = await axios.post(`${AI_AGENT_URL}/generate-learning-path`, {
             user_goal: goal,
             available_courses: availableCourses
@@ -355,14 +416,14 @@ async function createLearningPath (req, res) {
 
         const { advice, recommended_courses } = aiResponse.data;
 
-        // 3. (Optional) Map lại thông tin chi tiết khóa học từ DB để trả về Frontend hiển thị đẹp hơn
+        // Map the AI recommendations back to the full course objects
         const resultCourses = recommended_courses.map(rc => {
             const fullInfo = availableCourses.find(c => c.id === rc.course_id);
             return {
                 ...fullInfo,
-                reason: rc.reason
+                reason: rc.reason   // Include the AI's reasoning for why this course was picked
             };
-        }).filter(item => item.id); // Lọc bỏ nếu AI bịa ra ID không tồn tại
+        }).filter(item => item.id);
 
         res.json({ advice, path: resultCourses });
 
@@ -372,58 +433,55 @@ async function createLearningPath (req, res) {
     }
 };
 
-// POST /api/courses/:id/progress
+/**
+ * * POST /api/courses/:id/progress
+ * Records or updates the time a student has spent studying a specific lesson.
+ * Logs progress daily to prevent overwriting historical study time.
+ */
 const markLessonProgress = async (req, res) => {
-    try {
-        const courseId = req.params.id;
-        const { lessonKey, timeSpent } = req.body;
+  try {
+    const courseId = req.params.id;
+    const { lessonKey, timeSpent } = req.body;
 
-        const course = await Course.findById(courseId).select('subject');
-        if (!course) return res.status(404).json({ message: "Course not found" });
+    const course = await Course.findById(courseId).select('subject');
+    if (!course) return res.status(404).json({ message: "Course not found" });
 
-        // Lấy thời điểm 00:00:00 của ngày hôm nay
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
+    // Reset the time to midnight to group progress by day
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
-        // TÌM TIẾN ĐỘ CỦA BÀI NÀY - NHƯNG CHỈ TRONG NGÀY HÔM NAY (tránh cộng dồn nhầm ngày cũ)
-        let progress = await LessonProgress.findOne({
-            user: req.userId,
-            course: courseId,
-            lessonKey: lessonKey,
-            lastAccessed: { $gte: today } 
-        });
+    // Look for an existing progress record created today
+    let progress = await LessonProgress.findOne({
+      user: req.userId,
+      course: courseId,
+      lessonKey: lessonKey,
+      lastAccessed: { $gte: today } 
+    });
 
-        if (progress) {
-            progress.lastAccessed = Date.now();
-            progress.timeSpent += (timeSpent || 1);
-            await progress.save();
-        } else {
-            progress = await LessonProgress.create({
-                user: req.userId,
-                course: courseId,
-                lessonKey: lessonKey,
-                subject: course.subject,
-                timeSpent: timeSpent || 1,
-                lastAccessed: Date.now()
-            });
-        }
-
-        res.json({ message: "Progress recorded", progress });
-    } catch (error) {
-        console.error("Progress error:", error);
-        res.status(500).json({ message: "Server error" });
+    // Update time if record exists, otherwise create a new daily record
+    if (progress) {
+      progress.lastAccessed = Date.now();
+      progress.timeSpent += (timeSpent || 1);
+      await progress.save();
+    } else {
+      progress = await LessonProgress.create({
+        user: req.userId,
+        course: courseId,
+        lessonKey: lessonKey,
+        subject: course.subject,
+        timeSpent: timeSpent || 1,
+        lastAccessed: Date.now()
+      });
     }
+
+    res.json({ message: "Progress recorded", progress });
+  } catch (error) {
+    console.error("Progress error:", error);
+    res.status(500).json({ message: "Server error" });
+  }
 };
 
 module.exports = {
-  createCourse,
-  getCourse,
-  updateCourse,
-  listCourses,
-  listPublicCourses,
-  getPublicCourseById,
-  deleteCourse,
-  generateLessonSlides,
-  createLearningPath,
-  markLessonProgress,
+  createCourse, getCourse, updateCourse, listCourses, listPublicCourses,
+  getPublicCourseById, deleteCourse, generateLessonSlides, createLearningPath, markLessonProgress,
 };

@@ -37,4 +37,5 @@ Thumbs.db
 # Environment files
 # ========================
 backend/.env
+backend/google-tts-key.json
 ai-agent/.env

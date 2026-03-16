@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import SiteHeader from "./Header";
 import SiteFooter from "./Footer";
@@ -55,31 +55,55 @@ const buildSlidesTts = (slides) => {
 };
 
 /**
+ * Splits long text into smaller chunks (~600 characters) by sentence endings.
+ * This is crucial for the "Instant Play" AI Audio Streaming feature, allowing 
+ * the frontend to fetch and play short audio clips immediately while preloading the rest.
+ */
+const chunkTextForInstantPlay = (text, maxLength = 600) => {
+  const sentences = text.match(/[^.!?\n]+[.!?\n]*/g) || [text];
+  const chunks = [];
+  let currentChunk = "";
+
+  for (let s of sentences) {
+    if (currentChunk.length + s.length > maxLength) {
+      if (currentChunk.trim()) chunks.push(currentChunk.trim());
+      currentChunk = s;
+    } else {
+      currentChunk += s;
+    }
+  }
+  if (currentChunk.trim()) chunks.push(currentChunk.trim());
+  return chunks;
+};
+
+// ==== Main Component ====
+
+/**
  * CoursePlayer Component
  * The main learning interface where students can view documents, interact with AI slides,
  * take personal notes, listen to text-to-speech, and chat with an AI assistant.
  */
 export default function CoursePlayer() {
+  // ---- Routing ----
   const { courseId } = useParams();
   const navigate = useNavigate();
 
-  // ==== Course Data State ====
+  // ---- Course Data & Navigation States ----
   const [course, setCourse] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [activeSec, setActiveSec] = useState(0);    // Tracks currently selected section
+  const [activeLesson, setActiveLesson] = useState(0); // Tracks currently selected lesson
 
-  const [activeSec, setActiveSec] = useState(0);
-  const [activeLesson, setActiveLesson] = useState(0);
-
-  // ==== Authentication State ====
+  // ---- Authentication States ----
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
 
-  // ==== Notes State ====
-  const [showNotes, setShowNotes] = useState(false);
+  // ---- Personal Notes States ----
+  const [showNotes, setShowNotes] = useState(false); // Toggles the note panel visibility
   const [lessonNote, setLessonNote] = useState("");
 
-  // ==== AI Chat State ====
+  // ---- AI Assistant Chat States ----
   const [chatMessages, setChatMessages] = useState([
     {
       from: "ai",
@@ -89,21 +113,68 @@ export default function CoursePlayer() {
   const [chatInput, setChatInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
 
-  // ==== Text-to-Speech (TTS) State ====
-  const [ttsStatus, setTtsStatus] = useState("idle");
+  // ---- Text-to-Speech (TTS) Core States ----
+  const [ttsStatus, setTtsStatus] = useState("idle"); // 'idle' | 'loading' | 'ready' | 'speaking' | 'paused'
   const [ttsText, setTtsText] = useState("");
-  const utteranceRef = useRef(null);
+  const utteranceRef = useRef(null); // Holds the native browser SpeechSynthesisUtterance object
 
-  // ==== UI View State ====
-  const [viewMode, setViewMode] = useState("original");
+  // ---- Advanced AI TTS Streaming States ----
+  const [ttsMode, setTtsMode] = useState("browser"); // Defaults to 'browser' for guests
+  const aiTtsRef = useRef({
+    chunks: [],          // The text chunks to be processed
+    currentIndex: 0,     // Which chunk is currently playing
+    currentAudio: null,  // The HTMLAudioElement currently playing
+    nextAudio: null,     // The HTMLAudioElement preloaded in the background
+    preloadedIndex: -1,  // Tracks which index has already been preloaded
+  });
+
+  // ---- UI View Modes ----
+  const [viewMode, setViewMode] = useState("original"); // 'original' (Document) or 'ai' (Slides)
   const [activeSlide, setActiveSlide] = useState(0);
 
+  // ---- Global UI Toast Notification ----
+  const [toast, setToast] = useState(null);
+  const toastTimerRef = useRef(null);
+
   /**
-   * Cancels any currently playing text-to-speech audio and resets the status.
+   * Displays a self-dismissing toast notification.
+   */
+  const showToast = (msg, type = "error") => {
+    setToast({ msg, type });
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setToast(null), 3500);
+  };
+
+  /**
+   * Hard resets both Browser and AI TTS engines.
+   * Cancels current playback, clears preloaded queues, and resets status.
    */
   const stopTts = () => {
-    if (typeof window === "undefined" || !window.speechSynthesis) return;
-    window.speechSynthesis.cancel();
+    // Cancel Native Browser TTS
+    if (typeof window !== "undefined" && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+
+    // Pause and reset active AI audio
+    if (aiTtsRef.current.currentAudio) {
+      aiTtsRef.current.currentAudio.pause();
+      aiTtsRef.current.currentAudio.currentTime = 0;
+    }
+
+    // Prevent preloaded audio from playing accidentally
+    if (aiTtsRef.current.nextAudio) {
+      aiTtsRef.current.nextAudio.pause();
+    }
+    
+    // Wipe the queue memory
+    aiTtsRef.current = {
+      chunks: [],
+      currentIndex: 0,
+      currentAudio: null,
+      nextAudio: null,
+      preloadedIndex: -1,
+    };
+    
     utteranceRef.current = null;
     setTtsStatus("idle");
   };
@@ -149,9 +220,7 @@ export default function CoursePlayer() {
   }, []);
 
   // Cleanup TTS audio when the component is unmounted
-  useEffect(() => {
-    return () => stopTts();
-  }, []);
+  useEffect(() => { return () => stopTts(); }, []);
 
   // Fetch course data based on the URL parameter
   useEffect(() => {
@@ -252,8 +321,14 @@ export default function CoursePlayer() {
    * Extracts or prepares text from the original document for TTS playback.
    */
   const loadLessonText = async () => {
-    if (!currentLesson || !currentLesson.contentUrl) { alert("No document to read."); return ""; }
-    if (!lessonUseOriginal) { alert("The teacher has disabled the original document for this lesson."); return ""; }
+    if (!currentLesson || !currentLesson.contentUrl) { 
+      showToast("No document available to read."); 
+      return ""; 
+    }
+    if (!lessonUseOriginal) { 
+      showToast("The teacher has disabled the original document for this lesson."); 
+      return ""; 
+    }
     if (ttsStatus === "speaking" || ttsStatus === "paused") return ttsText;
 
     setTtsStatus("loading");
@@ -281,53 +356,150 @@ export default function CoursePlayer() {
       setTtsText(text); setTtsStatus("ready"); return text;
     } catch (err) {
       setTtsStatus("idle");
-      alert(err.message || "Cannot read text from this document for TTS yet.");
+      showToast(err.message || "Cannot read text from this document for TTS yet.");
       return "";
     }
   };
 
   /**
-   * Toggles the playback state (Play/Pause/Resume) of the Text-to-Speech engine.
+   * Advanced Streaming Engine for AI Voices.
+   * Implements a Preloader logic to ensure zero-latency playback between audio chunks.
+   * @param {Number} index - The current chunk array index to play.
+   */
+  const playAiSequence = async (index) => {
+    // Stop condition: End of chunks array
+    if (index >= aiTtsRef.current.chunks.length) {
+      setTtsStatus("ready");
+      return;
+    }
+
+    let audioToPlay = null;
+
+    // Optimization: If the audio was already preloaded seamlessly in the background, use it!
+    if (aiTtsRef.current.preloadedIndex === index && aiTtsRef.current.nextAudio) {
+      audioToPlay = aiTtsRef.current.nextAudio;
+    } else {
+      // Fetch directly if not preloaded (e.g., very first chunk)
+      setTtsStatus("loading");
+      try {
+        const textChunk = aiTtsRef.current.chunks[index];
+        const res = await api.post("/tts/synthesize", { text: textChunk });
+        audioToPlay = new Audio(`data:audio/mp3;base64,${res.data.audioContent}`);
+      } catch (err) {
+        console.error("AI TTS Error:", err);
+        showToast("Failed to play audio chunk. Check your connection.");
+        setTtsStatus("ready");
+        return;
+      }
+    }
+
+    aiTtsRef.current.currentAudio = audioToPlay;
+    aiTtsRef.current.currentIndex = index;
+      
+    // TriggerRecursion: As soon as the current audio ends, immediately play the next one
+    audioToPlay.onended = () => {
+      playAiSequence(index + 1);
+    };
+    audioToPlay.onerror = () => {
+      setTtsStatus("ready");
+    };
+
+    audioToPlay.play();
+    setTtsStatus("speaking");
+
+    // Background Preloader: While the user is listening to `index`, quietly fetch `index + 1`
+    const nextIndex = index + 1;
+    if (nextIndex < aiTtsRef.current.chunks.length) {
+      const nextText = aiTtsRef.current.chunks[nextIndex];
+      api.post("/tts/synthesize", { text: nextText })
+        .then(res => {
+          aiTtsRef.current.nextAudio = new Audio(`data:audio/mp3;base64,${res.data.audioContent}`);
+          aiTtsRef.current.preloadedIndex = nextIndex;
+        })
+        .catch(e => console.error("Preload error", e));
+    }
+  };
+
+  /**
+   * Main router for the Play/Pause button. Determines which TTS engine to control.
    */
   const handlePlayPause = async () => {
     if (!currentLesson) return;
-    if (typeof window === "undefined" || !("speechSynthesis" in window)) {
-      alert("Your browser does not support text-to-speech."); return;
+
+    // Handle Pause / Resume Actions
+    if (ttsMode === "browser") {
+      if (ttsStatus === "speaking") { window.speechSynthesis.pause(); setTtsStatus("paused"); return; }
+      if (ttsStatus === "paused") { window.speechSynthesis.resume(); setTtsStatus("speaking"); return; }
+    } else {
+      // Security fallback: Ensure guests cannot bypass UI locks to access premium AI
+      if (!isLoggedIn) {
+        showToast("Please sign in or create an account to use the premium AI Voice feature.", "info");
+        setTtsMode("browser");
+        return;
+      }
+
+      if (ttsStatus === "speaking" && aiTtsRef.current.currentAudio) { 
+        aiTtsRef.current.currentAudio.pause(); 
+        setTtsStatus("paused"); 
+        return; 
+      }
+      if (ttsStatus === "paused" && aiTtsRef.current.currentAudio) { 
+        aiTtsRef.current.currentAudio.play(); 
+        setTtsStatus("speaking"); 
+        return; 
+      }
     }
 
-    if (ttsStatus === "speaking") { window.speechSynthesis.pause(); setTtsStatus("paused"); return; }
-    if (ttsStatus === "paused") { window.speechSynthesis.resume(); setTtsStatus("speaking"); return; }
-
+    // Prepare the Text to Read
     let text = ttsText;
 
-    // Build or fetch text if not already loaded
+    // Resolve Text Context (Read slides vs Read document)
     if (!text) {
       if (viewMode === "ai" && lessonUseAiSlides) {
         const slides = Array.isArray(currentLesson.aiSlides) ? currentLesson.aiSlides : [];
-        if (!slides.length) { alert("No AI slides available for this lesson."); return; }
+        if (!slides.length) { showToast("No AI slides available for this lesson."); return; }
         const built = buildSlidesTts(slides);
-        if (!built) { alert("Cannot build readable text from AI slides."); return; }
+        if (!built) { showToast("Cannot build readable text from AI slides."); return; }
         text = built; setTtsText(built);
       }
       else if (lessonUseOriginal && lessonHasFile) {
         text = await loadLessonText();
         if (!text) return;
       } else {
-        alert("This view has no content that can be read aloud."); return;
+        showToast("This view has no content that can be read aloud."); return;
       }
     }
 
-    // Configure and start speech
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = "en-US"; 
-    u.rate = 1.0;
-    u.onend = () => setTtsStatus("ready");
-    u.onerror = () => setTtsStatus("ready");
+    // Dispatch to the selected Audio Engine
+    if (ttsMode === "browser") {
+      if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+        showToast("Your browser does not support text-to-speech."); return;
+      }
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = "en-US"; 
+      u.rate = 1.0;
+      u.onend = () => setTtsStatus("ready");
+      u.onerror = () => setTtsStatus("ready");
+      utteranceRef.current = u;
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(u);
+      setTtsStatus("speaking");
+    } else {
+      // Initialize AI Stream Processor
+      aiTtsRef.current.chunks = chunkTextForInstantPlay(text, 600);
+      playAiSequence(0);
+    }
+  };
 
-    utteranceRef.current = u;
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(u);
-    setTtsStatus("speaking");
+  /** * Switch TTS engines. Restricts "ai" mode to authenticated users only.
+   */
+  const handleModeChange = (mode) => {
+    if (mode === "ai" && !isLoggedIn) {
+      showToast("Please sign in or create a BrainBoost account to unlock the premium AI Voice feature.", "info");
+      return;
+    }
+    stopTts();
+    setTtsMode(mode);
   };
 
   // ==== View Renderers ====
@@ -498,27 +670,26 @@ export default function CoursePlayer() {
   return (
     <div className="learning-page">
       <SiteHeader />
-
       <main className="learning-container">
+        
+        {/* ---- Breadcrumb Navigation ---- */}
         <nav className="breadcrumb">
-          <Link to="/courses">Courses</Link>
-          <span>›</span>
-          <Link to={`/courses/${courseId}`}>{course.title}</Link>
-          <span>›</span>
+          <Link to="/courses">Courses</Link><span>›</span>
+          <Link to={`/courses/${courseId}`}>{course.title}</Link><span>›</span>
           <span>Learn</span>
         </nav>
 
-        {/* 3-Column Layout: Sidebar (Syllabus) | Main (Content) | Tools (AI & Notes) */}
+        {/* ---- Core 3-Column Layout ---- */}
         <div className="learning-layout">
-            
-          {/* Column 1: Syllabus Sidebar */}
+          
+          {/* Column 1: Interactive Syllabus Sidebar */}
           <aside className="learning-sidebar">
             <h2 className="course-title">{course.title}</h2>
             <p className="course-sub">Choose a lesson. The content will appear on the right.</p>
-
             <div className="section-list">
               {syllabus.map((sec, si) => (
                 <div key={si} className="section-block">
+                  {/* Section Headers act as accordions */}
                   <button
                     className={`section-header ${si === activeSec ? "active" : ""}`}
                     onClick={() => { setActiveSec(si); setActiveLesson(0); }}
@@ -527,6 +698,7 @@ export default function CoursePlayer() {
                     <span>{sec.title}</span>
                   </button>
 
+                  {/* Render child lessons if the parent section is active */}
                   {si === activeSec && (
                     <ul className="lesson-list">
                       {sec.lessons.map((l, li) => (
@@ -545,9 +717,9 @@ export default function CoursePlayer() {
             </div>
           </aside>
 
-          {/* Column 2: Main Lesson Content */}
+          {/* Column 2: Main Educational Content Display */}
           <section className="learning-main">
-            {/* View Mode Toggle */}
+            {/* View Mode Switches */}
             <div className="viewer-mode-tabs">
               <button
                 type="button"
@@ -567,13 +739,31 @@ export default function CoursePlayer() {
               </button>
             </div>
 
-            {/* Document/Slide Renderer */}
             <div className="doc-container">{renderActiveView()}</div>
-
             <div className="audio-bar"><span className="audio-label">{audioStatusText}</span></div>
 
-            {/* Content Actions (Audio & Notes Toggle) */}
+            {/* Media Controls & Feature Toggles */}
             <div className="controls-row">
+              <div className="tts-toggle-wrapper">
+                  <button 
+                      type="button" 
+                      className={`tts-mode-btn ${ttsMode === 'browser' ? 'active' : ''}`}
+                      onClick={() => handleModeChange('browser')}
+                      title="Standard robotic voice (Offline)"
+                  >
+                      <i className="bi bi-laptop"></i> Standard Voice
+                  </button>
+                  <button 
+                      type="button" 
+                      className={`tts-mode-btn ${ttsMode === 'ai' ? 'active' : ''}`}
+                      onClick={() => handleModeChange('ai')}
+                      title={isLoggedIn ? "Expressive AI voice (Requires Internet)" : "Sign in to unlock Premium AI Voice"}
+                  >
+                      <i className="bi bi-stars"></i> AI Voice 
+                      {!isLoggedIn && <i className="bi bi-lock-fill" style={{ marginLeft: '4px', fontSize: '0.8rem', opacity: 0.7 }}></i>}
+                  </button>
+              </div>
+
               <button type="button" className="btn-primary" onClick={handlePlayPause} disabled={ttsStatus === "loading" || !canPlayAudio}>
                 <i className={`bi ${ttsStatus === "speaking" ? "bi-pause-circle-fill" : "bi-play-circle-fill"}`}></i> {ttsStatus === "loading" ? "Loading text…" : ttsStatus === "speaking" ? "Pause" : ttsStatus === "paused" ? "Resume" : "Play Audio"}
               </button>
@@ -583,9 +773,10 @@ export default function CoursePlayer() {
             </div>
           </section>
 
-          {/* Column 3: Learning Tools (Notes & AI Chat) */}
+          {/* Column 3: Utility Tools (Notes & Chat) */}
           <aside className="learning-tools-panel">
-              {/* Personal Notes Box (Toggled visibility) */}
+              
+              {/* Local Storage Notes Box */}
               {showNotes && (
                   <div className="notes-container">
                       <div className="notes-header">
@@ -601,12 +792,11 @@ export default function CoursePlayer() {
                   </div>
               )}
 
-              {/* AI Chat Box (Always visible layout) */}
+              {/* Static AI Assistant Panel */}
               <div className="ai-chat-panel">
                   <header className="ai-modal-header">
                       <h3><i className="bi bi-robot text-primary"></i> BrainBoost AI</h3>
                   </header>
-
                   <div className="ai-modal-body">
                       {chatMessages.map((m, idx) => (
                           <div key={idx} className={`ai-msg ai-msg-${m.from === "user" ? "user" : "ai"}`}>
@@ -617,8 +807,6 @@ export default function CoursePlayer() {
                           <div className="ai-login-hint">Sign in to your account to chat.</div>
                       )}
                   </div>
-
-                  {/* Chat Input Form */}
                   <form className="ai-input-row" onSubmit={handleSendChat}>
                       <input 
                           type="text" 
@@ -633,9 +821,16 @@ export default function CoursePlayer() {
                   </form>
               </div>
           </aside>
-
         </div>
       </main>
+
+      {/* ===== GLOBAL TOAST UI ===== */}
+      {toast && (
+          <div className={`toast ${toast.type}`}>
+              {toast.type === 'error' ? <i className="bi bi-exclamation-octagon-fill"></i> : <i className="bi bi-info-circle-fill"></i>}
+              <span>{toast.msg}</span>
+          </div>
+      )}
 
       <SiteFooter />
     </div>

@@ -62,16 +62,18 @@ app.use('/api/learning/flashcards', flashcardRoutes);       // AI-generated flas
 
 // ==== Database Connection & Server Start ====
 
-mongoose.connect('mongodb://localhost:27017/learning_platform', {
+const dbUri = process.env.MONGO_URI;
+
+mongoose.connect(dbUri, {
     useNewUrlParser: true,
     useUnifiedTopology: true,
 }).then(() => {
-    console.log('MongoDB connected');
+    console.log('MongoDB connected successfully');
 }).catch(err => {
     console.error('MongoDB connection error:', err);
 });
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.DB_PORT;
 
 // Start background tasks
 startCronJobs();

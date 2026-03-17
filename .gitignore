@@ -36,6 +36,8 @@ Thumbs.db
 # ========================
 # Environment files
 # ========================
+frontend/.env
 backend/.env
 backend/google-tts-key.json
 ai-agent/.env
+brainboost-key.pem

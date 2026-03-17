@@ -28,7 +28,7 @@ const app = express();
 
 // Configures Cross-Origin Resource Sharing to allow requests from the React frontend
 const corsOptions = {
-    origin: 'http://localhost:3000',
+    origin: process.env.FRONTEND_URL,
     credentials: true,  // Crucial for allowing cookies (JWT) to be sent across origins
     methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
     allowedHeaders: ['Content-Type', 'X-Requested-With', 'Authorization']

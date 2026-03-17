@@ -153,6 +153,18 @@ export default function CoursePlayer() {
   const [toast, setToast] = useState(null);
   const toastTimerRef = useRef(null);
 
+  // ---- AI Flashcard States ----
+  const [flashcards, setFlashcards] = useState([]);
+  const [fcIndex, setFcIndex] = useState(0);
+  const [isFcFlipped, setIsFcFlipped] = useState(false);
+  const [showFcModal, setShowFcModal] = useState(false);
+  const [fcLoading, setFcLoading] = useState(false);
+
+  // ---- PDF Export States ----
+  const [showPdfPreview, setShowPdfPreview] = useState(false);
+  const [pdfHtml, setPdfHtml] = useState("");
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
+
   /**
    * Displays a self-dismissing toast notification.
    */
@@ -332,6 +344,110 @@ export default function CoursePlayer() {
     const val = e.target.value;
     setLessonNote(val);
     localStorage.setItem(`note_${courseId}_${activeSec}_${activeLesson}`, val);
+  };
+
+  /**
+   * Opens the PDF Preview Modal.
+   * Iterates through the entire syllabus, retrieves locally saved notes, 
+   * and dynamically builds a sanitized HTML document for the PDF generator.
+   */
+  const handleOpenPdfPreview = () => {
+    if (!course || !syllabus.length) {
+      showToast("Course data is not available.", "error");
+      return;
+    }
+
+    // Base HTML template with inline styling for the PDF export
+    let htmlContent = `
+      <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333;">
+          <h1 style="color: #1e3a8a; border-bottom: 3px solid #3b82f6; padding-bottom: 10px; margin-bottom: 30px; text-align: center;">
+              📖 Study Notes<br><span style="font-size: 1.2rem; color: #64748b;">${course.title}</span>
+          </h1>
+    `;
+
+    let hasNotes = false;
+
+    // Traverse the entire curriculum to collect notes from LocalStorage
+    syllabus.forEach((sec, secIdx) => {
+      let sectionHasNotes = false;
+      let sectionHtml = `<h2 style="color: #2563eb; margin-top: 40px; background: #eff6ff; padding: 10px 15px; border-radius: 8px; font-size: 1.4rem;">Section ${secIdx + 1}: ${sec.title}</h2>`;
+
+      sec.lessons.forEach((lesson, lessonIdx) => {
+        const noteKey = `note_${courseId}_${secIdx}_${lessonIdx}`;
+        const savedNote = localStorage.getItem(noteKey);
+
+        if (savedNote && savedNote.trim()) {
+          hasNotes = true;
+          sectionHasNotes = true;
+          // Basic sanitization: Escape HTML tags to prevent XSS during PDF rendering
+          const safeNote = savedNote.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+          sectionHtml += `
+            <h3 style="color: #047857; margin-bottom: 8px; font-size: 1.1rem; border-left: 4px solid #10b981; padding-left: 10px;">Lesson ${lessonIdx + 1}: ${lesson.title || "Untitled"}</h3>
+            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; margin-bottom: 25px; white-space: pre-wrap; font-size: 1rem;">${safeNote}</div>
+          `;
+        }
+      });
+
+      // Only append the section header if at least one lesson has notes
+      if (sectionHasNotes) {
+        htmlContent += sectionHtml;
+      }
+    });
+
+    if (!hasNotes) {
+      showToast("You haven't taken any notes for this course yet.", "info");
+      return;
+    }
+
+    // Append footer
+    htmlContent += `
+          <div style="margin-top: 50px; text-align: center; font-size: 0.8rem; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 20px;">
+              Exported from BrainBoost E-Learning Platform • ${new Date().toLocaleDateString()}
+          </div>
+      </div>
+    `;
+
+    setPdfHtml(htmlContent);
+    setShowPdfPreview(true);
+  };
+
+  /**
+   * Downloads the notes as a physical PDF file.
+   * Dynamically injects the `html2pdf.js` library to keep the initial app bundle size small.
+   */
+  const handleDownloadPdf = () => {
+    const element = document.getElementById('pdf-export-content');
+    if (!element) return;
+
+    setIsDownloadingPdf(true);
+
+    // Function to execute the PDF generation once the library is loaded
+    const executeDownload = () => {
+      const opt = {
+        margin:       0.5,
+        filename:     `${(course.slug || course.title).replace(/[^a-z0-9]/gi, '_').toLowerCase()}_notes.pdf`,
+        image:        { type: 'jpeg', quality: 0.98 },
+        html2canvas:  { scale: 2, useCORS: true },
+        jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' }
+      };
+      window.html2pdf().set(opt).from(element).save().then(() => {
+        setIsDownloadingPdf(false);
+        showToast("PDF Downloaded successfully!", "success");
+      });
+    };
+
+    // Lazy load the html2pdf library from a CDN if it doesn't exist yet
+    if (!window.html2pdf) {
+      showToast("Initializing PDF Engine...", "info");
+      const script = document.createElement('script');
+      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+      script.onload = executeDownload;
+      document.body.appendChild(script);
+    } else {
+      // If already loaded previously, execute immediately
+      executeDownload();
+    }
   };
 
   /**
@@ -558,6 +674,49 @@ export default function CoursePlayer() {
     }
     stopTts();
     setTtsMode(mode);
+  };
+
+  /**
+   * Call Backend API to trigger AI extraction of Flashcards from lesson content
+   */
+  const handleGenerateFlashcards = async () => {
+    if (!isLoggedIn) {
+      showToast("Please log in to use the AI Flashcard feature.", "info");
+      return;
+    }
+    
+    // Open the Flashcard Modal screen
+    setShowFcModal(true);
+    setFcLoading(true);
+    // Ensure the new card always starts on the front side
+    setIsFcFlipped(false);
+    
+    try {
+      const payload = {
+        docUrl: lessonUseOriginal && currentLesson.contentUrl ? currentLesson.contentUrl : null,
+        aiSlides: lessonUseAiSlides && Array.isArray(currentLesson.aiSlides) ? currentLesson.aiSlides : [],
+      };
+
+      // Call the Node.js API created
+      const res = await api.post("/learning/flashcards/generate", payload);
+      // Backend returns an array [{front: "...", back: "..."}]
+      const cards = res.data.flashcards || [];
+      
+      if (cards.length === 0) {
+        showToast("AI could not extract knowledge from this lesson.", "error");
+        setShowFcModal(false);
+      } else {
+        setFlashcards(cards);
+        // Start at the first card
+        setFcIndex(0);
+      }
+    } catch (err) {
+      console.error("[Flashcards] failed:", err);
+      showToast("Error generating flashcards. Please try again later.", "error");
+      setShowFcModal(false);
+    } finally {
+      setFcLoading(false);
+    }
   };
 
   // ==== View Renderers ====
@@ -831,16 +990,53 @@ export default function CoursePlayer() {
             </div>
           </section>
 
-          {/* Column 3: Utility Tools (Notes & Chat) */}
+          {/* Column 3: Utility Tools (Notes, Chat & Flashcards) */}
           <aside className="learning-tools-panel">
               
+              {/* AI Flashcard Trigger Button */}
+              <div style={{ marginBottom: '1rem' }}>
+                  <button 
+                      type="button" 
+                      className="btn-outline" 
+                      style={{ width: '100%', background: 'var(--bg-card)', borderColor: 'var(--primary)', color: 'var(--primary)' }} 
+                      onClick={handleGenerateFlashcards}
+                  >
+                      <i className="bi bi-lightning-charge-fill text-warning" style={{marginRight: '6px'}}></i> 
+                      Study with AI Flashcards
+                  </button>
+              </div>
+
               {/* Local Storage Notes Box */}
               {showNotes && (
                   <div className="notes-container">
                       <div className="notes-header">
-                          <h3><i className="bi bi-journal-text text-primary"></i> Personal Notes</h3>
-                          <span className="notes-hint">Auto-saved locally</span>
+                          <div>
+                              <h3 style={{ margin: 0 }}><i className="bi bi-journal-text text-primary"></i> Personal Notes</h3>
+                              <span className="notes-hint" style={{ display: 'block', marginTop: '2px' }}>Auto-saved locally</span>
+                          </div>
+                          
+                          {/* Export PDF Button */}
+                          <button 
+                              className="btn-outline mini" 
+                              onClick={handleOpenPdfPreview} 
+                              title="Export all course notes to PDF"
+                              style={{ 
+                                padding: '6px 12px', 
+                                fontSize: '0.85rem', 
+                                borderColor: '#fca5a5', 
+                                color: '#dc2626', 
+                                backgroundColor: '#fef2f2', 
+                                fontWeight: '700',
+                                borderRadius: '8px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px'
+                              }}
+                          >
+                              <i className="bi bi-file-earmark-pdf-fill"></i> Export PDF
+                          </button>
                       </div>
+
                       <textarea 
                           className="notes-textarea" 
                           placeholder="Type your notes for this lesson here..."
@@ -882,11 +1078,106 @@ export default function CoursePlayer() {
         </div>
       </main>
 
-      {/* ===== GLOBAL TOAST UI ===== */}
+      {/* ===== Global Toast UI ===== */}
       {toast && (
           <div className={`toast ${toast.type}`}>
               {toast.type === 'error' ? <i className="bi bi-exclamation-octagon-fill"></i> : <i className="bi bi-info-circle-fill"></i>}
               <span>{toast.msg}</span>
+          </div>
+      )}
+
+      {/* ===== AI Flashcard Modal (3D Flip) ===== */}
+      {showFcModal && (
+          <div className="flashcard-overlay">
+              <div className="flashcard-modal">
+                  <button className="fc-close" onClick={() => setShowFcModal(false)}>✕</button>
+                  
+                  {fcLoading ? (
+                      <div className="fc-loading-box">
+                          <div className="fc-spinner"></div>
+                          <h3 style={{marginBottom: '10px'}}>AI is analyzing the lesson...</h3>
+                          <p style={{color: 'var(--text-secondary)'}}>It will take about 10 - 20 seconds to extract key concepts into flashcards.</p>
+                      </div>
+                  ) : flashcards.length > 0 ? (
+                      <>
+                          <h3 style={{marginBottom: '0', color: 'var(--text-main)'}}>Flashcards ({fcIndex + 1} / {flashcards.length})</h3>
+                          
+                          {/* 3D Scene block to create depth perspective */}
+                          <div className="fc-scene" onClick={() => setIsFcFlipped(!isFcFlipped)}>
+                              {/* The actual Card that will rotate 180 degrees */}
+                              <div className={`fc-card ${isFcFlipped ? 'flipped' : ''}`}>
+                                  <div className="fc-front">
+                                      <h4>Term / Question</h4>
+                                      <p>{flashcards[fcIndex].front}</p>
+                                      <span className="fc-hint">Click to flip and reveal answer</span>
+                                  </div>
+                                  <div className="fc-back">
+                                      <h4>Definition / Answer</h4>
+                                      <p>{flashcards[fcIndex].back}</p>
+                                  </div>
+                              </div>
+                          </div>
+
+                          <div className="fc-controls">
+                              <button 
+                                  className="fc-btn-prev" 
+                                  disabled={fcIndex === 0} 
+                                  onClick={(e) => { e.stopPropagation(); setFcIndex(p => p - 1); setIsFcFlipped(false);}}
+                              >
+                                  <i class="bi bi-caret-left-fill"></i> Previous
+                              </button>
+                              <button 
+                                  className="fc-btn-next" 
+                                  disabled={fcIndex === flashcards.length - 1} 
+                                  onClick={(e) => { e.stopPropagation(); setFcIndex(p => p + 1); setIsFcFlipped(false);}}
+                              >
+                                  Next <i class="bi bi-caret-right-fill"></i>
+                              </button>
+                          </div>
+                      </>
+                  ) : null}
+              </div>
+          </div>
+      )}
+
+      {/* ===== PDF Preview & Download Modal ===== */}
+      {showPdfPreview && (
+          <div className="flashcard-overlay">
+              <div className="flashcard-modal" style={{ width: '90%', maxWidth: '800px', height: '85vh', display: 'flex', flexDirection: 'column', padding: '1.5rem', backgroundColor: '#f8fafc' }}>
+                  
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #e2e8f0', paddingBottom: '1rem', marginBottom: '1rem' }}>
+                      <h3 style={{margin: 0, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '8px'}}>
+                          <i className="bi bi-file-earmark-pdf-fill text-danger"></i> Notes Preview
+                      </h3>
+                      <div style={{ display: 'flex', gap: '10px' }}>
+                          <button 
+                              className="btn-outline" 
+                              onClick={() => setShowPdfPreview(false)}
+                              disabled={isDownloadingPdf}
+                              style={{ borderColor: '#cbd5e1', color: '#64748b', background: '#ffffff' }}
+                          >
+                              Cancel
+                          </button>
+                          <button 
+                              className="btn-primary" 
+                              onClick={handleDownloadPdf}
+                              disabled={isDownloadingPdf}
+                              style={{ background: '#ef4444', borderColor: '#ef4444', fontWeight: 'bold' }}
+                          >
+                              {isDownloadingPdf ? "Processing..." : "Download PDF"}
+                          </button>
+                      </div>
+                  </div>
+                  
+                  {/* The rendered HTML preview that html2pdf will capture */}
+                  <div 
+                      id="pdf-export-content" 
+                      style={{ flex: 1, overflowY: 'auto', textAlign: 'left', padding: '1rem 2rem', color: '#0f172a', background: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.02)' }} 
+                      dangerouslySetInnerHTML={{ __html: pdfHtml }}
+                  >
+                  </div>
+
+              </div>
           </div>
       )}
 

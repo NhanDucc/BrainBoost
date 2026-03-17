@@ -639,3 +639,132 @@
   from { opacity: 0; transform: translateY(20px) scale(0.95); }
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
+
+/* ==========================================
+   AI FLASHCARD OVERLAY & 3D FLIP EFFECT
+   ========================================== */
+.flashcard-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(5px);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.3s ease-out forwards;
+}
+
+.flashcard-modal {
+  background: var(--bg-main);
+  width: 90%;
+  max-width: 600px;
+  border-radius: 24px;
+  padding: 2rem;
+  position: relative;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.3);
+  text-align: center;
+}
+
+.fc-close {
+  position: absolute;
+  top: 15px; right: 20px;
+  background: transparent;
+  border: none;
+  font-size: 1.5rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: color 0.2s;
+}
+.fc-close:hover { color: var(--error); }
+
+.fc-scene {
+  perspective: 1000px; 
+  width: 100%;
+  height: 300px;
+  margin: 1.5rem 0;
+  cursor: pointer;
+}
+
+.fc-card {
+  width: 100%;
+  height: 100%;
+  transition: transform 0.6s cubic-bezier(0.4, 0.2, 0.2, 1);
+  transform-style: preserve-3d;
+  position: relative;
+}
+
+.fc-card.flipped {
+  transform: rotateY(180deg);
+}
+
+.fc-front, .fc-back {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  backface-visibility: hidden;
+  border-radius: 20px;
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.08);
+  box-sizing: border-box;
+}
+
+.fc-front {
+  background: linear-gradient(135deg, #ffffff 0%, #f1f5f9 100%);
+  border: 2px solid var(--border-color);
+}
+
+[data-theme="dark"] .fc-front {
+  background: linear-gradient(135deg, var(--bg-card) 0%, var(--bg-object) 100%);
+}
+
+.fc-back {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);
+  color: white;
+  transform: rotateY(180deg);
+}
+
+.fc-front h4 { color: var(--primary); font-size: 0.9rem; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 1rem; }
+.fc-front p { font-size: 1.4rem; font-weight: 700; color: var(--text-main); margin: 0; }
+.fc-front .fc-hint { margin-top: auto; font-size: 0.8rem; color: var(--text-secondary); opacity: 0.7; }
+
+.fc-back h4 { color: rgba(255,255,255,0.7); font-size: 0.9rem; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 1rem; }
+.fc-back p { font-size: 1.2rem; font-weight: 500; margin: 0; line-height: 1.5; }
+
+.fc-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+.fc-controls button {
+  flex: 1;
+  padding: 12px;
+  border-radius: 12px;
+  border: none;
+  font-weight: 700;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.fc-controls button:disabled { opacity: 0.4; cursor: not-allowed; }
+.fc-btn-prev { background: var(--bg-object); color: var(--text-main); }
+.fc-btn-next { background: var(--primary); color: white; }
+
+/* Loading State */
+.fc-loading-box { padding: 3rem; color: var(--text-main); }
+.fc-spinner {
+  width: 50px; height: 50px;
+  border: 5px solid var(--border-color);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 1.5rem;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }

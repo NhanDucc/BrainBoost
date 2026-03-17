@@ -23,43 +23,58 @@ const buildSyllabus = (course) => {
 };
 
 /**
- * Compiles text content from AI slides into a single, continuous string 
- * for the Text-to-Speech (TTS) engine to read aloud.
+ * Builds an audio reading queue where each text chunk is tagged with its source Slide Index.
+ * This is crucial because it allows the UI to know exactly which slide's text is currently being read, 
+ * enabling the system to automatically flip to the correct slide during playback.
  * @param {Array} slides - Array of AI slide objects.
- * @returns {String} Concatenated string for TTS.
+ * @returns {Array} Array of objects: { text: string, slideIndex: number }
  */
-const buildSlidesTts = (slides) => {
-  if (!Array.isArray(slides) || !slides.length) return "";
+const buildSlideAwareQueue = (slides) => {
+  if (!Array.isArray(slides) || !slides.length) return [];
+  const queue = [];
 
-  const pieces = slides
-    .map((s, idx) => {
-      const title = (s.title || "").toString().trim();
-      const bullets = Array.isArray(s.bullets)
-        ? s.bullets.map((b) => String(b || "").trim()).filter(Boolean)
-        : [];
+  slides.forEach((s, index) => {
+    const title = (s.title || "").toString().trim();
+    const bullets = Array.isArray(s.bullets)
+      ? s.bullets.map((b) => String(b || "").trim()).filter(Boolean)
+      : [];
 
-      // Use explicit TTS text if the instructor provided it
-      const explicit = (s.ttsText || "").toString().trim();
-      if (explicit) return explicit;
+    // Prioritize explicit TTS text if provided by the instructor/AI
+    const explicit = (s.ttsText || "").toString().trim();
 
-      // Otherwise, build the text from the slide title and bullets
+    let slideText = explicit;
+    if (!slideText) {
+      // Fallback: Construct readable text from slide title and bullets
       const parts = [];
-      if (title) parts.push(`Slide ${idx + 1}: ${title}`);
+      if (title) parts.push(`Slide ${index + 1}: ${title}`);
       if (bullets.length) parts.push(bullets.join(". "));
+      slideText = parts.join(". ");
+    }
 
-      return parts.join(". ");
-    })
-    .filter(Boolean);
+    // Split the slide's text into smaller chunks for fast streaming,
+    // and attach the current slide index to every chunk.
+    if (slideText) {
+      const chunks = chunkTextForInstantPlay(slideText, 600);
+      chunks.forEach((chunk) => {
+        queue.push({ text: chunk, slideIndex: index });
+      });
+    }
+  });
 
-  return pieces.join(". ");
+  return queue;
 };
 
 /**
- * Splits long text into smaller chunks (~600 characters) by sentence endings.
+ * Splits long text into smaller chunks (~600 characters max) by sentence endings.
  * This is crucial for the "Instant Play" AI Audio Streaming feature, allowing 
  * the frontend to fetch and play short audio clips immediately while preloading the rest.
+ * @param {String} text - Full text to split.
+ * @param {Number} maxLength - Max length per chunk.
+ * @returns {Array<String>} Array of smaller text chunks.
  */
 const chunkTextForInstantPlay = (text, maxLength = 600) => {
+  if (!text) return [];
+  // Match sentences ending with ., !, ?, or newlines
   const sentences = text.match(/[^.!?\n]+[.!?\n]*/g) || [text];
   const chunks = [];
   let currentChunk = "";
@@ -120,11 +135,13 @@ export default function CoursePlayer() {
 
   // ---- Advanced AI TTS Streaming States ----
   const [ttsMode, setTtsMode] = useState("browser"); // Defaults to 'browser' for guests
-  const aiTtsRef = useRef({
-    chunks: [],          // The text chunks to be processed
+
+  // Ref managing the sequential audio queue for BOTH Browser and AI Voice modes
+  const ttsQueueRef = useRef({
+    chunks: [],          // Stores array of objects: [{ text, slideIndex }]
     currentIndex: 0,     // Which chunk is currently playing
-    currentAudio: null,  // The HTMLAudioElement currently playing
-    nextAudio: null,     // The HTMLAudioElement preloaded in the background
+    currentAudio: null,  // The HTMLAudioElement currently playing (AI Mode)
+    nextAudio: null,     // The HTMLAudioElement preloaded in the background (AI Mode)
     preloadedIndex: -1,  // Tracks which index has already been preloaded
   });
 
@@ -156,18 +173,18 @@ export default function CoursePlayer() {
     }
 
     // Pause and reset active AI audio
-    if (aiTtsRef.current.currentAudio) {
-      aiTtsRef.current.currentAudio.pause();
-      aiTtsRef.current.currentAudio.currentTime = 0;
+    if (ttsQueueRef.current.currentAudio) {
+      ttsQueueRef.current.currentAudio.pause();
+      ttsQueueRef.current.currentAudio.currentTime = 0;
     }
 
     // Prevent preloaded audio from playing accidentally
-    if (aiTtsRef.current.nextAudio) {
-      aiTtsRef.current.nextAudio.pause();
+    if (ttsQueueRef.current.nextAudio) {
+      ttsQueueRef.current.nextAudio.pause();
     }
     
     // Wipe the queue memory
-    aiTtsRef.current = {
+    ttsQueueRef.current = {
       chunks: [],
       currentIndex: 0,
       currentAudio: null,
@@ -318,37 +335,27 @@ export default function CoursePlayer() {
   };
 
   /**
-   * Extracts or prepares text from the original document for TTS playback.
+   * Fetches the raw text of the document for TTS to read aloud.
+   * Leverages the backend extraction service for PDFs and Office docs.
    */
-  const loadLessonText = async () => {
-    if (!currentLesson || !currentLesson.contentUrl) { 
-      showToast("No document available to read."); 
-      return ""; 
-    }
-    if (!lessonUseOriginal) { 
-      showToast("The teacher has disabled the original document for this lesson."); 
-      return ""; 
-    }
-    if (ttsStatus === "speaking" || ttsStatus === "paused") return ttsText;
-
-    setTtsStatus("loading");
-
+  const loadOriginalDocText = async () => {
     try {
       const { full, forExt } = getUrlParts(currentLesson.contentUrl);
       if (!full) throw new Error("Lesson has no document URL.");
 
       const lower = forExt.toLowerCase();
 
-      // Read raw text files directly
+      // Read simple .txt files directly without pinging the extraction API
       if (lower.endsWith(".txt")) {
         const res = await fetch(full);
         if (!res.ok) throw new Error(`Cannot load text file (HTTP ${res.status}).`);
         const text = await res.text();
         if (!text.trim()) throw new Error("Text file is empty.");
-        setTtsText(text); setTtsStatus("ready"); return text;
+        setTtsText(text); setTtsStatus("ready");
+        return text;
       }
 
-      // Request backend to extract text from PDFs or Office documents
+      // Proxy complex files through backend extraction logic
       const res = await api.get(`/tts/extract?url=${encodeURIComponent(full)}`);
       const text = res.data.text || "";
       if (!text.trim()) throw new Error("No readable text returned from server.");
@@ -362,132 +369,183 @@ export default function CoursePlayer() {
   };
 
   /**
-   * Advanced Streaming Engine for AI Voices.
-   * Implements a Preloader logic to ensure zero-latency playback between audio chunks.
-   * @param {Number} index - The current chunk array index to play.
+   * Browser Voice: Queue-based playback synchronized with UI Slides.
+   * Recursive function that plays the next chunk and flips the slide automatically.
    */
-  const playAiSequence = async (index) => {
-    // Stop condition: End of chunks array
-    if (index >= aiTtsRef.current.chunks.length) {
+  const playBrowserSequence = (index) => {
+    if (index >= ttsQueueRef.current.chunks.length) {
       setTtsStatus("ready");
       return;
     }
 
+    const currentChunkObj = ttsQueueRef.current.chunks[index];
+    
+    // Automatic Slide Sync: Update the UI activeSlide to match the text currently being read
+    if (viewMode === "ai") setActiveSlide(currentChunkObj.slideIndex);
+
+    const u = new SpeechSynthesisUtterance(currentChunkObj.text);
+    u.lang = "en-US"; 
+    u.rate = 1.0;
+    
+    // Trigger recursion: When this chunk ends, proceed to the next one
+    u.onend = () => playBrowserSequence(index + 1);
+    u.onerror = () => setTtsStatus("ready");
+    
+    utteranceRef.current = u;
+    ttsQueueRef.current.currentIndex = index;
+
+    window.speechSynthesis.cancel(); // Clear any hung processes
+    window.speechSynthesis.speak(u);
+    setTtsStatus("speaking");
+  };
+
+  /**
+   * AI Voice: Advanced Streaming Engine.
+   * Implements a Preloader logic to ensure zero-latency playback, synced with slides.
+   */
+  const playAiSequence = async (index) => {
+    // Stop condition: End of chunks array
+    if (index >= ttsQueueRef.current.chunks.length) {
+      setTtsStatus("ready");
+      return;
+    }
+
+    const currentChunkObj = ttsQueueRef.current.chunks[index];
+    
+    // Automatic Slide Sync: Update the UI activeSlide to match the text currently being read
+    if (viewMode === "ai") setActiveSlide(currentChunkObj.slideIndex);
+
     let audioToPlay = null;
 
-    // Optimization: If the audio was already preloaded seamlessly in the background, use it!
-    if (aiTtsRef.current.preloadedIndex === index && aiTtsRef.current.nextAudio) {
-      audioToPlay = aiTtsRef.current.nextAudio;
+    // If the audio was already preloaded in the background, use it immediately!
+    if (ttsQueueRef.current.preloadedIndex === index && ttsQueueRef.current.nextAudio) {
+      audioToPlay = ttsQueueRef.current.nextAudio;
     } else {
-      // Fetch directly if not preloaded (e.g., very first chunk)
+      // Fallback: Fetch directly if not preloaded (e.g., the very first chunk)
       setTtsStatus("loading");
       try {
-        const textChunk = aiTtsRef.current.chunks[index];
-        const res = await api.post("/tts/synthesize", { text: textChunk });
+        const res = await api.post("/tts/synthesize", { text: currentChunkObj.text });
         audioToPlay = new Audio(`data:audio/mp3;base64,${res.data.audioContent}`);
       } catch (err) {
         console.error("AI TTS Error:", err);
-        showToast("Failed to play audio chunk. Check your connection.");
+        showToast("Failed to play audio chunk. Check your internet connection.", "error");
         setTtsStatus("ready");
         return;
       }
     }
 
-    aiTtsRef.current.currentAudio = audioToPlay;
-    aiTtsRef.current.currentIndex = index;
-      
-    // TriggerRecursion: As soon as the current audio ends, immediately play the next one
-    audioToPlay.onended = () => {
-      playAiSequence(index + 1);
-    };
-    audioToPlay.onerror = () => {
-      setTtsStatus("ready");
-    };
+    ttsQueueRef.current.currentAudio = audioToPlay;
+    ttsQueueRef.current.currentIndex = index;
+    
+    // Trigger recursion: As soon as the current audio ends, instantly play the next one
+    audioToPlay.onended = () => playAiSequence(index + 1);
+    audioToPlay.onerror = () => setTtsStatus("ready");
 
     audioToPlay.play();
     setTtsStatus("speaking");
 
     // Background Preloader: While the user is listening to `index`, quietly fetch `index + 1`
     const nextIndex = index + 1;
-    if (nextIndex < aiTtsRef.current.chunks.length) {
-      const nextText = aiTtsRef.current.chunks[nextIndex];
+    if (nextIndex < ttsQueueRef.current.chunks.length) {
+      const nextText = ttsQueueRef.current.chunks[nextIndex].text;
       api.post("/tts/synthesize", { text: nextText })
         .then(res => {
-          aiTtsRef.current.nextAudio = new Audio(`data:audio/mp3;base64,${res.data.audioContent}`);
-          aiTtsRef.current.preloadedIndex = nextIndex;
+          ttsQueueRef.current.nextAudio = new Audio(`data:audio/mp3;base64,${res.data.audioContent}`);
+          ttsQueueRef.current.preloadedIndex = nextIndex;
         })
         .catch(e => console.error("Preload error", e));
     }
   };
 
   /**
-   * Main router for the Play/Pause button. Determines which TTS engine to control.
+   * Main Router for the Play/Pause button. 
+   * Determines which TTS engine to control and prepares the queue based on viewMode.
    */
   const handlePlayPause = async () => {
     if (!currentLesson) return;
 
-    // Handle Pause / Resume Actions
+    // Pause / Resume Logic (If a queue is already active)
+    if (ttsStatus === "speaking" || ttsStatus === "paused") {
+      if (ttsMode === "browser") {
+        if (ttsStatus === "speaking") { 
+          window.speechSynthesis.pause(); 
+          setTtsStatus("paused"); 
+        }
+        else { 
+          window.speechSynthesis.resume(); 
+          setTtsStatus("speaking"); 
+        }
+      } else {
+        // Security Check
+        if (!isLoggedIn) {
+          showToast("Please sign in to use AI Voice feature.", "info");
+          setTtsMode("browser");
+          return;
+        }
+        if (ttsStatus === "speaking" && ttsQueueRef.current.currentAudio) { 
+          ttsQueueRef.current.currentAudio.pause(); 
+          setTtsStatus("paused"); 
+        }
+        else if (ttsStatus === "paused" && ttsQueueRef.current.currentAudio) { 
+          ttsQueueRef.current.currentAudio.play(); 
+          setTtsStatus("speaking"); 
+        }
+      }
+      return; 
+    }
+
+    // Initial Play Logic (Generating the Queue from scratch)
+    setTtsStatus("loading");
+
+    let queue = [];
+
+    // Construct Queue based on whether the user is viewing Slides or Document
+    if (viewMode === "ai" && lessonUseAiSlides) {
+      const slides = Array.isArray(currentLesson.aiSlides) ? currentLesson.aiSlides : [];
+      if (!slides.length) { showToast("No AI slides available.", "error"); setTtsStatus("idle"); return; }
+      
+      // Use the slide-aware function to track indices for automatic syncing
+      queue = buildSlideAwareQueue(slides); 
+    } 
+    else if (lessonUseOriginal && lessonHasFile) {
+      const rawText = await loadOriginalDocText();
+      if (!rawText) { 
+        setTtsStatus("idle"); 
+        return; 
+      }
+      
+      // Documents don't have slide indices, so default slideIndex to 0 for all chunks
+      const chunks = chunkTextForInstantPlay(rawText, 600);
+      queue = chunks.map(chunk => ({ text: chunk, slideIndex: 0 }));
+    } 
+    else {
+      showToast("This view has no content to read.", "error");
+      setTtsStatus("idle");
+      return;
+    }
+
+    // Abort if extraction yielded nothing
+    if (!queue.length) {
+      showToast("Cannot extract text.", "error");
+      setTtsStatus("idle");
+      return;
+    }
+
+    // Save the newly generated queue to the Ref
+    ttsQueueRef.current.chunks = queue;
+    ttsQueueRef.current.currentIndex = 0;
+
+    // Start the corresponding Engine
     if (ttsMode === "browser") {
-      if (ttsStatus === "speaking") { window.speechSynthesis.pause(); setTtsStatus("paused"); return; }
-      if (ttsStatus === "paused") { window.speechSynthesis.resume(); setTtsStatus("speaking"); return; }
+      playBrowserSequence(0);
     } else {
-      // Security fallback: Ensure guests cannot bypass UI locks to access premium AI
       if (!isLoggedIn) {
-        showToast("Please sign in or create an account to use the premium AI Voice feature.", "info");
+        showToast("Please sign in or create an account to unlock Premium AI Voice.", "info");
         setTtsMode("browser");
+        setTtsStatus("idle");
         return;
       }
-
-      if (ttsStatus === "speaking" && aiTtsRef.current.currentAudio) { 
-        aiTtsRef.current.currentAudio.pause(); 
-        setTtsStatus("paused"); 
-        return; 
-      }
-      if (ttsStatus === "paused" && aiTtsRef.current.currentAudio) { 
-        aiTtsRef.current.currentAudio.play(); 
-        setTtsStatus("speaking"); 
-        return; 
-      }
-    }
-
-    // Prepare the Text to Read
-    let text = ttsText;
-
-    // Resolve Text Context (Read slides vs Read document)
-    if (!text) {
-      if (viewMode === "ai" && lessonUseAiSlides) {
-        const slides = Array.isArray(currentLesson.aiSlides) ? currentLesson.aiSlides : [];
-        if (!slides.length) { showToast("No AI slides available for this lesson."); return; }
-        const built = buildSlidesTts(slides);
-        if (!built) { showToast("Cannot build readable text from AI slides."); return; }
-        text = built; setTtsText(built);
-      }
-      else if (lessonUseOriginal && lessonHasFile) {
-        text = await loadLessonText();
-        if (!text) return;
-      } else {
-        showToast("This view has no content that can be read aloud."); return;
-      }
-    }
-
-    // Dispatch to the selected Audio Engine
-    if (ttsMode === "browser") {
-      if (typeof window === "undefined" || !("speechSynthesis" in window)) {
-        showToast("Your browser does not support text-to-speech."); return;
-      }
-      const u = new SpeechSynthesisUtterance(text);
-      u.lang = "en-US"; 
-      u.rate = 1.0;
-      u.onend = () => setTtsStatus("ready");
-      u.onerror = () => setTtsStatus("ready");
-      utteranceRef.current = u;
-      window.speechSynthesis.cancel();
-      window.speechSynthesis.speak(u);
-      setTtsStatus("speaking");
-    } else {
-      // Initialize AI Stream Processor
-      aiTtsRef.current.chunks = chunkTextForInstantPlay(text, 600);
-      playAiSequence(0);
+      playAiSequence(0); 
     }
   };
 

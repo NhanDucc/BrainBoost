@@ -23,43 +23,58 @@ const buildSyllabus = (course) => {
 };
 
 /**
- * Compiles text content from AI slides into a single, continuous string 
- * for the Text-to-Speech (TTS) engine to read aloud.
+ * Builds an audio reading queue where each text chunk is tagged with its source Slide Index.
+ * This is crucial because it allows the UI to know exactly which slide's text is currently being read, 
+ * enabling the system to automatically flip to the correct slide during playback.
  * @param {Array} slides - Array of AI slide objects.
- * @returns {String} Concatenated string for TTS.
+ * @returns {Array} Array of objects: { text: string, slideIndex: number }
  */
-const buildSlidesTts = (slides) => {
-  if (!Array.isArray(slides) || !slides.length) return "";
+const buildSlideAwareQueue = (slides) => {
+  if (!Array.isArray(slides) || !slides.length) return [];
+  const queue = [];
 
-  const pieces = slides
-    .map((s, idx) => {
-      const title = (s.title || "").toString().trim();
-      const bullets = Array.isArray(s.bullets)
-        ? s.bullets.map((b) => String(b || "").trim()).filter(Boolean)
-        : [];
+  slides.forEach((s, index) => {
+    const title = (s.title || "").toString().trim();
+    const bullets = Array.isArray(s.bullets)
+      ? s.bullets.map((b) => String(b || "").trim()).filter(Boolean)
+      : [];
 
-      // Use explicit TTS text if the instructor provided it
-      const explicit = (s.ttsText || "").toString().trim();
-      if (explicit) return explicit;
+    // Prioritize explicit TTS text if provided by the instructor/AI
+    const explicit = (s.ttsText || "").toString().trim();
 
-      // Otherwise, build the text from the slide title and bullets
+    let slideText = explicit;
+    if (!slideText) {
+      // Fallback: Construct readable text from slide title and bullets
       const parts = [];
-      if (title) parts.push(`Slide ${idx + 1}: ${title}`);
+      if (title) parts.push(`Slide ${index + 1}: ${title}`);
       if (bullets.length) parts.push(bullets.join(". "));
+      slideText = parts.join(". ");
+    }
 
-      return parts.join(". ");
-    })
-    .filter(Boolean);
+    // Split the slide's text into smaller chunks for fast streaming,
+    // and attach the current slide index to every chunk.
+    if (slideText) {
+      const chunks = chunkTextForInstantPlay(slideText, 600);
+      chunks.forEach((chunk) => {
+        queue.push({ text: chunk, slideIndex: index });
+      });
+    }
+  });
 
-  return pieces.join(". ");
+  return queue;
 };
 
 /**
- * Splits long text into smaller chunks (~600 characters) by sentence endings.
+ * Splits long text into smaller chunks (~600 characters max) by sentence endings.
  * This is crucial for the "Instant Play" AI Audio Streaming feature, allowing 
  * the frontend to fetch and play short audio clips immediately while preloading the rest.
+ * @param {String} text - Full text to split.
+ * @param {Number} maxLength - Max length per chunk.
+ * @returns {Array<String>} Array of smaller text chunks.
  */
 const chunkTextForInstantPlay = (text, maxLength = 600) => {
+  if (!text) return [];
+  // Match sentences ending with ., !, ?, or newlines
   const sentences = text.match(/[^.!?\n]+[.!?\n]*/g) || [text];
   const chunks = [];
   let currentChunk = "";
@@ -120,11 +135,13 @@ export default function CoursePlayer() {
 
   // ---- Advanced AI TTS Streaming States ----
   const [ttsMode, setTtsMode] = useState("browser"); // Defaults to 'browser' for guests
-  const aiTtsRef = useRef({
-    chunks: [],          // The text chunks to be processed
+
+  // Ref managing the sequential audio queue for BOTH Browser and AI Voice modes
+  const ttsQueueRef = useRef({
+    chunks: [],          // Stores array of objects: [{ text, slideIndex }]
     currentIndex: 0,     // Which chunk is currently playing
-    currentAudio: null,  // The HTMLAudioElement currently playing
-    nextAudio: null,     // The HTMLAudioElement preloaded in the background
+    currentAudio: null,  // The HTMLAudioElement currently playing (AI Mode)
+    nextAudio: null,     // The HTMLAudioElement preloaded in the background (AI Mode)
     preloadedIndex: -1,  // Tracks which index has already been preloaded
   });
 
@@ -135,6 +152,18 @@ export default function CoursePlayer() {
   // ---- Global UI Toast Notification ----
   const [toast, setToast] = useState(null);
   const toastTimerRef = useRef(null);
+
+  // ---- AI Flashcard States ----
+  const [flashcards, setFlashcards] = useState([]);
+  const [fcIndex, setFcIndex] = useState(0);
+  const [isFcFlipped, setIsFcFlipped] = useState(false);
+  const [showFcModal, setShowFcModal] = useState(false);
+  const [fcLoading, setFcLoading] = useState(false);
+
+  // ---- PDF Export States ----
+  const [showPdfPreview, setShowPdfPreview] = useState(false);
+  const [pdfHtml, setPdfHtml] = useState("");
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
 
   /**
    * Displays a self-dismissing toast notification.
@@ -156,18 +185,18 @@ export default function CoursePlayer() {
     }
 
     // Pause and reset active AI audio
-    if (aiTtsRef.current.currentAudio) {
-      aiTtsRef.current.currentAudio.pause();
-      aiTtsRef.current.currentAudio.currentTime = 0;
+    if (ttsQueueRef.current.currentAudio) {
+      ttsQueueRef.current.currentAudio.pause();
+      ttsQueueRef.current.currentAudio.currentTime = 0;
     }
 
     // Prevent preloaded audio from playing accidentally
-    if (aiTtsRef.current.nextAudio) {
-      aiTtsRef.current.nextAudio.pause();
+    if (ttsQueueRef.current.nextAudio) {
+      ttsQueueRef.current.nextAudio.pause();
     }
     
     // Wipe the queue memory
-    aiTtsRef.current = {
+    ttsQueueRef.current = {
       chunks: [],
       currentIndex: 0,
       currentAudio: null,
@@ -318,37 +347,131 @@ export default function CoursePlayer() {
   };
 
   /**
-   * Extracts or prepares text from the original document for TTS playback.
+   * Opens the PDF Preview Modal.
+   * Iterates through the entire syllabus, retrieves locally saved notes, 
+   * and dynamically builds a sanitized HTML document for the PDF generator.
    */
-  const loadLessonText = async () => {
-    if (!currentLesson || !currentLesson.contentUrl) { 
-      showToast("No document available to read."); 
-      return ""; 
+  const handleOpenPdfPreview = () => {
+    if (!course || !syllabus.length) {
+      showToast("Course data is not available.", "error");
+      return;
     }
-    if (!lessonUseOriginal) { 
-      showToast("The teacher has disabled the original document for this lesson."); 
-      return ""; 
+
+    // Base HTML template with inline styling for the PDF export
+    let htmlContent = `
+      <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333;">
+          <h1 style="color: #1e3a8a; border-bottom: 3px solid #3b82f6; padding-bottom: 10px; margin-bottom: 30px; text-align: center;">
+              📖 Study Notes<br><span style="font-size: 1.2rem; color: #64748b;">${course.title}</span>
+          </h1>
+    `;
+
+    let hasNotes = false;
+
+    // Traverse the entire curriculum to collect notes from LocalStorage
+    syllabus.forEach((sec, secIdx) => {
+      let sectionHasNotes = false;
+      let sectionHtml = `<h2 style="color: #2563eb; margin-top: 40px; background: #eff6ff; padding: 10px 15px; border-radius: 8px; font-size: 1.4rem;">Section ${secIdx + 1}: ${sec.title}</h2>`;
+
+      sec.lessons.forEach((lesson, lessonIdx) => {
+        const noteKey = `note_${courseId}_${secIdx}_${lessonIdx}`;
+        const savedNote = localStorage.getItem(noteKey);
+
+        if (savedNote && savedNote.trim()) {
+          hasNotes = true;
+          sectionHasNotes = true;
+          // Basic sanitization: Escape HTML tags to prevent XSS during PDF rendering
+          const safeNote = savedNote.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+          sectionHtml += `
+            <h3 style="color: #047857; margin-bottom: 8px; font-size: 1.1rem; border-left: 4px solid #10b981; padding-left: 10px;">Lesson ${lessonIdx + 1}: ${lesson.title || "Untitled"}</h3>
+            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; margin-bottom: 25px; white-space: pre-wrap; font-size: 1rem;">${safeNote}</div>
+          `;
+        }
+      });
+
+      // Only append the section header if at least one lesson has notes
+      if (sectionHasNotes) {
+        htmlContent += sectionHtml;
+      }
+    });
+
+    if (!hasNotes) {
+      showToast("You haven't taken any notes for this course yet.", "info");
+      return;
     }
-    if (ttsStatus === "speaking" || ttsStatus === "paused") return ttsText;
 
-    setTtsStatus("loading");
+    // Append footer
+    htmlContent += `
+          <div style="margin-top: 50px; text-align: center; font-size: 0.8rem; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 20px;">
+              Exported from BrainBoost E-Learning Platform • ${new Date().toLocaleDateString()}
+          </div>
+      </div>
+    `;
 
+    setPdfHtml(htmlContent);
+    setShowPdfPreview(true);
+  };
+
+  /**
+   * Downloads the notes as a physical PDF file.
+   * Dynamically injects the `html2pdf.js` library to keep the initial app bundle size small.
+   */
+  const handleDownloadPdf = () => {
+    const element = document.getElementById('pdf-export-content');
+    if (!element) return;
+
+    setIsDownloadingPdf(true);
+
+    // Function to execute the PDF generation once the library is loaded
+    const executeDownload = () => {
+      const opt = {
+        margin:       0.5,
+        filename:     `${(course.slug || course.title).replace(/[^a-z0-9]/gi, '_').toLowerCase()}_notes.pdf`,
+        image:        { type: 'jpeg', quality: 0.98 },
+        html2canvas:  { scale: 2, useCORS: true },
+        jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' }
+      };
+      window.html2pdf().set(opt).from(element).save().then(() => {
+        setIsDownloadingPdf(false);
+        showToast("PDF Downloaded successfully!", "success");
+      });
+    };
+
+    // Lazy load the html2pdf library from a CDN if it doesn't exist yet
+    if (!window.html2pdf) {
+      showToast("Initializing PDF Engine...", "info");
+      const script = document.createElement('script');
+      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+      script.onload = executeDownload;
+      document.body.appendChild(script);
+    } else {
+      // If already loaded previously, execute immediately
+      executeDownload();
+    }
+  };
+
+  /**
+   * Fetches the raw text of the document for TTS to read aloud.
+   * Leverages the backend extraction service for PDFs and Office docs.
+   */
+  const loadOriginalDocText = async () => {
     try {
       const { full, forExt } = getUrlParts(currentLesson.contentUrl);
       if (!full) throw new Error("Lesson has no document URL.");
 
       const lower = forExt.toLowerCase();
 
-      // Read raw text files directly
+      // Read simple .txt files directly without pinging the extraction API
       if (lower.endsWith(".txt")) {
         const res = await fetch(full);
         if (!res.ok) throw new Error(`Cannot load text file (HTTP ${res.status}).`);
         const text = await res.text();
         if (!text.trim()) throw new Error("Text file is empty.");
-        setTtsText(text); setTtsStatus("ready"); return text;
+        setTtsText(text); setTtsStatus("ready");
+        return text;
       }
 
-      // Request backend to extract text from PDFs or Office documents
+      // Proxy complex files through backend extraction logic
       const res = await api.get(`/tts/extract?url=${encodeURIComponent(full)}`);
       const text = res.data.text || "";
       if (!text.trim()) throw new Error("No readable text returned from server.");
@@ -362,132 +485,183 @@ export default function CoursePlayer() {
   };
 
   /**
-   * Advanced Streaming Engine for AI Voices.
-   * Implements a Preloader logic to ensure zero-latency playback between audio chunks.
-   * @param {Number} index - The current chunk array index to play.
+   * Browser Voice: Queue-based playback synchronized with UI Slides.
+   * Recursive function that plays the next chunk and flips the slide automatically.
    */
-  const playAiSequence = async (index) => {
-    // Stop condition: End of chunks array
-    if (index >= aiTtsRef.current.chunks.length) {
+  const playBrowserSequence = (index) => {
+    if (index >= ttsQueueRef.current.chunks.length) {
       setTtsStatus("ready");
       return;
     }
 
+    const currentChunkObj = ttsQueueRef.current.chunks[index];
+    
+    // Automatic Slide Sync: Update the UI activeSlide to match the text currently being read
+    if (viewMode === "ai") setActiveSlide(currentChunkObj.slideIndex);
+
+    const u = new SpeechSynthesisUtterance(currentChunkObj.text);
+    u.lang = "en-US"; 
+    u.rate = 1.0;
+    
+    // Trigger recursion: When this chunk ends, proceed to the next one
+    u.onend = () => playBrowserSequence(index + 1);
+    u.onerror = () => setTtsStatus("ready");
+    
+    utteranceRef.current = u;
+    ttsQueueRef.current.currentIndex = index;
+
+    window.speechSynthesis.cancel(); // Clear any hung processes
+    window.speechSynthesis.speak(u);
+    setTtsStatus("speaking");
+  };
+
+  /**
+   * AI Voice: Advanced Streaming Engine.
+   * Implements a Preloader logic to ensure zero-latency playback, synced with slides.
+   */
+  const playAiSequence = async (index) => {
+    // Stop condition: End of chunks array
+    if (index >= ttsQueueRef.current.chunks.length) {
+      setTtsStatus("ready");
+      return;
+    }
+
+    const currentChunkObj = ttsQueueRef.current.chunks[index];
+    
+    // Automatic Slide Sync: Update the UI activeSlide to match the text currently being read
+    if (viewMode === "ai") setActiveSlide(currentChunkObj.slideIndex);
+
     let audioToPlay = null;
 
-    // Optimization: If the audio was already preloaded seamlessly in the background, use it!
-    if (aiTtsRef.current.preloadedIndex === index && aiTtsRef.current.nextAudio) {
-      audioToPlay = aiTtsRef.current.nextAudio;
+    // If the audio was already preloaded in the background, use it immediately!
+    if (ttsQueueRef.current.preloadedIndex === index && ttsQueueRef.current.nextAudio) {
+      audioToPlay = ttsQueueRef.current.nextAudio;
     } else {
-      // Fetch directly if not preloaded (e.g., very first chunk)
+      // Fallback: Fetch directly if not preloaded (e.g., the very first chunk)
       setTtsStatus("loading");
       try {
-        const textChunk = aiTtsRef.current.chunks[index];
-        const res = await api.post("/tts/synthesize", { text: textChunk });
+        const res = await api.post("/tts/synthesize", { text: currentChunkObj.text });
         audioToPlay = new Audio(`data:audio/mp3;base64,${res.data.audioContent}`);
       } catch (err) {
         console.error("AI TTS Error:", err);
-        showToast("Failed to play audio chunk. Check your connection.");
+        showToast("Failed to play audio chunk. Check your internet connection.", "error");
         setTtsStatus("ready");
         return;
       }
     }
 
-    aiTtsRef.current.currentAudio = audioToPlay;
-    aiTtsRef.current.currentIndex = index;
-      
-    // TriggerRecursion: As soon as the current audio ends, immediately play the next one
-    audioToPlay.onended = () => {
-      playAiSequence(index + 1);
-    };
-    audioToPlay.onerror = () => {
-      setTtsStatus("ready");
-    };
+    ttsQueueRef.current.currentAudio = audioToPlay;
+    ttsQueueRef.current.currentIndex = index;
+    
+    // Trigger recursion: As soon as the current audio ends, instantly play the next one
+    audioToPlay.onended = () => playAiSequence(index + 1);
+    audioToPlay.onerror = () => setTtsStatus("ready");
 
     audioToPlay.play();
     setTtsStatus("speaking");
 
     // Background Preloader: While the user is listening to `index`, quietly fetch `index + 1`
     const nextIndex = index + 1;
-    if (nextIndex < aiTtsRef.current.chunks.length) {
-      const nextText = aiTtsRef.current.chunks[nextIndex];
+    if (nextIndex < ttsQueueRef.current.chunks.length) {
+      const nextText = ttsQueueRef.current.chunks[nextIndex].text;
       api.post("/tts/synthesize", { text: nextText })
         .then(res => {
-          aiTtsRef.current.nextAudio = new Audio(`data:audio/mp3;base64,${res.data.audioContent}`);
-          aiTtsRef.current.preloadedIndex = nextIndex;
+          ttsQueueRef.current.nextAudio = new Audio(`data:audio/mp3;base64,${res.data.audioContent}`);
+          ttsQueueRef.current.preloadedIndex = nextIndex;
         })
         .catch(e => console.error("Preload error", e));
     }
   };
 
   /**
-   * Main router for the Play/Pause button. Determines which TTS engine to control.
+   * Main Router for the Play/Pause button. 
+   * Determines which TTS engine to control and prepares the queue based on viewMode.
    */
   const handlePlayPause = async () => {
     if (!currentLesson) return;
 
-    // Handle Pause / Resume Actions
+    // Pause / Resume Logic (If a queue is already active)
+    if (ttsStatus === "speaking" || ttsStatus === "paused") {
+      if (ttsMode === "browser") {
+        if (ttsStatus === "speaking") { 
+          window.speechSynthesis.pause(); 
+          setTtsStatus("paused"); 
+        }
+        else { 
+          window.speechSynthesis.resume(); 
+          setTtsStatus("speaking"); 
+        }
+      } else {
+        // Security Check
+        if (!isLoggedIn) {
+          showToast("Please sign in to use AI Voice feature.", "info");
+          setTtsMode("browser");
+          return;
+        }
+        if (ttsStatus === "speaking" && ttsQueueRef.current.currentAudio) { 
+          ttsQueueRef.current.currentAudio.pause(); 
+          setTtsStatus("paused"); 
+        }
+        else if (ttsStatus === "paused" && ttsQueueRef.current.currentAudio) { 
+          ttsQueueRef.current.currentAudio.play(); 
+          setTtsStatus("speaking"); 
+        }
+      }
+      return; 
+    }
+
+    // Initial Play Logic (Generating the Queue from scratch)
+    setTtsStatus("loading");
+
+    let queue = [];
+
+    // Construct Queue based on whether the user is viewing Slides or Document
+    if (viewMode === "ai" && lessonUseAiSlides) {
+      const slides = Array.isArray(currentLesson.aiSlides) ? currentLesson.aiSlides : [];
+      if (!slides.length) { showToast("No AI slides available.", "error"); setTtsStatus("idle"); return; }
+      
+      // Use the slide-aware function to track indices for automatic syncing
+      queue = buildSlideAwareQueue(slides); 
+    } 
+    else if (lessonUseOriginal && lessonHasFile) {
+      const rawText = await loadOriginalDocText();
+      if (!rawText) { 
+        setTtsStatus("idle"); 
+        return; 
+      }
+      
+      // Documents don't have slide indices, so default slideIndex to 0 for all chunks
+      const chunks = chunkTextForInstantPlay(rawText, 600);
+      queue = chunks.map(chunk => ({ text: chunk, slideIndex: 0 }));
+    } 
+    else {
+      showToast("This view has no content to read.", "error");
+      setTtsStatus("idle");
+      return;
+    }
+
+    // Abort if extraction yielded nothing
+    if (!queue.length) {
+      showToast("Cannot extract text.", "error");
+      setTtsStatus("idle");
+      return;
+    }
+
+    // Save the newly generated queue to the Ref
+    ttsQueueRef.current.chunks = queue;
+    ttsQueueRef.current.currentIndex = 0;
+
+    // Start the corresponding Engine
     if (ttsMode === "browser") {
-      if (ttsStatus === "speaking") { window.speechSynthesis.pause(); setTtsStatus("paused"); return; }
-      if (ttsStatus === "paused") { window.speechSynthesis.resume(); setTtsStatus("speaking"); return; }
+      playBrowserSequence(0);
     } else {
-      // Security fallback: Ensure guests cannot bypass UI locks to access premium AI
       if (!isLoggedIn) {
-        showToast("Please sign in or create an account to use the premium AI Voice feature.", "info");
+        showToast("Please sign in or create an account to unlock Premium AI Voice.", "info");
         setTtsMode("browser");
+        setTtsStatus("idle");
         return;
       }
-
-      if (ttsStatus === "speaking" && aiTtsRef.current.currentAudio) { 
-        aiTtsRef.current.currentAudio.pause(); 
-        setTtsStatus("paused"); 
-        return; 
-      }
-      if (ttsStatus === "paused" && aiTtsRef.current.currentAudio) { 
-        aiTtsRef.current.currentAudio.play(); 
-        setTtsStatus("speaking"); 
-        return; 
-      }
-    }
-
-    // Prepare the Text to Read
-    let text = ttsText;
-
-    // Resolve Text Context (Read slides vs Read document)
-    if (!text) {
-      if (viewMode === "ai" && lessonUseAiSlides) {
-        const slides = Array.isArray(currentLesson.aiSlides) ? currentLesson.aiSlides : [];
-        if (!slides.length) { showToast("No AI slides available for this lesson."); return; }
-        const built = buildSlidesTts(slides);
-        if (!built) { showToast("Cannot build readable text from AI slides."); return; }
-        text = built; setTtsText(built);
-      }
-      else if (lessonUseOriginal && lessonHasFile) {
-        text = await loadLessonText();
-        if (!text) return;
-      } else {
-        showToast("This view has no content that can be read aloud."); return;
-      }
-    }
-
-    // Dispatch to the selected Audio Engine
-    if (ttsMode === "browser") {
-      if (typeof window === "undefined" || !("speechSynthesis" in window)) {
-        showToast("Your browser does not support text-to-speech."); return;
-      }
-      const u = new SpeechSynthesisUtterance(text);
-      u.lang = "en-US"; 
-      u.rate = 1.0;
-      u.onend = () => setTtsStatus("ready");
-      u.onerror = () => setTtsStatus("ready");
-      utteranceRef.current = u;
-      window.speechSynthesis.cancel();
-      window.speechSynthesis.speak(u);
-      setTtsStatus("speaking");
-    } else {
-      // Initialize AI Stream Processor
-      aiTtsRef.current.chunks = chunkTextForInstantPlay(text, 600);
-      playAiSequence(0);
+      playAiSequence(0); 
     }
   };
 
@@ -500,6 +674,49 @@ export default function CoursePlayer() {
     }
     stopTts();
     setTtsMode(mode);
+  };
+
+  /**
+   * Call Backend API to trigger AI extraction of Flashcards from lesson content
+   */
+  const handleGenerateFlashcards = async () => {
+    if (!isLoggedIn) {
+      showToast("Please log in to use the AI Flashcard feature.", "info");
+      return;
+    }
+    
+    // Open the Flashcard Modal screen
+    setShowFcModal(true);
+    setFcLoading(true);
+    // Ensure the new card always starts on the front side
+    setIsFcFlipped(false);
+    
+    try {
+      const payload = {
+        docUrl: lessonUseOriginal && currentLesson.contentUrl ? currentLesson.contentUrl : null,
+        aiSlides: lessonUseAiSlides && Array.isArray(currentLesson.aiSlides) ? currentLesson.aiSlides : [],
+      };
+
+      // Call the Node.js API created
+      const res = await api.post("/learning/flashcards/generate", payload);
+      // Backend returns an array [{front: "...", back: "..."}]
+      const cards = res.data.flashcards || [];
+      
+      if (cards.length === 0) {
+        showToast("AI could not extract knowledge from this lesson.", "error");
+        setShowFcModal(false);
+      } else {
+        setFlashcards(cards);
+        // Start at the first card
+        setFcIndex(0);
+      }
+    } catch (err) {
+      console.error("[Flashcards] failed:", err);
+      showToast("Error generating flashcards. Please try again later.", "error");
+      setShowFcModal(false);
+    } finally {
+      setFcLoading(false);
+    }
   };
 
   // ==== View Renderers ====
@@ -773,16 +990,53 @@ export default function CoursePlayer() {
             </div>
           </section>
 
-          {/* Column 3: Utility Tools (Notes & Chat) */}
+          {/* Column 3: Utility Tools (Notes, Chat & Flashcards) */}
           <aside className="learning-tools-panel">
               
+              {/* AI Flashcard Trigger Button */}
+              <div style={{ marginBottom: '1rem' }}>
+                  <button 
+                      type="button" 
+                      className="btn-outline" 
+                      style={{ width: '100%', background: 'var(--bg-card)', borderColor: 'var(--primary)', color: 'var(--primary)' }} 
+                      onClick={handleGenerateFlashcards}
+                  >
+                      <i className="bi bi-lightning-charge-fill text-warning" style={{marginRight: '6px'}}></i> 
+                      Study with AI Flashcards
+                  </button>
+              </div>
+
               {/* Local Storage Notes Box */}
               {showNotes && (
                   <div className="notes-container">
                       <div className="notes-header">
-                          <h3><i className="bi bi-journal-text text-primary"></i> Personal Notes</h3>
-                          <span className="notes-hint">Auto-saved locally</span>
+                          <div>
+                              <h3 style={{ margin: 0 }}><i className="bi bi-journal-text text-primary"></i> Personal Notes</h3>
+                              <span className="notes-hint" style={{ display: 'block', marginTop: '2px' }}>Auto-saved locally</span>
+                          </div>
+                          
+                          {/* Export PDF Button */}
+                          <button 
+                              className="btn-outline mini" 
+                              onClick={handleOpenPdfPreview} 
+                              title="Export all course notes to PDF"
+                              style={{ 
+                                padding: '6px 12px', 
+                                fontSize: '0.85rem', 
+                                borderColor: '#fca5a5', 
+                                color: '#dc2626', 
+                                backgroundColor: '#fef2f2', 
+                                fontWeight: '700',
+                                borderRadius: '8px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px'
+                              }}
+                          >
+                              <i className="bi bi-file-earmark-pdf-fill"></i> Export PDF
+                          </button>
                       </div>
+
                       <textarea 
                           className="notes-textarea" 
                           placeholder="Type your notes for this lesson here..."
@@ -824,11 +1078,106 @@ export default function CoursePlayer() {
         </div>
       </main>
 
-      {/* ===== GLOBAL TOAST UI ===== */}
+      {/* ===== Global Toast UI ===== */}
       {toast && (
           <div className={`toast ${toast.type}`}>
               {toast.type === 'error' ? <i className="bi bi-exclamation-octagon-fill"></i> : <i className="bi bi-info-circle-fill"></i>}
               <span>{toast.msg}</span>
+          </div>
+      )}
+
+      {/* ===== AI Flashcard Modal (3D Flip) ===== */}
+      {showFcModal && (
+          <div className="flashcard-overlay">
+              <div className="flashcard-modal">
+                  <button className="fc-close" onClick={() => setShowFcModal(false)}>✕</button>
+                  
+                  {fcLoading ? (
+                      <div className="fc-loading-box">
+                          <div className="fc-spinner"></div>
+                          <h3 style={{marginBottom: '10px'}}>AI is analyzing the lesson...</h3>
+                          <p style={{color: 'var(--text-secondary)'}}>It will take about 10 - 20 seconds to extract key concepts into flashcards.</p>
+                      </div>
+                  ) : flashcards.length > 0 ? (
+                      <>
+                          <h3 style={{marginBottom: '0', color: 'var(--text-main)'}}>Flashcards ({fcIndex + 1} / {flashcards.length})</h3>
+                          
+                          {/* 3D Scene block to create depth perspective */}
+                          <div className="fc-scene" onClick={() => setIsFcFlipped(!isFcFlipped)}>
+                              {/* The actual Card that will rotate 180 degrees */}
+                              <div className={`fc-card ${isFcFlipped ? 'flipped' : ''}`}>
+                                  <div className="fc-front">
+                                      <h4>Term / Question</h4>
+                                      <p>{flashcards[fcIndex].front}</p>
+                                      <span className="fc-hint">Click to flip and reveal answer</span>
+                                  </div>
+                                  <div className="fc-back">
+                                      <h4>Definition / Answer</h4>
+                                      <p>{flashcards[fcIndex].back}</p>
+                                  </div>
+                              </div>
+                          </div>
+
+                          <div className="fc-controls">
+                              <button 
+                                  className="fc-btn-prev" 
+                                  disabled={fcIndex === 0} 
+                                  onClick={(e) => { e.stopPropagation(); setFcIndex(p => p - 1); setIsFcFlipped(false);}}
+                              >
+                                  <i class="bi bi-caret-left-fill"></i> Previous
+                              </button>
+                              <button 
+                                  className="fc-btn-next" 
+                                  disabled={fcIndex === flashcards.length - 1} 
+                                  onClick={(e) => { e.stopPropagation(); setFcIndex(p => p + 1); setIsFcFlipped(false);}}
+                              >
+                                  Next <i class="bi bi-caret-right-fill"></i>
+                              </button>
+                          </div>
+                      </>
+                  ) : null}
+              </div>
+          </div>
+      )}
+
+      {/* ===== PDF Preview & Download Modal ===== */}
+      {showPdfPreview && (
+          <div className="flashcard-overlay">
+              <div className="flashcard-modal" style={{ width: '90%', maxWidth: '800px', height: '85vh', display: 'flex', flexDirection: 'column', padding: '1.5rem', backgroundColor: '#f8fafc' }}>
+                  
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #e2e8f0', paddingBottom: '1rem', marginBottom: '1rem' }}>
+                      <h3 style={{margin: 0, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '8px'}}>
+                          <i className="bi bi-file-earmark-pdf-fill text-danger"></i> Notes Preview
+                      </h3>
+                      <div style={{ display: 'flex', gap: '10px' }}>
+                          <button 
+                              className="btn-outline" 
+                              onClick={() => setShowPdfPreview(false)}
+                              disabled={isDownloadingPdf}
+                              style={{ borderColor: '#cbd5e1', color: '#64748b', background: '#ffffff' }}
+                          >
+                              Cancel
+                          </button>
+                          <button 
+                              className="btn-primary" 
+                              onClick={handleDownloadPdf}
+                              disabled={isDownloadingPdf}
+                              style={{ background: '#ef4444', borderColor: '#ef4444', fontWeight: 'bold' }}
+                          >
+                              {isDownloadingPdf ? "Processing..." : "Download PDF"}
+                          </button>
+                      </div>
+                  </div>
+                  
+                  {/* The rendered HTML preview that html2pdf will capture */}
+                  <div 
+                      id="pdf-export-content" 
+                      style={{ flex: 1, overflowY: 'auto', textAlign: 'left', padding: '1rem 2rem', color: '#0f172a', background: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.02)' }} 
+                      dangerouslySetInnerHTML={{ __html: pdfHtml }}
+                  >
+                  </div>
+
+              </div>
           </div>
       )}
 

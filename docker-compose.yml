@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  ai-agent:
+    build: ./ai-agent
+    container_name: dev-ai
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./ai-agent:/app
+    env_file:
+      - ./ai-agent/.env
+
+  backend:
+    build: ./backend
+    container_name: dev-backend
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    env_file:
+      - ./backend/.env
+    environment:
+      - AI_AGENT_URL=http://ai-agent:8001
+
+  frontend:
+    build: ./frontend
+    container_name: dev-frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - WATCHPACK_POLLING=true
+      - CHOKIDAR_USEPOLLING=true

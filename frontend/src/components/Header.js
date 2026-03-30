@@ -75,9 +75,12 @@ const SiteHeader = () => {
   // Handle clicks outside of dropdown menus to close them automatically
   useEffect(() => {
     const closeMenus = (e) => {
+      // If the click is outside the user profile menu, close it
       if (!e.target.closest(".user-menu")) setShowMenu(false);
+      // If the click is outside the notification menu, close it
       if (!e.target.closest(".notif-menu")) setShowNotif(false);
     };
+    
     document.addEventListener("click", closeMenus);
     return () => document.removeEventListener("click", closeMenus);
   }, []);
@@ -95,9 +98,6 @@ const SiteHeader = () => {
       console.error("Failed to fetch notifications");
     }
   };
-
-  // Calculate the number of unread notifications for the bell badge
-  const unreadCount = notifications.filter(n => !n.isRead).length;
 
   /**
    * Toggles the user profile menu and ensures the notification menu is closed.
@@ -124,14 +124,28 @@ const SiteHeader = () => {
   };
 
   /**
-   * Executes the actual logout API call, clears local user context, and redirects to the homepage.
-   */  const confirmLogout = async () => {
+   * Executes the actual logout API call, clears local user context, and redirects.
+   * Prevents "Zombie Sessions" by enforcing strict cleanup sequence.
+   */
+  const confirmLogout = async () => {
     try {
+      // Request backend to destroy all authentication cookies
       await api.post("/auth/logout");
-    } finally {
-      signOut();  // Clear local context
+      
+      // Clear frontend context ONLY if the backend request succeeds
+      signOut();  
       setShowLogoutModal(false);
-      window.location.assign("/");  // Hard redirect to clear all local states
+
+      // Manually destroy the CSRF cookie on the client side as a fallback
+      document.cookie = "csrf_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+      
+      // Hard redirect to the login page to snap all data-fetching loops
+      window.location.href = "/login"; 
+      
+    } catch (error) {
+      console.error("Logout Error:", error);
+      alert("Logout failed due to a network or server error. Please try again.");
+      setShowLogoutModal(false);
     }
   };
 
@@ -141,7 +155,8 @@ const SiteHeader = () => {
    */
   const goContact = (e) => {
     e.preventDefault();
-    setShowMobileNav(false);  // Close mobile menu if open
+    setShowMobileNav(false);
+
     if (user) {
       navigate('/contact');
     } else {
@@ -189,12 +204,15 @@ const SiteHeader = () => {
     if (notif.link) navigate(notif.link);
   };
 
+  // ==== Render Preparation & UI ====
+
+  // Calculate the number of unread notifications for the bell badge
+  const unreadCount = notifications.filter(n => !n.isRead).length;
+
   // Prepare avatar URL with cache-busting to ensure newly uploaded avatars reflect immediately
   const rawAvatar = user?.avatarUrl ? toAbsolute(user.avatarUrl) : defaultAvatar;
   const avatarSrc = user?.avatarUrl ? withBust(rawAvatar, user.updatedAt) : defaultAvatar;
   const displayName = user?.fullname || "Name";
-
-  // ==== Render ====
 
   return (
     <>

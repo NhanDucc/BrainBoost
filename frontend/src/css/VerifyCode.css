@@ -2,70 +2,86 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  height: 100vh;
-  background: var(--bg-main);
+  min-height: 100vh;
+  background-color: #f4f7f6;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 .verify-box {
-  background: var(--bg-card);
+  background: #ffffff;
   padding: 40px;
-  border-radius: 10px;
-  width: 350px;
-  box-shadow: 0 0 12px rgba(0, 0, 0, 0.1);
+  border-radius: 12px;
+  width: 100%;
+  max-width: 400px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  box-sizing: border-box;
 }
 
 .verify-box h2 {
   text-align: center;
-  margin-bottom: 20px;
-  color: var(--text-main);
+  margin-top: 0;
+  margin-bottom: 25px;
+  font-size: 28px;
+  font-weight: 700;
+  color: #1a1a1a;
 }
 
 .verify-box label {
   display: block;
-  margin: 10px 0 5px;
+  margin-bottom: 8px;
+  font-size: 14px;
   font-weight: 600;
-  color: var(--text-main);
+  color: #4a4a4a;
 }
 
 .verify-box input {
   width: 100%;
-  padding: 10px;
-  border: 1px solid var(--border-input);
-  background: var(--bg-input);
-  color: var(--text-main);
-  border-radius: 6px;
-  outline: none;
+  padding: 12px 14px;
+  margin-bottom: 25px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 16px;
+  letter-spacing: 2px;
+  text-align: center;
+  color: #333;
+  box-sizing: border-box;
+  transition: all 0.3s ease;
 }
 
 .verify-box input:focus {
-  border-color: var(--primary);
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
 }
 
 .verify-btn {
-  margin-top: 20px;
   width: 100%;
   padding: 12px;
-  background: var(--primary);
+  background-color: #3b82f6;
   color: white;
-  font-weight: bold;
+  font-weight: 600;
+  font-size: 16px;
   border: none;
   border-radius: 8px;
   cursor: pointer;
-  transition: background 0.3s ease;
+  transition: background-color 0.3s ease, transform 0.1s ease;
 }
 
 .verify-btn:hover {
-  background: var(--primary-hover);
+  background-color: #2563eb;
+}
+
+.verify-btn:active {
+  transform: scale(0.98);
 }
 
 .error {
-  color: var(--error);
+  background-color: #fee2e2;
+  color: #b91c1c;
+  padding: 10px 14px;
+  border-radius: 6px;
+  font-size: 14px;
+  margin-bottom: 20px;
+  border: 1px solid #f87171;
   text-align: center;
-  font-weight: 500;
-}
-
-.success {
-  color: var(--success);
-  text-align: center;
-  font-weight: 500;
 }

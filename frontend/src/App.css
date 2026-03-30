@@ -39,6 +39,15 @@
 
 /* ==== Global Theme Variables ==== */
 
+:root {
+  --primary-color: #007bff;
+  --secondary-color: #152e4d;
+  --background-color: #f8f9fa;
+  --border-color: #ced4da; 
+  --text-color: #212529;
+  --shadow-color: rgba(0, 0, 0, 0.1);
+}
+
 /* Light Mode */
 :root, [data-theme="light"] {
   --bg-main: #EDF2FB;

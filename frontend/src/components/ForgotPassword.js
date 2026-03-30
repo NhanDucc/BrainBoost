@@ -1,128 +1,165 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import '../css/ForgotPassword.css';
 
 const ForgotPassword = () => {
     // ==== State Management ====
+
+    const navigate = useNavigate();
+
+    // -- Data States --
     const [email, setEmail] = useState('');
-    const [message, setMessage] = useState('');
-    const [isError, setIsError] = useState(false);
-    
-    // Controls the UI flow: Step 1 (Request OTP) -> Step 2 (Verify OTP & Reset)
-    const [step, setStep] = useState(1);
-    
     const [otp, setOtp] = useState('');
     const [newPassword, setNewPassword] = useState('');
+
+    // -- UI Flow & Feedback States --
+    // step 1: Enter email to request OTP. 
+    // step 2: Enter OTP and new password to reset.
+    const [step, setStep] = useState(1); 
+    const [message, setMessage] = useState('');
+    const [isError, setIsError] = useState(false);
+    const [showPassword, setShowPassword] = useState(false);
 
     // ==== Form Handlers ====
 
     /**
-     * Submits the user's email to request a One-Time Password (OTP).
+     * STEP 1: Request OTP
+     * Submits the user's email to the backend to generate and dispatch a One-Time Password.
      */
     const handleSendOTP = async (e) => {
-        // Prevent default form submission behavior (page reload)
-        e.preventDefault();
+        e.preventDefault(); // Prevent page reload
+        
         try {
-            // Make an API call using the configured axios instance
             await api.post('/auth/forgot-password/otp', { email });
 
-            setMessage('OTP sent to your email.');
+            setMessage('OTP has been sent to your email.');
             setIsError(false);
-
-            // Advance to the next step to reveal the OTP and Password input fields
+            
+            // Proceed to the next step to reveal OTP and New Password fields
             setStep(2);
         } catch (error) {
-            setMessage(error.response?.data?.message || 'Error sending OTP');
+            console.error('Send OTP Error:', error);
+            setMessage(error.response?.data?.message || 'Failed to send OTP. Please try again.');
             setIsError(true);
         }
     };
 
     /**
-     * Submits the OTP and the new password for verification and update.
+     * STEP 2: Verify & Reset
+     * Submits the received OTP and the new password to finalize the reset process.
      */
     const handleResetPassword = async (e) => {
         e.preventDefault();
+        
         try {
-            // Send the required payload to finalize the password reset process
             await api.post('/auth/reset-password', {
                 email,
                 otp,
                 newPassword,
             });
 
-            setMessage('Password reset successfully!');
+            setMessage('Password reset successfully! Redirecting to login...');
             setIsError(false);
 
-            // Reset the flow back to the initial state after success
-            setStep(1);
+            // Clear sensitive fields
+            setOtp('');
+            setNewPassword('');
+            
+            // Redirect user back to login page after a short delay
+            setTimeout(() => {
+                navigate('/login');
+            }, 2000);
+
         } catch (error) {
-            setMessage(error.response?.data?.message || 'Reset failed');
+            console.error('Reset Password Error:', error);
+            setMessage(error.response?.data?.message || 'Failed to reset password. Invalid OTP.');
             setIsError(true);
         }
     };
 
-    // ==== Lifecycle Hooks ====
+    // ==== Lifecycle Effects ====
 
     /**
-     * Auto-dismisses success or error messages after 3 seconds.
-     * This improves the UX by keeping the interface clean.
+     * Auto-dismisses feedback messages (success or error) after 4 seconds 
+     * to ensure the UI remains clean and uncluttered.
      */
     useEffect(() => {
-        // Do nothing if there's no message to display
         if (!message) return;
 
-        // Set a timer to clear the message state
-        const t = setTimeout(() => {
+        const timer = setTimeout(() => {
             setMessage('');
             setIsError(false);
-        }, 3000);
+        }, 4000);
 
-        // Cleanup function: Clear the timer if the component unmounts 
-        // or if the message changes before the timer finishes
-        return () => clearTimeout(t);
+        // Cleanup function to prevent memory leaks if the component unmounts
+        return () => clearTimeout(timer);
     }, [message]);
     
     // ==== UI Render ====
 
     return (
         <div className="forgotten-container">
-            {/* Dynamically bind the onSubmit handler based on the current step */}
-            <form onSubmit={step === 1 ? handleSendOTP : handleResetPassword} className="forgotten-box">
+            <form 
+                className="forgotten-box"
+                onSubmit={step === 1 ? handleSendOTP : handleResetPassword} 
+            >
                 <h2>Forgot Password</h2>
 
-                {/* Conditional rendering for feedback messages */}
-                {message && <p className={isError ? 'error' : 'success'}>{message}</p>}
+                {/* Feedback Alert Box */}
+                {message && (
+                    <p className={isError ? 'error' : 'success'}>
+                        {message}
+                    </p>
+                )}
                 
+                {/* Email Field (Disabled in Step 2 to prevent email tampering after OTP is sent) */}
                 <label>Email</label>
                 <input
                     type="email"
+                    placeholder="Enter your registered email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
+                    disabled={step === 2} 
                     required
                 />
 
-                {/* Conditionally render OTP and Password fields only in Step 2 */}
+                {/* Step 2 specific fields: OTP and New Password */}
                 {step === 2 && (
                     <>
-                        <label>OTP</label>
+                        <label>OTP Code</label>
                         <input
                             type="text"
+                            placeholder="Enter the 6-digit code"
                             value={otp}
                             onChange={(e) => setOtp(e.target.value)}
                             required
                         />
+                        
                         <label>New Password</label>
-                        <input
-                            type="password"
-                            value={newPassword}
-                            onChange={(e) => setNewPassword(e.target.value)}
-                            required
-                        />
+                        <div className="password-wrapper">
+                            <input
+                                type={showPassword ? "text" : "password"}
+                                placeholder="Enter your new password"
+                                value={newPassword}
+                                onChange={(e) => setNewPassword(e.target.value)}
+                                required
+                            />
+                            {/* Password Visibility Toggle */}
+                            <i 
+                                className={`bi ${showPassword ? 'bi-eye-slash-fill' : 'bi-eye-fill'} toggle-password`} 
+                                onClick={() => setShowPassword(!showPassword)}
+                                title={showPassword ? "Hide password" : "Show password"}
+                            ></i>
+                        </div>
                     </>
                 )}
 
-                {/* Dynamic button label based on the current step */}
-                <button type="submit">{step === 1 ? 'Send OTP' : 'Reset Password'}</button>
+                {/* Dynamic Submit Button */}
+                <button type="submit">
+                    {step === 1 ? 'Send OTP' : 'Reset Password'}
+                </button>
+                
             </form>
         </div>
     );

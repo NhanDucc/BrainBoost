@@ -4,6 +4,7 @@ const Test = require("../models/Test");
 const TestResult = require("../models/TestResult");
 const User = require('../models/User');
 const Notification = require('../models/Notification');
+const { badgeEvents } = require('../services/badgeService');
 
 // Retrieve the AI microservice URL from environment variables
 const AI_AGENT_URL = process.env.AI_AGENT_URL;
@@ -376,6 +377,24 @@ const submitTest = async (req, res) => {
       maxScore: resultSummary.gradableTotal,
       finalPercent: resultSummary.percent,
       timeSpent: timeSpent || 0
+    });
+
+    const testInfo = await Test.findById(testId).select('subject');
+
+    // Emit event for EACH answer to calculate "Accuracy Streak"
+    if (Array.isArray(answers)) {
+      badgeEvents.emit('answers_batch_submitted', {
+        userId: req.userId,
+        subject: testInfo.subject,
+        answers: answers
+      });
+    }
+
+    // Emit test completion event to check for "The Comeback Kid" badge
+    badgeEvents.emit('test_completed', {
+        userId: req.userId,
+        subject: testInfo.subject,
+        percent: resultSummary.percent
     });
 
     // Fetch Top 10 Leaderboard AFTER the submission is saved

@@ -41,7 +41,7 @@ api.interceptors.request.use(
         if (csrfMethods.includes(config.method?.toLowerCase())) {
             const csrfToken = getCookie('csrf_token');
             if (csrfToken) {
-                config.headers['X-CSRF-Token'] = csrfToken;
+                config.headers['x-csrf-token'] = csrfToken;
             }
         }
         return config;

@@ -225,7 +225,6 @@
 .qa-row { display:flex; gap:10px; flex-wrap:wrap; margin-top:8px; }
 .primary-btn { background:var(--primary); color:#fff; border:0; padding:10px 16px; border-radius:10px; font-weight:800; cursor:pointer; }
 .ghost-btn { background:var(--bg-card); color:var(--primary); border:1px solid var(--border-color); padding:10px 16px; border-radius:10px; font-weight:800; cursor:pointer; }
-.link-btn { background:transparent; border:0; color:var(--primary); font-weight:800; cursor:pointer; }
 
 /* overview stats */
 .role-cards-3 { display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap:12px; margin:12px 0; }
@@ -292,4 +291,33 @@
   .role-cards-stats { 
     grid-template-columns: 1fr; 
   }
+}
+
+/* Upgraded link button with hover animations */
+.link-btn { 
+    background: transparent; 
+    border: 0; 
+    color: var(--primary); 
+    font-weight: 700; 
+    cursor: pointer; 
+    display: inline-flex; 
+    align-items: center; 
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    transition: all 0.2s ease;
+}
+
+.link-btn:hover {
+    background: var(--bg-object); /* Uses your existing theme variable for a soft background */
+    color: var(--primary-hover);
+}
+
+.link-btn i {
+    transition: transform 0.2s ease;
+}
+
+/* Pushes the arrow slightly to the right on hover */
+.link-btn:hover i {
+    transform: translateX(4px); 
 }

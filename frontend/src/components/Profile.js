@@ -83,6 +83,28 @@ function StudentDashboard({ user }) {
     const [currentDate, setCurrentDate] = useState(new Date(today));
     const [activeTab, setActiveTab] = useState("Mathematics");
 
+    // ---- Badge State ----
+    const [recentBadges, setRecentBadges] = useState([]);
+
+    // Fetch badge
+    useEffect(() => {
+        (async () => {
+            try {
+                const res = await api.get("/badges/my-badges");
+                const allBadges = res.data.badges || [];
+                
+                // Filter earned badges, sort by latest time, and take only the first 4
+                const earned = allBadges
+                    .filter(b => b.isEarned)
+                    .sort((a, b) => new Date(b.earnedAt).getTime() - new Date(a.earnedAt).getTime());
+                
+                setRecentBadges(earned.slice(0, 4));
+            } catch (err) {
+                console.error("Error loading badges:", err);
+            }
+        })();
+    }, []);
+
     // ---- Computed Values ----
     // Memoize the calendar grid calculation so it only runs when the month changes
     const monthCells = useMemo(() => buildMonth(month.getFullYear(), month.getMonth()), [month]);
@@ -105,6 +127,62 @@ function StudentDashboard({ user }) {
 
     return (
         <>
+        <div className="role-card" style={{ marginTop: '20px', marginBottom: '20px' }}>
+            <div className="role-card-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
+                <h3 style={{ margin: 0, fontSize: '18px', color: 'var(--text-main)' }}>
+                    <i className="bi bi-award-fill text-warning" style={{ marginRight: '8px' }}></i> 
+                    Recent Achievements
+                </h3>
+                    
+                <button className="link-btn" onClick={() => navigate("/badges")}>
+                    Badge Case <i className="bi bi-arrow-right"></i>
+                </button>
+            </div>
+
+            {recentBadges.length === 0 ? (
+                <div className="empty" style={{ padding: '20px', textAlign: 'center' }}>
+                    <p className="role-muted">No badges yet. Start practicing to unlock them!</p>
+                    <button className="ghost-btn" style={{ marginTop: '10px' }} onClick={() => navigate("/tests")}>
+                        Start practicing
+                    </button>
+                </div>
+            ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '16px', marginTop: '16px' }}>
+                    {recentBadges.map(badge => (
+                        <div key={badge._id} style={{
+                            background: 'linear-gradient(180deg, var(--bg-card) 0%, var(--bg-object) 100%)', 
+                            border: '1px solid var(--primary)', 
+                            borderRadius: '12px', 
+                            padding: '16px', 
+                            textAlign: 'center',
+                            boxShadow: '0 4px 6px rgba(0,0,0,0.05)',
+                            transition: 'transform 0.2s',
+                            cursor: 'pointer'
+                        }}
+                        onClick={() => navigate("/badges")}
+                        >
+                            <img 
+                                src={badge.iconUrl} 
+                                alt={badge.name} 
+                                style={{ 
+                                    display: 'block', 
+                                    margin: '0 auto 8px auto',
+                                    width: '60px', 
+                                    height: '60px', 
+                                    objectFit: 'contain', 
+                                    filter: 'drop-shadow(0px 4px 8px rgba(0, 81, 255, 0.3))' 
+                                }} 
+                            />
+                            <h4 style={{ fontSize: '14px', margin: '0 0 4px 0', color: 'var(--text-main)', fontWeight: 'bold' }}>{badge.name}</h4>
+                            <div style={{ fontSize: '11px', color: 'var(--success)', fontWeight: 'bold' }}>
+                                Earned: {new Date(badge.earnedAt).toLocaleDateString('en-US')}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+        
         {/* ==== TOP GRID: Calendar & Weekly Stats ==== */}
         <div className="stu-grid">
 
@@ -478,8 +556,7 @@ export default function Profile() {
                             <div key={t._id} className="recent-item">
                                 <div className="r-main">
                                     <div className="r-title">
-                                        {t.title} 
-                                        {/* Badge hiện số lượt làm cho riêng bài này */}
+                                        {t.title}
                                         {t.attempts > 0 && <span style={{ fontSize: '12px', marginLeft: '10px', color: 'var(--success)' }}>({t.attempts} attempts)</span>}
                                     </div>
                                     <div className="r-sub">
@@ -489,7 +566,7 @@ export default function Profile() {
                                     </div>
                                 </div>
                                 
-                                {/* 2. THÊM NÚT XEM RESULTS / LEADERBOARD */}
+                                {/* Button to view Results/Leaderboard */}
                                 <div className="r-actions" style={{ display: 'flex', gap: '8px' }}>
                                     <button 
                                         className="ghost-btn" 

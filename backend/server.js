@@ -20,6 +20,7 @@ const lessonChatRoutes = require("./routes/lessonChatRoutes");
 const learningRoutes = require('./routes/learningRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const flashcardRoutes = require('./routes/flashcardRoutes');
+const badgeRoutes = require('./routes/badgeRoutes');
 
 const { startCronJobs } = require('./services/cronService');
 
@@ -72,6 +73,8 @@ app.use('/api/lesson-chat', lessonChatRoutes);      // Contextual AI Tutor chat 
 app.use('/api/admin', adminRoutes);                 // Global Admin dashboard and metrics
 app.use('/api/instructors', instructorRoutes);      // Instructor-specific portals and actions
 app.use('/api/admin/instructors', adminInstructorRouters); // Admin control over instructor accounts
+
+app.use('/api/badges', badgeRoutes);
 
 // ==== Database Connection & Server Start ====
 

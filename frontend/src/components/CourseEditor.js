@@ -4,6 +4,7 @@ import SiteHeader from "./Header";
 import SiteFooter from "./Footer";
 import { toAbsolute } from "../utils/url";
 import { useUser } from "../context/UserContext";
+import { api } from "../api";
 import "../css/CourseEditor.css";
 
 // ==== Constants & Helper Functions ====
@@ -100,11 +101,7 @@ export default function CourseEditor() {
       setLoading(true);
       try {
         const res = await fetch(toAbsolute(`/api/courses/${id}`), { credentials: "include", });
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          throw new Error(data?.message || `HTTP ${res.status}`);
-        }
-        const c = await res.json();
+        const c = res.data;
 
         // Populate metadata states with fetched data, using fallbacks for safety
         setTitle(c.title || "");
@@ -226,17 +223,9 @@ export default function CourseEditor() {
       const fd = new FormData();
       fd.append("file", file);
 
-      const res = await fetch(toAbsolute("/api/courses/upload-doc"), {
-        method: "POST",
-        credentials: "include",
-        body: fd,
-      });
+      const res = await api.post("/courses/upload-doc", fd);
 
-      const data = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
-        throw new Error(data?.message || `HTTP ${res.status}`);
-      }
+      const data = res.data;
 
       const url = data.url || "";
       const mime = (data.mimeType || file.type || "").toLowerCase();
@@ -298,38 +287,22 @@ export default function CourseEditor() {
       setAiGeneratingLesson(`${si}-${li}`);
 
       let endpoint;
-      let body;
+      let payloadObj;
 
       // Determine API endpoint based on whether the course is saved in DB or is brand new
       if (hasValidCourseId) {
         // Use the course-specific endpoint to read existing document text
-        endpoint = toAbsolute(
-          `/api/courses/${id}/sections/${si}/lessons/${li}/gen-slides`
-        );
-        body = JSON.stringify({
-          numSlides: 10,
-        });
+        endpoint = `/courses/${id}/sections/${si}/lessons/${li}/gen-slides`;
+        payloadObj = { numSlides: 10 };
       } else {
         // Use the generic generation endpoint providing the raw document URL
-        endpoint = toAbsolute("/api/ai-slides/generate");
-        body = JSON.stringify({
-          docUrl: lesson.originalDocUrl,
-          maxSlides: 10,
-        });
+        endpoint = "/ai-slides/generate";
+        payloadObj = { docUrl: lesson.originalDocUrl, maxSlides: 10 };
       }
 
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body,
-      });
+      const res = await api.post(endpoint, payloadObj);
 
-      const data = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
-        throw new Error(data?.message || `HTTP ${res.status}`);
-      }
+      const data = res.data;
 
       const slides = Array.isArray(data.slides) ? data.slides : [];
 
@@ -424,28 +397,15 @@ export default function CourseEditor() {
         })),
       };
 
-      const url = isEdit
-        ? toAbsolute(`/api/courses/${id}`)
-        : toAbsolute(`/api/courses`);
-      
-      const res = await fetch(url, {
-        method: isEdit ? "PATCH" : "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify(payload),
-      });
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data?.message || `HTTP ${res.status}`);
-      }
-
+      const url = isEdit ? `/courses/${id}` : `/courses`;
+        
       setToast({ type: "success", msg: isEdit ? "Updated." : "Created." });
 
       // Redirect back to instructor dashboard upon successful creation/update
       setTimeout(() => navigate("/instructor"), 700);
     } catch (e) {
-      setToast({ type: "error", msg: `Save failed: ${e.message}` });
+      const errorMsg = e.response?.data?.message || e.message;
+      setToast({ type: "error", msg: `Save failed: ${errorMsg}` });
       setTimeout(() => setToast(null), 4000);
     } finally {
       setSaving(false);

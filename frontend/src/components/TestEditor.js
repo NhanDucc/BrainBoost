@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import SiteHeader from "./Header";
 import SiteFooter from "./Footer";
 import { toAbsolute } from "../utils/url";
 import FormulaEditor from "./FormulaEditor";
+import { api } from "../api";
 import "../css/TestEditor.css";
 
 // ==== Constants & Configurations ====
@@ -96,12 +97,9 @@ export default function TestEditor() {
     (async () => {
       setLoading(true);
       try {
-        const res = await fetch(toAbsolute(`/api/tests/${id}`), { credentials: "include" });
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          throw new Error(data?.message || `HTTP ${res.status}`);
-        }
-        const t = await res.json();
+        const res = await api.get(`/tests/${id}`);
+        
+        const t = res.data;
 
         // Populate test metadata from database
         setTitle(t.title || "");
@@ -366,17 +364,12 @@ export default function TestEditor() {
         questions: qs,
       };
 
-      const url = isEdit ? toAbsolute(`/api/tests/${id}`) : toAbsolute(`/api/tests`);
-      const res = await fetch(url, {
-        method: isEdit ? "PATCH" : "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify(payload),
-      });
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data?.message || `HTTP ${res.status}`);
+      const url = isEdit ? `/tests/${id}` : `/tests`;
+      let res;
+      if (isEdit) {
+        res = await api.patch(url, payload);
+      } else {
+        res = await api.post(url, payload);
       }
 
       setToast({ type: "success", msg: isEdit ? "Updated." : "Created." });

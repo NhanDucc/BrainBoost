@@ -29,6 +29,7 @@ import TestResultView from "./components/TestResultView";
 import Help from "./components/Help";
 import Leaderboard from "./components/Leaderboard";
 import AdminUsers from "./components/AdminUsers";
+import BadgeCase from './components/BadgeCase';
 
 const App = () => {
   return (
@@ -49,6 +50,7 @@ const App = () => {
         <Route path="/privacy-policy" element={<Privacy />} />
         <Route path="/terms-of-use" element={<Terms />} />
         <Route path="/about" element={<AboutUs />} />
+        <Route path="/badges" element={<BadgeCase />} />
 
         {/* Route by role */}
         {/*Student (Public) */}

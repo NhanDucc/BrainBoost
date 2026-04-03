@@ -92,6 +92,92 @@ const userSchema = new mongoose.Schema({
         savedAt: { type: Date, default: Date.now },
     }],
 
+    // ==== Gamlification Tracking ====
+    earnedBadges: [{
+        badgeId: { type: mongoose.Schema.Types.ObjectId, ref: 'Badge' },
+        earnedAt: { type: Date, default: Date.now },
+    }],
+
+    streaks: {
+        math: {
+            mcq: { 
+                current: { type: Number, default: 0 }, 
+                highest: { type: Number, default: 0 } 
+            },
+            tf: { 
+                current: { type: Number, default: 0 }, 
+                highest: { type: Number, default: 0 } 
+            },
+            short_answer: { 
+                current: { type: Number, default: 0 }, 
+                highest: { type: Number, default: 0 } 
+            },
+            essay: { 
+                current: { type: Number, default: 0 }, 
+                highest: { type: Number, default: 0 } 
+            }
+        },
+
+        physics: {
+            mcq: { 
+                current: { type: Number, default: 0 }, 
+                highest: { type: Number, default: 0 } 
+            },
+            tf: { 
+                current: { type: Number, default: 0 }, 
+                highest: { type: Number, default: 0 } 
+            },
+            short_answer: { 
+                current: { type: Number, default: 0 }, 
+                highest: { type: Number, default: 0 } 
+            },
+            essay: { 
+                current: { type: Number, default: 0 }, 
+                highest: { type: Number, default: 0 } 
+            }
+        },
+
+        chemistry: {
+            mcq: { 
+                current: { type: Number, default: 0 }, 
+                highest: { type: Number, default: 0 } 
+            },
+            tf: { 
+                current: { type: Number, default: 0 }, 
+                highest: { type: Number, default: 0 } 
+            },
+            short_answer: { 
+                current: { type: Number, default: 0 }, 
+                highest: { type: Number, default: 0 } 
+            },
+            essay: { 
+                current: { type: Number, default: 0 }, 
+                highest: { type: Number, default: 0 } 
+            }
+        },
+
+        english: {
+            mcq: { 
+                current: { type: Number, default: 0 }, 
+                highest: { type: Number, default: 0 } 
+            },
+            tf: { 
+                current: { type: Number, default: 0 }, 
+                highest: { type: Number, default: 0 } 
+            },
+            short_answer: { 
+                current: { type: Number, default: 0 }, 
+                highest: { type: Number, default: 0 } 
+            },
+            essay: { 
+                current: { type: Number, default: 0 }, 
+                highest: { type: Number, default: 0 } 
+            }
+        }
+    },
+
+    aiInteractionCount: { type: Number, default: 0 },
+
     // ==== System Settings & Preferences ====
 
     preferences: {

@@ -71,6 +71,7 @@ export default function TestEditor() {
   const [subject, setSubject] = useState(SUBJECTS[0].key);
   const [tags, setTags] = useState([]);
   const [description, setDescription] = useState("");
+  const [testVisibility, setTestVisibility] = useState("draft"); // Quản lý trạng thái hiện tại của bài Test
 
   // ---- Questions State ----
   const [numQuestions, setNumQuestions] = useState(10); // Determines the length of the questions array
@@ -107,6 +108,7 @@ export default function TestEditor() {
         setSubject(t.subject || SUBJECTS[0].key);
         setTags(t.tags || []);
         setDescription(t.description || "");
+        setTestVisibility(t.visibility || "draft");
 
         // Map and normalize questions from the database to match frontend state structure
         const qs = (Array.isArray(t.questions) ? t.questions : []).map((q, i) => {
@@ -129,10 +131,10 @@ export default function TestEditor() {
         setQuestions(qs.length ? qs : Array.from({ length: 10 }, (_, i) => emptyQuestion(i)));
         setNumQuestions(qs.length || 10);
       } catch (e) {
-          setToast({ type: "error", msg: `Load failed: ${e.message}` });
+        setToast({ type: "error", msg: `Load failed: ${e.message}` });
       } finally {
-          setLoading(false);
-          setTimeout(() => setToast(null), 4000);   // Auto-hide error toast
+        setLoading(false);
+        setTimeout(() => setToast(null), 4000);   // Auto-hide error toast
       }
     })();
   }, [isEdit, id]);
@@ -308,8 +310,9 @@ export default function TestEditor() {
   /**
    * Formats the payload, strips out unneeded whitespace, and sends it to the API 
    * to either create a new test or patch an existing one.
+   * @param {String} targetVisibility - The status to save the test as ("draft" or "pending")
    */
-  const handleSubmit = async () => {
+  const handleSubmit = async (targetVisibility = "pending") => {
     const err = validate();
     if (err) {
       setToast({ type: "error", msg: err });
@@ -362,6 +365,7 @@ export default function TestEditor() {
         description,
         numQuestions: qs.length,
         questions: qs,
+        visibility: targetVisibility // Trạng thái muốn lưu
       };
 
       const url = isEdit ? `/tests/${id}` : `/tests`;
@@ -372,15 +376,37 @@ export default function TestEditor() {
         res = await api.post(url, payload);
       }
 
-      setToast({ type: "success", msg: isEdit ? "Updated." : "Created." });
+      setToast({ type: "success", msg: targetVisibility === "draft" ? "Draft saved!" : "Submitted for review!" });
 
       // Redirect back to the instructor dashboard after a brief delay
       setTimeout(() => navigate("/instructor"), 600);
     } catch (e) {
-      setToast({ type: "error", msg: `Save failed: ${e.message}` });
+      setToast({ type: "error", msg: `Save failed: ${e.response?.data?.message || e.message}` });
     } finally {
       setSaving(false);
       setTimeout(() => setToast(null), 4000);
+    }
+  };
+
+  /**
+   * Moderation Workflow: 
+   * Triggers an API call to duplicate a "Published" test into a new "Draft".
+   * This protects active students from having a test modified while they are taking it.
+   */
+  const handleCloneDraft = async () => {
+    try {
+      setSaving(true);
+      const res = await api.post(`/tests/${id}/clone`);
+      setToast({ type: "success", msg: "Draft version created! Redirecting..." });
+        
+      // Wait for Toast, then redirect to the newly created clone's edit page
+      setTimeout(() => {
+        navigate(`/instructor/tests/${res.data.id}/edit`);
+        window.location.reload(); 
+      }, 1000);
+    } catch(e) {
+      setToast({ type: "error", msg: "Failed to create draft." });
+      setSaving(false);
     }
   };
 
@@ -488,7 +514,7 @@ export default function TestEditor() {
         ) : (
           <>
             {/* ---- Test Metadata Section ---- */}
-            <section className="card">
+            <section className="card" style={{ opacity: testVisibility === "published" ? 0.6 : 1, pointerEvents: testVisibility === "published" ? "none" : "auto" }}>
               <h3>Test information</h3>
               <div className="form-grid">
                 <label className="form-row">
@@ -579,7 +605,7 @@ export default function TestEditor() {
             <section className="card">
               <h3>Questions</h3>
 
-              <div className="q-list">
+              <div className="q-list" style={{ opacity: testVisibility === "published" ? 0.6 : 1, pointerEvents: testVisibility === "published" ? "none" : "auto" }}>
                 {questions.map((q, qi) => (
                   <div key={qi} className="q-card">
 
@@ -624,14 +650,34 @@ export default function TestEditor() {
                 ))}
               </div>
 
-              {/* Form Action Buttons */}
-              <div className="actions">
-                <button className="ghost-btn" onClick={() => navigate("/instructor")}>Cancel</button>
-                <button className="primary-btn" disabled={saving} onClick={handleSubmit}>
-                  {/* Change text based on moderation workflow */}
-                  {saving ? "Submitting..." : (isEdit ? "Update & Submit for Review" : "Submit for Review")}
-                </button>
-              </div>
+              {/* Form Action Buttons - Layout changes based on moderation status */}
+              {testVisibility === "published" ? (
+                <div className="published-warning-banner">
+                  <i className="bi bi-info-circle-fill"></i>
+                  <div>
+                    <strong>This test is currently Live (Published).</strong>
+                    <p>To protect students' scores, you cannot edit a live test directly. Please create a Draft version to make changes.</p>
+                  </div>
+
+                  {/* Renders the clone button for safe updates */}
+                  <button type="button" className="primary-btn" onClick={handleCloneDraft} disabled={saving}>
+                    {saving ? "Creating..." : "Create Draft to Edit"}
+                  </button>
+                </div>
+              ) : (
+                <div className="actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '12px' }}>
+                  <button className="ghost-btn" type="button" onClick={() => navigate("/instructor")}>Cancel</button>
+
+                  {/* Save explicitly as draft (doesn't trigger admin review) */}
+                  <button className="ghost-btn" type="button" onClick={() => handleSubmit("draft")} disabled={saving}>
+                    {saving ? "..." : "Save as Draft"}
+                  </button>
+
+                  <button className="primary-btn" type="button" onClick={() => handleSubmit("pending")} disabled={saving}>
+                    {saving ? "Submitting..." : (isEdit ? "Update & Submit for Review" : "Submit for Review")}
+                  </button>
+                </div>
+              )}
             </section>
           </>
         )}

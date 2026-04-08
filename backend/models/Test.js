@@ -6,7 +6,6 @@ const mongoose = require("mongoose");
  * - short_answer: requires modelAnswer (exact text match, auto-graded)
  * - essay:    optional rubric/modelAnswer, AI-graded
  */
-
 const QuestionSchema = new mongoose.Schema(
   {
     type: {
@@ -15,9 +14,7 @@ const QuestionSchema = new mongoose.Schema(
       default: "mcq",
       required: true,
     },
-
     stem: { type: String, required: true },
-
     // MCQ fields
     choices: {
       type: [String],
@@ -43,17 +40,14 @@ const QuestionSchema = new mongoose.Schema(
       },
       required: function () { return this.type === "mcq"; },
     },
-
     // TRUE/FALSE field
     correctBool: {
       type: Boolean,
       required: function () { return this.type === "boolean"; },
     },
-
     // ESSAY & SHORT_ANSWER fields
     rubric: { type: String, default: "" },
     modelAnswer: { type: String, default: "" },
-
     // Common
     explanation: { type: String, default: "" },
     points: { type: Number, default: 1, min: 0 },
@@ -86,49 +80,40 @@ const TestSchema = new mongoose.Schema(
       type: String, 
       required: true 
     },
-
     grade: { 
       type: String, 
       required: true 
     },
-
     subject: {
       type: String,
       enum: ["math", "english", "physics", "chemistry"],
       required: true
     },
-
     tags: { 
       type: [String], 
       default: [] 
     },
-
     description: { 
       type: String, 
       default: "" 
     },
-
     numQuestions: { 
       type: Number, 
       required: true 
     },
-
     questions: { 
       type: [QuestionSchema], 
       required: true 
     },
-
     visibility: { 
         type: String, 
-        enum: ["pending", "published", "rejected"], 
-        default: "pending" 
+        enum: ["draft", "pending", "published", "rejected", "archived"], 
+        default: "draft" 
     },
-
     adminFeedback: { 
       type: String, 
       default: "" 
     },
-
     createdBy: { 
       type: mongoose.Schema.Types.ObjectId, 
       ref: "User" 

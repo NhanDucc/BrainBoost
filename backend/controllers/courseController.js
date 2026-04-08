@@ -3,51 +3,51 @@ const axios = require("axios");
 const mongoose = require("mongoose");
 const LessonProgress = require("../models/LessonProgress");
 
-// Retrieve the AI microservice URL from environment variables
 const AI_AGENT_URL = process.env.AI_AGENT_URL
 
 /**
  * * POST /api/courses
- * Creates a new course in the database.
- * Validates required metadata and initializes the course with a "pending" visibility
- * to ensure it goes through the Admin approval workflow before going live.
+ * Handles the creation of a new course.
+ * Validates mandatory fields and initial curriculum structure.
+ * New courses are set to "pending" by default to await admin moderation.
  */
 const createCourse = async (req, res) => {
-    try {
-        const p = req.body || {};
+  try {
+    const p = req.body || {};
 
-        // Validate required fields before proceeding
-        if (!p.title || !p.subject || !p.grade || !p.description) {
-            return res.status(400).json({ message: "Missing required fields." });
-        }
-
-        const sections = Array.isArray(p.sections) ? p.sections : [];
-        if (sections.length < 1) {
-            return res.status(400).json({ message: "Add at least 1 section." });
-        }
-
-        // Create and save the new course document
-        const doc = await Course.create({
-            title: p.title.trim(),
-            slug: (p.slug || "").trim(),
-            subject: p.subject,
-            grade: p.grade,
-            description: p.description || "",
-            tags: Array.isArray(p.tags) ? p.tags : [],
-            price: p.price ?? null,
-            coverUrl: p.coverUrl || "",
-            learn: Array.isArray(p.learn) ? p.learn : [],
-            sections,
-            createdBy: req.userId,
-            visibility: "pending",
-            adminFeedback: ""
-        });
-
-        res.status(201).json({ id: doc._id, message: "Course submitted for review." });
-    } catch (e) {
-        console.error("createCourse error:", e);
-        res.status(500).json({ message: "Server error" });
+    // Validate required fields before proceeding
+    if (!p.title || !p.subject || !p.grade || !p.description) {
+      return res.status(400).json({ message: "Missing required fields." });
     }
+
+    // Ensure at least one section exists to prevent empty courses
+    const sections = Array.isArray(p.sections) ? p.sections : [];
+      if (sections.length < 1) {
+        return res.status(400).json({ message: "Add at least 1 section." });
+      }
+
+    // Create and save the new course document
+    const doc = await Course.create({
+      title: p.title.trim(),
+      slug: (p.slug || "").trim(),
+      subject: p.subject,
+      grade: p.grade,
+      description: p.description || "",
+      tags: Array.isArray(p.tags) ? p.tags : [],
+      price: p.price ?? null,
+      coverUrl: p.coverUrl || "",
+      learn: Array.isArray(p.learn) ? p.learn : [],
+      sections,
+      createdBy: req.userId,
+      visibility: "pending",
+      adminFeedback: ""
+    });
+
+    res.status(201).json({ id: doc._id, message: "Course submitted for review." });
+  } catch (e) {
+    console.error("createCourse error:", e);
+    res.status(500).json({ message: "Server error" });
+  }
 };
 
 /**
@@ -74,71 +74,80 @@ const getCourse = async (req, res) => {
 
 /**
  * * PATCH /api/courses/:id
- * Updates an existing course.
- * If the course is updated by the instructor, it automatically returns to the "pending" state 
- * to be reviewed by the Admin again, ensuring no unapproved content goes live.
+ * Updates specific fields of an existing course.
+ * Resets visibility to "pending" (unless specified as "draft") to ensure 
+ * updated content is re-moderated by an admin.
  */
 const updateCourse = async (req, res) => {
-    try {
-        const c = await Course.findById(req.params.id);
-        if (!c) return res.status(404).json({ message: "Not found" });
+  try {
+    const c = await Course.findById(req.params.id);
+    if (!c) return res.status(404).json({ message: "Not found" });
 
-        // Authorization check
-        if (String(c.createdBy) !== String(req.userId)) {
-          return res.status(403).json({ message: "Forbidden" });
-        }
-
-        const p = req.body || {};
-
-        // Conditionally update fields if they are provided in the payload
-        c.title = p.title ?? c.title;
-        c.slug = p.slug ?? c.slug;
-        c.subject = p.subject ?? c.subject;
-        c.grade = p.grade ?? c.grade;
-        c.description = p.description ?? c.description;
-        c.tags = Array.isArray(p.tags) ? p.tags : c.tags;
-        c.price = p.price ?? c.price;
-        c.coverUrl = p.coverUrl ?? c.coverUrl;
-        c.learn = Array.isArray(p.learn) ? p.learn : c.learn;
-        
-        // Completely replace sections if a valid array is provided
-        if (Array.isArray(p.sections) && p.sections.length > 0) {
-            c.sections = p.sections;
-        }
-
-        // Reset moderation status: Automatically change to pending when an instructor edits the course
-        c.visibility = "pending";
-        // Clear previous rejection feedback so Admin can review fresh
-        c.adminFeedback = "";
-
-        await c.save();
-        res.json({ message: "Updated" });
-    } catch (e) {
-        console.error("updateCourse error:", e);
-        res.status(500).json({ message: "Server error" });
+    // Verify that the instructor owns this course// Authorization check
+    if (String(c.createdBy) !== String(req.userId)) {
+      return res.status(403).json({ message: "Forbidden" });
     }
+
+    const p = req.body || {};
+
+    // Map updated fields from payload or preserve existing ones
+    c.title = p.title ?? c.title;
+    c.slug = p.slug ?? c.slug;
+    c.subject = p.subject ?? c.subject;
+    c.grade = p.grade ?? c.grade;
+    c.description = p.description ?? c.description;
+    c.tags = Array.isArray(p.tags) ? p.tags : c.tags;
+    c.price = p.price ?? c.price;
+    c.coverUrl = p.coverUrl ?? c.coverUrl;
+    c.learn = Array.isArray(p.learn) ? p.learn : c.learn;
+        
+    // Update curriculum sections if provided
+    if (Array.isArray(p.sections) && p.sections.length > 0) {
+      c.sections = p.sections;
+    }
+
+    // Logic for handling save state: can be saved as a local "draft" or submitted as "pending"
+    if (p.visibility === "draft" || p.visibility === "pending") {
+      c.visibility = p.visibility;
+    } else {
+      c.visibility = "pending";
+    }
+
+    // Wipe old feedback to indicate a fresh review is needed
+    c.adminFeedback = "";
+
+    await c.save();
+    res.json({ message: "Updated" });
+  } catch (e) {
+    console.error("updateCourse error:", e);
+    res.status(500).json({ message: "Server error" });
+  }
 };
 
 /**
  * * GET /api/courses
- * Lists courses based on search queries or filters.
- * Used primarily for the Instructor Dashboard (mine=1) to view their own courses.
+ * Lists courses for the instructor dashboard with filters and server-side pagination.
+ * Supports searching by query string, subject, grade, and current status.
  */
 const listCourses = async (req, res) => {
   try {
-    const { q = "", subject } = req.query;
-    const mine = String(req.query.mine || "") === "1";  // Flag to fetch only the user's courses
+    const { q = "", subject, grade, status } = req.query;
+    const mine = String(req.query.mine || "") === "1";
 
     const cond = {};
-    if (subject) cond.subject = subject;
+    if (subject && subject !== "all") cond.subject = subject;
+    if (grade && grade !== "All") cond.grade = grade;
+    if (status && status !== "All") {
+        cond.visibility = status.toLowerCase();
+    }
 
-    // Filter by the logged-in user if 'mine' flag is present
+    // Ensure the instructor only sees their own content when requested
     if (mine) {
       if (!req.userId) return res.status(401).json({ message: "Unauthorized" });
       cond.createdBy = req.userId;
     }
 
-    // Apply regex search on title, description, or tags (case-insensitive)
+    // Regex-based search across multiple fields
     if (q) {
       cond.$or = [
         { title: { $regex: q, $options: "i" } },
@@ -147,12 +156,25 @@ const listCourses = async (req, res) => {
       ];
     }
 
-    const rows = await Course.find(cond).sort({ updatedAt: -1 }).lean();
+    // Pagination logic (Defaults to page 1, 12 items per page)
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 12;
+    const skip = (page - 1) * limit;
 
-    // Format the output payload
+    const totalItems = await Course.countDocuments(cond);
+    const totalPages = Math.ceil(totalItems / limit);
+
+    const rows = await Course.find(cond)
+      .sort({ updatedAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean();
+
+    // Map raw DB rows to a clean format for the dashboard UI
     const data = rows.map((c) => {
       const sections = Array.isArray(c.sections) ? c.sections : [];
-      // Calculate the total number of lessons across all sections
+
+      // Flatten sections to count total lessons
       const lessons = sections.reduce((acc, s) => acc + ((s.lessons || []).length), 0);
       
       return {
@@ -175,9 +197,18 @@ const listCourses = async (req, res) => {
       };
     });
 
-    res.json(data);
+    res.json({
+      data: data,
+      pagination: {
+        currentPage: page,
+        totalPages: totalPages,
+        totalItems: totalItems,
+        limit: limit
+      }
+    });
+
   } catch (e) {
-    console.error(e);
+    console.error("Lỗi listCourses:", e);
     res.status(500).json({ message: "Server error" });
   }
 };
@@ -233,6 +264,7 @@ const listPublicCourses = async (req, res) => {
         id: c._id,
         title: c.title,
         subject: c.subject,
+        grade: c.grade,
         coverUrl: c.coverUrl,
         priceUSD: c.price ?? null,
         lessons: lessonCount,
@@ -401,46 +433,46 @@ async function generateLessonSlides(req, res) {
  * by calling the external AI Agent.
  */
 async function createLearningPath (req, res) {
-    try {
-        const { goal } = req.body;
-        if (!goal) return res.status(400).json({ message: "Please tell us your goal." });
+  try {
+    const { goal } = req.body;
+    if (!goal) return res.status(400).json({ message: "Please tell us your goal." });
 
-        // Retrieve all available published courses to feed into the AI
-        const courses = await Course.find({ visibility: 'published' })
-            .select('_id title subject grade description')
-            .lean();
+    // Retrieve all available published courses to feed into the AI
+    const courses = await Course.find({ visibility: 'published' })
+      .select('_id title subject grade description')
+      .lean();
 
-        const availableCourses = courses.map(c => ({
-            id: c._id.toString(),
-            title: c.title,
-            subject: c.subject,
-            grade: c.grade,
-            description: c.description || ""
-        }));
+    const availableCourses = courses.map(c => ({
+      id: c._id.toString(),
+      title: c.title,
+      subject: c.subject,
+      grade: c.grade,
+      description: c.description || ""
+    }));
 
-        // Send the user goal and course inventory to the AI Agent
-        const aiResponse = await axios.post(`${AI_AGENT_URL}/generate-learning-path`, {
-            user_goal: goal,
-            available_courses: availableCourses
-        });
+    // Send the user goal and course inventory to the AI Agent
+    const aiResponse = await axios.post(`${AI_AGENT_URL}/generate-learning-path`, {
+      user_goal: goal,
+      available_courses: availableCourses
+    });
 
-        const { advice, recommended_courses } = aiResponse.data;
+    const { advice, recommended_courses } = aiResponse.data;
 
-        // Map the AI recommendations back to the full course objects
-        const resultCourses = recommended_courses.map(rc => {
-            const fullInfo = availableCourses.find(c => c.id === rc.course_id);
-            return {
-                ...fullInfo,
-                reason: rc.reason   // Include the AI's reasoning for why this course was picked
-            };
-        }).filter(item => item.id);
+    // Map the AI recommendations back to the full course objects
+    const resultCourses = recommended_courses.map(rc => {
+      const fullInfo = availableCourses.find(c => c.id === rc.course_id);
+      return {
+        ...fullInfo,
+        reason: rc.reason   // Include the AI's reasoning for why this course was picked
+      };
+    }).filter(item => item.id);
 
-        res.json({ advice, path: resultCourses });
+    res.json({ advice, path: resultCourses });
 
-    } catch (err) {
-        console.error("Learning Path Error:", err.message);
-        res.status(500).json({ message: "Failed to generate path" });
-    }
+  } catch (err) {
+    console.error("Learning Path Error:", err.message);
+    res.status(500).json({ message: "Failed to generate path" });
+  }
 };
 
 /**
@@ -499,51 +531,112 @@ const markLessonProgress = async (req, res) => {
  * Populates instructor details so admins know who submitted the content.
  */
 const getAdminCourses = async (req, res) => {
-    try {
-        const { status = "pending" } = req.query;
-        const courses = await Course.find({ visibility: status })
-            .populate('createdBy', 'fullname email') // Pull instructor contact info
-            .sort({ updatedAt: -1 })
-            .lean();
-        res.json(courses);
-    } catch (e) {
-        console.error(e);
-        res.status(500).json({ message: "Server error" });
-    }
+  try {
+    const { status = "pending" } = req.query;
+    const courses = await Course.find({ visibility: status })
+      .populate('createdBy', 'fullname email') // Pull instructor contact info
+      .sort({ updatedAt: -1 })
+      .lean();
+    res.json(courses);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ message: "Server error" });
+  }
 };
 
 /**
  * * PATCH /api/courses/admin/:id/review
- * Admin only route: Approves or Rejects a course submission.
- * Saves admin feedback directly to the course document if rejected, to help instructors fix issues.
+ * Admin only: Approves or rejects an instructor's submission.
+ * Upon approval, it automatically archives existing published versions to avoid duplication.
  */
 const reviewCourse = async (req, res) => {
-    try {
-        const { status, note } = req.body;
+  try {
+    const { status, note } = req.body;
 
-        // Prevent invalid statuses from polluting the database
-        if (!["published", "rejected"].includes(status)) {
-            return res.status(400).json({ message: "Invalid status" });
-        }
-
-        const c = await Course.findById(req.params.id);
-        if (!c) return res.status(404).json({ message: "Course not found" });
-
-        // Apply moderation decision
-        c.visibility = status;
-        // Store rejection reason (if any)
-        c.adminFeedback = note || "";
-        await c.save();
-
-        res.json({ message: `Course ${status}` });
-    } catch (e) {
-        console.error(e);
-        res.status(500).json({ message: "Server error" });
+    // Prevent invalid statuses from polluting the database
+    if (!["published", "rejected"].includes(status)) {
+      return res.status(400).json({ message: "Invalid status" });
     }
+
+    const c = await Course.findById(req.params.id);
+    if (!c) return res.status(404).json({ message: "Course not found" });
+
+    c.visibility = status;
+    c.adminFeedback = note || "";
+
+    // If approved for publication
+    if (status === "published") {
+      // Remove "(Draft Edit)" suffix from the title
+      c.title = c.title.replace(/\s*\(Draft Edit\)/i, "").trim();
+
+      // Find the old version (same title/creator) and archive it automatically
+      await Course.updateMany(
+        { 
+          _id: { $ne: c._id }, 
+          createdBy: c.createdBy, 
+          title: c.title, 
+          visibility: "published" 
+        },
+        { $set: { visibility: "archived" } }
+      );
+    }
+
+    await c.save();
+    res.json({ message: `Course ${status}` });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+/**
+ * * PATCH /api/courses/:id/archive
+ * Manually moves a course to the archives to hide it from students without deleting data.
+ */
+const archiveCourse = async (req, res) => {
+  try {
+    const c = await Course.findById(req.params.id);
+    if (!c) return res.status(404).json({ message: "Not found" });
+    if (String(c.createdBy) !== String(req.userId)) return res.status(403).json({ message: "Forbidden" });
+        
+    c.visibility = "archived";
+    await c.save();
+    res.json({ message: "Course archived successfully" });
+  } catch (e) {
+        res.status(500).json({ message: "Server error" });
+  }
+};
+
+/**
+ * * POST /api/courses/:id/clone
+ * Creates a duplicate "draft" clone of a course, allowing instructors 
+ * to work on updates without disrupting the live published version.
+ */
+const createDraftClone = async (req, res) => {
+  try {
+    const c = await Course.findById(req.params.id).lean();
+    if (!c) return res.status(404).json({ message: "Not found" });
+    if (String(c.createdBy) !== String(req.userId)) return res.status(403).json({ message: "Forbidden" });
+
+    // Strip unique identifiers and timestamps to prepare for a new document
+    const { _id, createdAt, updatedAt, ...restData } = c;
+        
+    const clonedCourse = await Course.create({
+      ...restData,
+      title: `${c.title} (Draft Edit)`,   // Mark it as an edit version
+      visibility: "draft",
+      adminFeedback: ""
+    });
+        
+    res.status(201).json({ id: clonedCourse._id, message: "Draft clone created" });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ message: "Server error" });
+  }
 };
 
 module.exports = {
   createCourse, getCourse, updateCourse, listCourses, listPublicCourses,
   getPublicCourseById, deleteCourse, generateLessonSlides, createLearningPath, markLessonProgress,
-  getAdminCourses, reviewCourse, 
+  getAdminCourses, reviewCourse, archiveCourse, createDraftClone, 
 };

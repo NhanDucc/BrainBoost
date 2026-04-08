@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { toAbsolute } from "../utils/url";
 import SiteHeader from "./Header";
@@ -327,8 +327,10 @@ export default function CourseDetail() {
 
                             <ul className="right-facts">
                                 <li>
-                                    <i className="bi bi-trophy-fill rf-ico" aria-hidden="true"></i>
-                                    Level: <strong>{course.grade || "All levels"}</strong>
+                                    <i className="bi bi-mortarboard-fill rf-ico" aria-hidden="true"></i>
+                                    Grade: <strong>
+                                        {course.grade ? (isNaN(course.grade) ? course.grade : `${course.grade}`) : "All grades"}
+                                    </strong>
                                 </li>
                                 <li>
                                     <i className="bi bi-book-fill rf-ico" aria-hidden="true"></i>

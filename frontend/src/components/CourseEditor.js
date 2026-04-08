@@ -68,10 +68,9 @@ export default function CourseEditor() {
   // ---- UI & Network States ----
   const [loading, setLoading] = useState(isEdit);
   const [saving, setSaving] = useState(false);
-  const [toast, setToast] = useState(null); // Manages success/error popup messages
+  const [toast, setToast] = useState(null);
 
   // ---- Course Metadata States ----
-  // These represent the top-level details of the course
   const [title, setTitle] = useState("");
   const [slug, setSlug] = useState("");
   const [subject, setSubject] = useState(SUBJECTS[0].key);
@@ -80,13 +79,13 @@ export default function CourseEditor() {
   const [price, setPrice] = useState("");
   const [description, setDescription] = useState("");
   const [coverUrl, setCoverUrl] = useState("");
-  const [learn, setLearn] = useState(["", "", "", ""]); // "What you'll learn" bullet points
+  const [learn, setLearn] = useState(["", "", "", ""]);
+  const [courseVisibility, setCourseVisibility] = useState("draft");
 
   // ---- Curriculum Builder States ----
-  // Manages the deeply nested array of Sections -> Lessons
   const [sections, setSections] = useState([emptySection(0)]);
-  const [uploadingLesson, setUploadingLesson] = useState(null); // Tracks which specific lesson is currently uploading a file
-  const [aiGeneratingLesson, setAiGeneratingLesson] = useState(null); // Tracks which lesson is currently generating AI slides
+  const [uploadingLesson, setUploadingLesson] = useState(null);
+  const [aiGeneratingLesson, setAiGeneratingLesson] = useState(null);
 
   // Scroll to top on initial mount to ensure user starts at the top of the form
   useEffect(() => { window.scrollTo(0, 0); }, []);
@@ -101,7 +100,8 @@ export default function CourseEditor() {
       setLoading(true);
       try {
         const res = await fetch(toAbsolute(`/api/courses/${id}`), { credentials: "include", });
-        const c = res.data;
+        if (!res.ok) throw new Error("Failed to fetch course");
+        const c = await res.json();
 
         // Populate metadata states with fetched data, using fallbacks for safety
         setTitle(c.title || "");
@@ -113,6 +113,7 @@ export default function CourseEditor() {
         setDescription(c.description || "");
         setCoverUrl(c.coverUrl || "");
         setLearn(Array.isArray(c.learn) && c.learn.length > 0 ? c.learn : ["", "", "", ""]);
+        setCourseVisibility(c.visibility || "draft");
 
         // Populate curriculum states, applying fallback defaults if nested data is missing
         setSections(
@@ -128,7 +129,6 @@ export default function CourseEditor() {
                   originalDocType: ls.originalDocType || "",
                   aiSlides: Array.isArray(ls.aiSlides) ? ls.aiSlides : [],
                   useAiSlides: !!ls.useAiSlides,
-                  // Ensure older records that didn't have this boolean default to true
                   showOriginalToStudents:
                     typeof ls.showOriginalToStudents === "boolean"
                       ? ls.showOriginalToStudents
@@ -144,7 +144,6 @@ export default function CourseEditor() {
         setTimeout(() => setToast(null), 3500);
       }
     })();
-    // eslint-disable-next-line
   }, [isEdit, id]);
 
   // ==== Curriculum Builder Operations ====
@@ -223,10 +222,9 @@ export default function CourseEditor() {
       const fd = new FormData();
       fd.append("file", file);
 
+      // Request signed upload to the backend controller
       const res = await api.post("/courses/upload-doc", fd);
-
       const data = res.data;
-
       const url = data.url || "";
       const mime = (data.mimeType || file.type || "").toLowerCase();
 
@@ -335,7 +333,7 @@ export default function CourseEditor() {
   const validate = () => {
     if (!canEdit) return "Forbidden";
     if (!title.trim()) return "Please enter course title.";
-    if (!grade.toString().trim()) return "Please enter a grade/level.";
+    if (!grade.toString().trim()) return "Please enter a grade.";
     if (!subject) return "Please select a subject.";
     if (!description.trim()) return "Please enter course description.";
     if (!sections.length) return "Please add at least 1 section.";
@@ -357,7 +355,7 @@ export default function CourseEditor() {
     return null;
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (targetVisibility = "pending") => {
     const err = validate();
     if (err) {
       setToast({ type: "error", msg: err });
@@ -378,6 +376,7 @@ export default function CourseEditor() {
         price: price === "" ? null : Number(price),
         coverUrl,
         learn: learn.map(s => s.trim()).filter(Boolean),
+        visibility: targetVisibility, // Trạng thái muốn lưu
         sections: sections.map((s) => ({
           title: s.title.trim(),
           lessons: s.lessons.map((L) => ({
@@ -398,8 +397,14 @@ export default function CourseEditor() {
       };
 
       const url = isEdit ? `/courses/${id}` : `/courses`;
+
+      if (isEdit) {
+        await api.patch(url, payload);
+      } else {
+        await api.post(url, payload);
+      }
         
-      setToast({ type: "success", msg: isEdit ? "Updated." : "Created." });
+      setToast({ type: "success", msg: targetVisibility === "draft" ? "Draft saved!" : "Submitted for review!" });
 
       // Redirect back to instructor dashboard upon successful creation/update
       setTimeout(() => navigate("/instructor"), 700);
@@ -409,6 +414,25 @@ export default function CourseEditor() {
       setTimeout(() => setToast(null), 4000);
     } finally {
       setSaving(false);
+    }
+  };
+
+  /** * Safety Clone logic.
+   * Triggered when editing a live (published) course. 
+   * Creates a duplicate draft version to prevent breaking the live environment.
+   */
+  const handleCloneDraft = async () => {
+    try {
+        setSaving(true);
+        const res = await api.post(`/courses/${id}/clone`);
+        setToast({ type: "success", msg: "Draft version created! Redirecting..." });
+        setTimeout(() => {
+            navigate(`/instructor/courses/${res.data.id}/edit`);
+            window.location.reload(); 
+        }, 1000);
+    } catch(e) {
+        setToast({ type: "error", msg: "Failed to create draft." });
+        setSaving(false);
     }
   };
 
@@ -443,7 +467,7 @@ export default function CourseEditor() {
         ) : (
           <>
             {/* ==== Meta Information Form ==== */}
-            <section className="card">
+            <section className="card" style={{ opacity: courseVisibility === "published" ? 0.6 : 1, pointerEvents: courseVisibility === "published" ? "none" : "auto" }}>
               <h3>Course information</h3>
               <div className="form-grid">
                 <label className="form-row">
@@ -481,7 +505,7 @@ export default function CourseEditor() {
 
                 {/* Grade Inputs */}
                 <label className="form-row">
-                  <span>Grade/Level</span>
+                  <span>Grade</span>
                   <input
                     value={grade}
                     onChange={(e) => setGrade(e.target.value)}
@@ -624,7 +648,7 @@ export default function CourseEditor() {
                 </ul>
               </div>
 
-              <div className="sec-list">
+              <div className="sec-list" style={{ opacity: courseVisibility === "published" ? 0.6 : 1, pointerEvents: courseVisibility === "published" ? "none" : "auto" }}>
                 {sections.map((sec, si) => (
                   <div key={si} className="sec-card">
                     <div className="sec-head">
@@ -834,27 +858,32 @@ export default function CourseEditor() {
                 ))}
               </div>
 
-              <div className="actions">
-                <button
-                  className="ghost-btn"
-                  type="button"
-                  onClick={addSection}
-                >
-                  + Add Section
-                </button>
-                <button
-                  className="primary-btn"
-                  type="button"
-                  disabled={saving}
-                  onClick={handleSubmit}
-                >
-                  {saving
-                    ? "Submitting..."
-                    : isEdit
-                    ? "Update & Submit for Review"
-                    : "Submit for Review"}
-                </button>
-              </div>
+              {/* Form Action Buttons - Conditional Buttons based on status */}
+              {courseVisibility === "published" ? (
+                  <div className="published-warning-banner">
+                      <i className="bi bi-info-circle-fill"></i>
+                      <div>
+                          <strong>This course is currently Live (Published).</strong>
+                          <p>To protect students' learning progress, you cannot edit a live course directly. Please create a Draft version to make changes.</p>
+                      </div>
+                      <button type="button" className="primary-btn" onClick={handleCloneDraft} disabled={saving}>
+                          {saving ? "Creating..." : "Create Draft to Edit"}
+                      </button>
+                  </div>
+              ) : (
+                  <div className="actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '12px' }}>
+                      <button className="ghost-btn" type="button" onClick={() => navigate("/instructor")}>Cancel</button>
+                      <button className="ghost-btn" type="button" onClick={addSection} disabled={saving}>
+                        + Add Section
+                      </button>
+                      <button className="ghost-btn" type="button" onClick={() => handleSubmit("draft")} disabled={saving}>
+                          {saving ? "..." : "Save as Draft"}
+                      </button>
+                      <button className="primary-btn" type="button" onClick={() => handleSubmit("pending")} disabled={saving}>
+                          {saving ? "Submitting..." : (isEdit ? "Update & Submit for Review" : "Submit for Review")}
+                      </button>
+                  </div>
+              )}
             </section>
           </>
         )}

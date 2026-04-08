@@ -6,7 +6,6 @@ const User = require('../models/User');
 const Notification = require('../models/Notification');
 const { badgeEvents } = require('../services/badgeService');
 
-// Retrieve the AI microservice URL from environment variables
 const AI_AGENT_URL = process.env.AI_AGENT_URL;
 
 // ==== Utility & Helper Functions ====
@@ -145,38 +144,91 @@ const createTest = async (req, res) => {
 };
 
 /**
- * Retrieves a list of tests. If '?mine=1' is provided, it fetches tests created 
- * by the authenticated instructor, including the number of attempts for each test.
- * * GET /api/tests?mine=1
+ * * GET /api/tests
+ * Retrieves tests with server-side pagination, filtering, and optimized attempt counting.
+ * If 'mine=1' is passed, it only returns tests created by the logged-in instructor.
  */
 const getMyTests = async (req, res) => {
   try {
     const mine = String(req.query.mine || "") === "1";
-    // If 'mine' is true, filter by the current user's ID
-    const query = mine ? { createdBy: req.userId } : {};
+    const query = {};
 
-    // Fetch the list of tests from database
-    const list = await Test.find(query).sort({ updatedAt: -1 }).lean();
-
-    // Count the number of student attempts for each test if viewed by the instructor
+    // Filter by the current instructor's ID
     if (mine) {
-        const TestResult = require("../models/TestResult");
-        for (let test of list) {
-            const attemptsCount = await TestResult.countDocuments({ test: test._id });
-            test.attempts = attemptsCount; // Attach attempt count to the response object
-        }
+      if (!req.userId) return res.status(401).json({ message: "Unauthorized" });
+      query.createdBy = req.userId; // Dùng trực tiếp, Mongoose sẽ tự động ép kiểu an toàn
     }
-    
-    res.json(list);
+
+    // Extract filtering parameters from the query string
+    const { q = "", subject, grade, difficulty, status } = req.query;
+
+    if (subject && subject !== "all") query.subject = subject;
+    if (grade && grade !== "All") query.grade = grade;
+    if (difficulty && difficulty !== "All") query.tags = { $in: [difficulty] };
+    if (status && status !== "All") {
+        query.visibility = status.toLowerCase();
+    }
+
+    // Case-insensitive regex search for title or description
+    if (q) {
+      query.$or = [
+        { title: { $regex: q, $options: "i" } },
+        { description: { $regex: q, $options: "i" } }
+      ];
+    }
+
+    // Pagination parameters
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 12;
+    const skip = (page - 1) * limit;
+
+    const totalItems = await Test.countDocuments(query);
+    const totalPages = Math.ceil(totalItems / limit);
+
+    // Fetch tests using lean() for performance
+    const tests = await Test.find(query)
+      .sort({ updatedAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean();
+
+    // Aggregates attempt counts for all fetched tests in a single database call
+    const testIds = tests.map(t => t._id);
+    const resultCounts = await TestResult.aggregate([
+      { $match: { test: { $in: testIds } } },
+      { $group: { _id: "$test", count: { $sum: 1 } } }
+    ]);
+
+    // Map counts back to the test objects
+    const countMap = {};
+    resultCounts.forEach(rc => {
+      countMap[rc._id.toString()] = rc.count;
+    });
+
+    const data = tests.map(t => ({
+      ...t,
+      attempts: countMap[t._id.toString()] || 0
+    }));
+
+    res.json({
+      data: data,
+      pagination: {
+        currentPage: page,
+        totalPages: totalPages,
+        totalItems: totalItems,
+        limit: limit
+      }
+    });
+
   } catch (e) {
-    console.error(e);
+    console.error("Lỗi getMyTests:", e);
     res.status(500).json({ message: "Server error" });
   }
 };
 
 /**
+ *  * * GET /api/tests/:id
  * Retrieves a single test by ID and verifies that the requester is the test creator.
- * * GET /api/tests/:id
  */
 const getOneTest = async (req, res) => {
   try {
@@ -227,8 +279,12 @@ const updateTest = async (req, res) => {
     doc.tags = Array.isArray(p.tags) ? p.tags : doc.tags;
     doc.description = p.description ?? doc.description;
 
-    // Reset moderation status automatically when an instructor edits the test
-    doc.visibility = "pending";
+    // Handles saving as draft vs submitting for review
+    doc.visibility = "pending";if (p.visibility === "draft" || p.visibility === "pending") {
+        doc.visibility = p.visibility;
+    } else {
+        doc.visibility = "pending";
+    }
     doc.adminFeedback = "";
 
     await doc.save();
@@ -240,8 +296,8 @@ const updateTest = async (req, res) => {
 };
 
 /**
+ *  * * DELETE /api/tests/:id
  * Deletes a test from the database after verifying the user's permissions.
- * * DELETE /api/tests/:id
  */
 const deleteTest = async (req, res) => {
   try {
@@ -298,8 +354,8 @@ const listPublicTests = async (req, res) => {
 };
 
 /**
- * Retrieves a public test by ID for students to take (contains full questions).
  * * GET /api/public/tests/:id
+ * Retrieves a public test by ID for students to take (contains full questions).
  */
 const getPublicTestById = async (req, res) => {
   try {
@@ -313,9 +369,9 @@ const getPublicTestById = async (req, res) => {
 };
 
 /**
+ * * POST /api/tests/grade-essay
  * Sends a student's essay answer to the external Python AI Agent for grading.
  * Note: This acts as a proxy between the frontend and the AI microservice.
- * * POST /api/tests/grade-essay
  */
 const gradeEssay = async (req, res) => {
   try {
@@ -341,9 +397,9 @@ const gradeEssay = async (req, res) => {
 };
 
 /**
+ * * POST /api/tests/submit
  * Saves the test result when a student submits their test.
  * Includes background logic to monitor leaderboard changes and send notifications.
- * * POST /api/tests/submit
  */
 const submitTest = async (req, res) => {
   try {
@@ -464,9 +520,9 @@ const submitTest = async (req, res) => {
 };
 
 /**
+ * * POST /api/tests/update-grade
  * Updates the AI grade, feedback, and suggestion for a specific essay question in an existing result.
  * Typically called after manual grading trigger from the frontend.
- * * POST /api/tests/update-grade
  */
 const updateEssayGrade = async (req, res) => {
   try {
@@ -510,9 +566,9 @@ const updateEssayGrade = async (req, res) => {
 };
 
 /**
+ * * GET /api/tests/public/:id/leaderboard
  * Fetches the top 10 leaderboard for a specific test.
  * Uses MongoDB Aggregation to ensure each student only appears once with their best attempt.
- * * GET /api/tests/public/:id/leaderboard
  */
 const getTestLeaderboard = async (req, res) => {
   try {
@@ -577,9 +633,9 @@ const getTestLeaderboard = async (req, res) => {
 };
 
 /**
+ * * GET /api/tests/results/:resultId
  * Retrieves the detailed results of a completed test (including questions and chosen answers).
  * Ensures students can only view their own test results.
- * * GET /api/tests/results/:resultId
  */
 const getTestResultById = async (req, res) => {
     try {
@@ -603,9 +659,9 @@ const getTestResultById = async (req, res) => {
 };
 
 /**
+ * * POST /api/tests/trigger-ai-grading
  * Triggers the AI grading process as a background job.
  * Allows the user to leave the page while the AI microservice processes the essay.
- * * POST /api/tests/trigger-ai-grading
  */
 const triggerAIGrading = async (req, res) => {
     const { resultId, questionIdx } = req.body;
@@ -683,7 +739,7 @@ const getAdminTests = async (req, res) => {
 /**
  * * PATCH /api/tests/admin/:id/review
  * Admin only route: Approves or Rejects a test submission.
- * Saves admin feedback directly to the test document if rejected, to help instructors fix issues.
+ * On approval, it cleans the title and archives any previously existing versions of the same test.
  */
 const reviewTest = async (req, res) => {
     try {
@@ -700,9 +756,72 @@ const reviewTest = async (req, res) => {
         // Apply moderation decision
         t.visibility = status;
         t.adminFeedback = note || "";   // Store rejection reason (if any)
-        await t.save();
 
+        // Automation for approved tests
+        if (status === "published") {
+            // Cleans the "(Draft Edit)" tag from the title
+            t.title = t.title.replace(/\s*\(Draft Edit\)/i, "").trim();
+            
+            // Automatically archives the old version to avoid duplicate entries in the library
+            await Test.updateMany(
+                { 
+                    _id: { $ne: t._id }, 
+                    createdBy: t.createdBy, 
+                    title: t.title, 
+                    visibility: "published" 
+                },
+                { $set: { visibility: "archived" } }
+            );
+        }
+
+        await t.save();
         res.json({ message: `Test ${status}` });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ message: "Server error" });
+    }
+};
+
+/**
+ * * PATCH /api/tests/:id/archive
+ * Manually moves a test to the archive to hide it from students without deleting its historical data.
+ */
+const archiveTest = async (req, res) => {
+    try {
+        const t = await Test.findById(req.params.id);
+        if (!t) return res.status(404).json({ message: "Not found" });
+        if (String(t.createdBy) !== String(req.userId)) return res.status(403).json({ message: "Forbidden" });
+        
+        t.visibility = "archived";
+        await t.save();
+        res.json({ message: "Test archived successfully" });
+    } catch (e) {
+        res.status(500).json({ message: "Server error" });
+    }
+};
+
+/**
+ * * POST /api/tests/:id/clone
+ * Duplicates a test into a "draft" state, allowing instructors to make safe updates 
+ * without affecting the current live version.
+ */
+const createDraftClone = async (req, res) => {
+    try {
+        const t = await Test.findById(req.params.id).lean();
+        if (!t) return res.status(404).json({ message: "Not found" });
+        if (String(t.createdBy) !== String(req.userId)) return res.status(403).json({ message: "Forbidden" });
+
+        // Removes unique IDs and timestamps to create a clean copy
+        const { _id, createdAt, updatedAt, ...restData } = t;
+
+        const clonedTest = await Test.create({
+            ...restData,
+            title: `${t.title} (Draft Edit)`,
+            visibility: "draft",
+            adminFeedback: ""
+        });
+        
+        res.status(201).json({ id: clonedTest._id, message: "Draft clone created" });
     } catch (e) {
         console.error(e);
         res.status(500).json({ message: "Server error" });
@@ -713,4 +832,5 @@ module.exports = {
   createTest, getMyTests, getOneTest, updateTest, deleteTest, 
   listPublicTests, getPublicTestById, gradeEssay, submitTest, updateEssayGrade,
   getTestLeaderboard, getTestResultById, triggerAIGrading, getAdminTests, reviewTest,
+  archiveTest, createDraftClone, 
 };

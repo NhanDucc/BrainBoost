@@ -1,13 +1,11 @@
 .teacher-container { width:min(1100px,92vw); margin:24px auto 48px; }
 .pg-title { font-size:clamp(20px,3vw,28px); font-weight:900; margin:0 0 12px; color: var(--text-main); }
 
-/* cards */
 .card {
   background: var(--bg-card); border:1px solid var(--border-color); border-radius:12px; padding:16px; margin-bottom:14px;
   box-shadow:0 8px 20px rgba(0,0,0,.05);
 }
 .card h3 { color: var(--text-main); }
-/* form */
 .form-grid { display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:12px; }
 .form-row { display:flex; flex-direction:column; gap:6px; }
 .form-row.full { grid-column: 1 / -1; }
@@ -17,12 +15,10 @@
 }
 .readonly { background: var(--bg-main); border:1px dashed var(--border-color); padding:10px; border-radius:8px; color: var(--text-main);}
 
-/* tags */
 .chips { display:flex; gap:8px; flex-wrap:wrap; }
 .chip { border:1px solid var(--border-color); background: var(--bg-object); color: var(--primary-hover); padding:6px 10px; border-radius:999px; font-weight:800; cursor:pointer; }
 .chip.active { background: var(--primary); color:#fff; border-color: var(--primary); }
 
-/* question builder */
 .q-list { display:grid; gap:12px; }
 .q-card { border:1px solid var(--border-color); border-radius:12px; padding:12px; background: var(--bg-card); }
 .q-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
@@ -39,12 +35,10 @@
   flex:1; border:1px solid var(--border-input); background: var(--bg-input); color: var(--text-main); padding:10px; border-radius:10px;
 }
 
-/* actions */
 .actions { display:flex; justify-content:flex-end; gap:8px; margin-top:12px; }
 .primary-btn { background: var(--primary); color:#fff; border:0; padding:10px 16px; border-radius:10px; font-weight:800; cursor:pointer; }
 .ghost-btn { background: var(--bg-card); color: var(--primary-hover); border:1px solid var(--border-color); padding:10px 16px; border-radius:10px; font-weight:800; cursor:pointer; }
 
-/* editor toast */
 .toast {
   position:fixed; right:16px; bottom:16px; padding:10px 14px; border-radius:10px; color:#fff; font-weight:800; z-index:9999;
   box-shadow:0 10px 24px rgba(0,0,0,.2);
@@ -56,7 +50,6 @@
   .form-grid { grid-template-columns: 1fr; }
 }
 
-/* ============ NEW: Question type dropdown ============ */
 .qtype-select {
   appearance: none;
   border: 1px solid var(--border-input);
@@ -72,13 +65,11 @@
   border-color: var(--primary);
 }
 
-/* Optional: subtle hover for each question card */
 .q-card:hover {
   box-shadow: 0 8px 20px rgba(0, 0, 0, .05);
   transition: box-shadow .2s ease;
 }
 
-/* ============ NEW: True/False chips ============ */
 .tf-row {
   display: flex;
   gap: 10px;
@@ -113,7 +104,6 @@
   border-color: var(--primary);
 }
 
-/* ============ NEW: Essay model answer area ============ */
 .q-row textarea[rows="3"] {
   /* essay model answer */
   border: 1px solid var(--border-input);
@@ -122,7 +112,6 @@
   border-radius: 10px;
 }
 
-/* ============ NEW: Accessibility / focus states ============ */
 .q-row input[type="text"],
 .q-row textarea,
 .choice-row input:not([type="radio"]),
@@ -141,10 +130,24 @@
   box-shadow: 0 0 0 3px rgba(0, 87, 255, 0.12);
 }
 
-/* ============ NEW: Small visual tweaks ============ */
 .q-head .q-no {
   margin-right: 8px;
 }
 .q-head {
   gap: 10px;
 }
+
+.published-warning-banner {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    padding: 16px 20px;
+    border-radius: 12px;
+    margin-top: 24px;
+    color: #1e3a8a;
+}
+.published-warning-banner i { font-size: 28px; color: #3b82f6; }
+.published-warning-banner p { margin: 4px 0 0 0; font-size: 14px; color: #475569; line-height: 1.5; }
+.published-warning-banner button { margin-left: auto; white-space: nowrap; }

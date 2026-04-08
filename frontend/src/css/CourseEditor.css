@@ -2,7 +2,6 @@
 .course-container { width:min(1100px,92vw); margin:24px auto 48px; }
 .pg-title { font-size:clamp(20px,3vw,28px); font-weight:900; margin:0 0 12px; }
 
-/* cards */
 .card {
   background:var(--bg-card);
   border:1px solid var(--border-color);
@@ -12,7 +11,6 @@
   box-shadow:0 8px 20px rgba(0,0,0,.06);
 }
 
-/* ===== Hộp chú ý ở đầu Curriculum ===== */
 .upload-hints {
   margin-bottom: 12px;
   padding: 10px 12px;
@@ -40,7 +38,6 @@
   font-weight:800;
 }
 
-/* form */
 .form-grid { display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:12px; }
 .form-row { display:flex; flex-direction:column; gap:6px; }
 .form-row.full { grid-column:1/-1; }
@@ -53,7 +50,6 @@
 .cover-uploader .url-input { flex:1; }
 .cover-preview { margin-top:8px; max-width:100%; border-radius:10px; border:1px solid var(--border-color); }
 
-/* builder */
 .sec-list { display:grid; gap:12px; }
 .sec-card { border:1px solid var(--border-color); border-radius:12px; padding:12px; background:var(--bg-card); }
 .sec-head { display:flex; gap:8px; align-items:center; justify-content:space-between; }
@@ -74,14 +70,12 @@
   border:1px solid var(--border-input); background:var(--bg-input); color:var(--text-main); padding:8px; border-radius:10px; font:inherit;
 }
 
-/* khối resource (checkbox + upload) */
 .ls-resource {
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
 
-/* checkbox “show original / AI slides” */
 .lesson-switch-row {
   display: flex;
   flex-direction: column;
@@ -100,7 +94,6 @@
   accent-color:var(--primary);
 }
 
-/* input URL + nút upload/remove */
 .ls-file-actions {
   display: flex;
   flex-wrap: wrap;
@@ -113,7 +106,6 @@
   color: var(--text-secondary);
 }
 
-/* Nút sinh slide + text trạng thái */
 .lesson-ai-actions {
   display: flex;
   flex-wrap: wrap;
@@ -130,7 +122,6 @@
   color: var(--text-secondary);
 }
 
-/* preview trạng thái lesson */
 .lesson-ai-preview {
   margin-top: 6px;
   padding: 8px 10px;
@@ -146,7 +137,6 @@
 }
 .lesson-ai-preview p { margin:0; }
 
-/* actions + toast */
 .actions { display:flex; justify-content:flex-end; gap:8px; margin-top:12px; }
 .primary-btn { background:var(--primary); color:#fff; border:0; padding:10px 16px; border-radius:10px; font-weight:800; cursor:pointer; }
 .ghost-btn { background:var(--bg-card); color:var(--primary); border:1px solid var(--border-color); padding:10px 16px; border-radius:10px; font-weight:800; cursor:pointer; }
@@ -168,3 +158,18 @@
     grid-template-columns: 26px 1fr 120px 90px 1.4fr 30px;
   }
 }
+
+.published-warning-banner {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    padding: 16px 20px;
+    border-radius: 12px;
+    margin-top: 24px;
+    color: #1e3a8a;
+}
+.published-warning-banner i { font-size: 28px; color: #3b82f6; }
+.published-warning-banner p { margin: 4px 0 0 0; font-size: 14px; color: #475569; line-height: 1.5; }
+.published-warning-banner button { margin-left: auto; white-space: nowrap; }

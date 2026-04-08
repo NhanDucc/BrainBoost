@@ -4,6 +4,7 @@ const {
     createTest, getMyTests, getOneTest, updateTest, deleteTest, 
     listPublicTests, getPublicTestById, gradeEssay, submitTest, updateEssayGrade,
     getTestLeaderboard, getTestResultById, triggerAIGrading, getAdminTests, reviewTest,
+    archiveTest, createDraftClone, 
 } = require("../controllers/testController");
 const { auth, authorize } = require("../middleware/auth");
 
@@ -22,6 +23,8 @@ router.post("/", auth, authorize("instructor"), createTest);
 router.get("/:id", auth, authorize("instructor"), getOneTest);
 router.patch("/:id", auth, authorize("instructor"), updateTest);
 router.delete("/:id", auth, authorize("instructor"), deleteTest);
+router.patch("/:id/archive", auth, authorize("instructor"), archiveTest);
+router.post("/:id/clone", auth, authorize("instructor"), createDraftClone);
 
 router.post("/grade-essay", auth, gradeEssay);
 router.post("/submit", auth, submitTest);

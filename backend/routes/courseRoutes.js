@@ -2,9 +2,9 @@ const express = require("express");
 const router = express.Router();
 const { auth, authorize } = require("../middleware/auth");
 const {
-    createCourse, getCourse, updateCourse, listCourses, listPublicCourses,
-    getPublicCourseById, deleteCourse, generateLessonSlides, createLearningPath, markLessonProgress,
-    getAdminCourses, reviewCourse, 
+  createCourse, getCourse, updateCourse, listCourses, listPublicCourses,
+  getPublicCourseById, deleteCourse, generateLessonSlides, createLearningPath, markLessonProgress,
+  getAdminCourses, reviewCourse, archiveCourse, createDraftClone, 
 } = require("../controllers/courseController");
 const { uploadDoc, toCloudinaryDoc } = require("../middleware/uploadDoc");
 
@@ -65,5 +65,7 @@ router.get("/:id", auth, getCourse);
 router.patch("/:id", auth, authorize("admin", "instructor"), updateCourse);
 router.delete("/:id", auth, authorize("admin", "instructor"), deleteCourse);
 router.post("/:id/progress", auth, markLessonProgress);
+router.patch("/:id/archive", auth, authorize("instructor"), archiveCourse);
+router.post("/:id/clone", auth, authorize("instructor"), createDraftClone);
 
 module.exports = router;

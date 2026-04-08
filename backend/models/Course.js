@@ -16,14 +16,10 @@ const AiSlideSchema = new mongoose.Schema(
             required: true, 
             trim: true 
         },
-        // Array of key takeaways or bullet points for the slide
         bullets: { type: [String], default: [] },
-        
-        // Text specifically formatted for Text-To-Speech (TTS) engines.
-        // Usually a combination of bullets or a synthesized summary of the slide.
         ttsText: { type: String, default: "" },
     },
-    { _id: false } // Disable automatic _id generation for sub-documents to keep data clean
+    { _id: false }
 );
 
 /**
@@ -43,25 +39,12 @@ const LessonSchema = new mongoose.Schema(
             enum: ["lesson", "quiz"], // Defines the lesson format
             required: true,
         },
-        // Estimated time to complete a lesson, or the time limit for a quiz (in minutes)
         durationMin: { type: Number, min: 0, default: null },
-
-        // Primary resource URL (Used for rendering inside the CoursePlayer iframe).
-        // Typically a Cloudinary URL for pdf / docx / pptx / txt files.
         contentUrl: { type: String, default: "" },
-
-        // Preserves the original uploaded file link in case `contentUrl` is transformed or modified later.
         originalDocUrl: { type: String, default: "" },   
         originalDocType: { type: String, default: "" },  // e.g., "pdf", "docx", "pptx", "txt"
-
-        // Array of AI-generated slides associated with this lesson
         aiSlides: { type: [AiSlideSchema], default: [] },
-
-        // Access Control: Toggle to allow students to switch to the "AI slides" tab in the CoursePlayer
         useAiSlides: { type: Boolean, default: false },
-
-        // Access Control: Toggle to allow students to view the raw uploaded document.
-        // (If false, students might only be allowed to see the AI slides).
         useOriginalDoc: { type: Boolean, default: true },
     },
     { _id: false }
@@ -95,72 +78,59 @@ const CourseSchema = new mongoose.Schema(
             required: true, 
             trim: true 
         },
-
         slug: { 
             type: String, 
             default: "", 
             trim: true 
         },
-
         subject: {
             type: String,
             enum: ["math", "english", "physics", "chemistry"],
             required: true,
         },
-
         grade: { 
             type: String, 
             required: true, 
             trim: true 
         },
-        
         learn: { 
             type: [String], 
             default: [] 
         },
-        
         durationText: { 
             type: String, 
             default: "" 
         },
-        
         description: { 
             type: String, 
             default: "" 
         },
-
         tags: { 
             type: [String], 
             default: [] 
         },
-
         price: { 
             type: Number, 
             min: 0, 
             default: null 
         },
-
         visibility: { 
             type: String,
-            enum: ["pending", "published", "rejected"],
-            default: "pending" 
+            enum: ["draft", "pending", "published", "rejected", "archived"],
+            default: "draft" 
         },
-        
         adminFeedback: { 
             type: String, 
             default: "" 
         },
-
         coverUrl: { 
             type: String, 
             default: "" 
         },
-
         sections: { 
             type: [SectionSchema], 
             default: [] 
         },
-
         createdBy: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "User",

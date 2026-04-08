@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { api } from "../api";
 import SiteHeader from "./Header";
 import SiteFooter from "./Footer";
 import { toAbsolute } from "../utils/url";
@@ -7,420 +8,440 @@ import "../css/InstructorDashboard.css";
 
 // ==== Constants & Configurations ====
 
-// Defines the available tabs in the dashboard
+// Main navigation tabs for the dashboard
 const TABS = [
   { key: "tests", label: "My Tests" },
   { key: "courses", label: "My Courses" },
 ];
 
-// Predefined list of subjects for the filter dropdown
+// Predefined list of subjects for filtering
 const SUBJECTS = [
-  { key: "all", name: "All subjects" },
+  { key: "all", name: "All" },
   { key: "math", name: "Mathematics" },
   { key: "english", name: "English" },
   { key: "physics", name: "Physics" },
   { key: "chemistry", name: "Chemistry" },
 ];
 
+// Options for dropdown filters
+const GRADES = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"];
+const DIFFS = ["Easy", "Medium", "Hard"];
+const STATUSES = ["All", "Draft", "Pending", "Published", "Rejected", "Archived"];
+
+/**
+ * Extracts the difficulty level from an array of tags.
+ * Falls back to "General" if no specific difficulty tag is found.
+ */
+const getDifficulty = (tags = []) => {
+  const f = tags.find(t => DIFFS.includes(t));
+  return f || "General";
+};
+
+// ==== Main Component ====
+
 export default function InstructorDashboard() {
-  // ==== Navigation State ====
-  const [tab, setTab] = useState("tests"); // Tracks the currently active tab
-
-  // ==== Data States ====
-  const [tests, setTests] = useState([]);     // Holds the fetched list of tests
-  const [courses, setCourses] = useState([]); // Holds the fetched list of courses
-
-  // ==== Shared UI States ====
-  const [loading, setLoading] = useState(false); // Controls the loading spinner/text
-  const [q, setQ] = useState("");                // Stores the current search query
-  const [subj, setSubj] = useState("all");       // Stores the currently selected subject filter
-  const [toast, setToast] = useState(null);      // Manages success/error popup notifications
   const navigate = useNavigate();
 
-  // ==== Custom Delete Modal State ====
-  // Manages the visibility and context of the custom confirmation modal
-  const [deleteModal, setDeleteModal] = useState({
-    isOpen: false,
-    id: null,       // ID of the item to delete
-    type: null,     // Determines the endpoint: 'test' or 'course'
-    title: ""       // Displayed in the modal for confirmation
-  });
+  // ---- Navigation & Filter States ----
+  const [tab, setTab] = useState("tests");
+  const [q, setQ] = useState("");
+  const [debouncedQ, setDebouncedQ] = useState("");
+  const [subjectTab, setSubjectTab] = useState("all");
+  const [filterGrade, setFilterGrade] = useState("All");
+  const [filterDifficulty, setFilterDifficulty] = useState("All");
+  const [filterStatus, setFilterStatus] = useState("All");
 
-  // Scroll to top on initial component mount
-  useEffect(() => { window.scrollTo(0, 0); }, []);
+  // ---- Pagination & Data States ----
+  const [page, setPage] = useState(1);
+  const [data, setData] = useState([]);
+  const [pagination, setPagination] = useState({ currentPage: 1, totalPages: 1, totalItems: 0, limit: 12 });
+  
+  // ---- UI States ----
+  const [loading, setLoading] = useState(true);
+  const [toast, setToast] = useState(null);
+  
+  // Manages the state of the confirmation modal for Delete (Hard) and Archive (Soft) actions
+  const [actionModal, setActionModal] = useState({ isOpen: false, id: null, type: null, title: "", action: "" });
 
-  // ==== Data Fetching Functions ====
+  // ==== Lifecycle Effects ====
 
-  /**
-   * Fetches tests created by the currently logged-in instructor.
-   * The '?mine=1' query parameter instructs the backend to filter by req.userId.
-   */
-  const fetchTests = async () => {
-    setLoading(true);
-    try {
-      const url = toAbsolute(`/api/tests?mine=1`);
-      const res = await fetch(url, { credentials: "include" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      setTests(data || []);
-    } catch (e) {
-      setToast({ type: "error", msg: `Load failed: ${e.message}` });
-    } finally {
-      setLoading(false);
-      setTimeout(() => setToast(null), 4000);
-    }
-  };
-
-  /**
-   * Fetches courses created by the currently logged-in instructor.
-   */
-  const fetchCourses = async () => {
-    setLoading(true);
-    try {
-      const url = toAbsolute(`/api/courses?mine=1`);
-      const res = await fetch(url, { credentials: "include" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      setCourses(Array.isArray(data) ? data : []);
-    } catch (e) {
-      setToast({ type: "error", msg: `Load failed: ${e.message}` });
-    } finally {
-      setLoading(false);
-      setTimeout(() => setToast(null), 4000);
-    }
-  };
-
-  // Re-fetch data whenever the user switches tabs
+  // Automatically dismiss toast notifications after 3 seconds
   useEffect(() => {
-    if (tab === "tests") fetchTests();
-    if (tab === "courses") fetchCourses();
-    // eslint-disable-next-line
-  }, [tab]);
+    if (toast) {
+      const timer = setTimeout(() => setToast(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast]);
 
-  // ==== Search & Filter Logic (Memoized) ====
+  // Debounce the search input: Wait 500ms after the user stops typing before updating the actual query state
+  useEffect(() => {
+    const handler = setTimeout(() => setDebouncedQ(q), 500);
+    return () => clearTimeout(handler);
+  }, [q]);
 
-  /**
-   * Memoized filtered list of tests.
-   * Re-calculates only when 'tests', 'q' (search), or 'subj' (subject) changes.
-   */
-  const filteredTests = useMemo(() => {
-    const term = q.trim().toLowerCase();
-    return tests.filter(t => {
-      // Check subject match
-      const okSubj = subj === "all" || t.subject === subj;
-      if (!term) return okSubj;
-      
-      // Build a searchable string "haystack" from various metadata fields
-      const hay = `${t.title} ${t.description || ""} ${(t.tags||[]).join(" ")} ${t.grade || ""}`.toLowerCase();
-      
-      // Return true if both subject matches and the search term is found in the haystack
-      return okSubj && hay.includes(term);
-    });
-  }, [tests, q, subj]);
+  // Reset pagination to page 1 whenever any filter, tab, or search query changes
+  useEffect(() => {
+    setPage(1);
+  }, [tab, debouncedQ, subjectTab, filterGrade, filterDifficulty, filterStatus]);
 
-  /**
-   * Memoized filtered list of courses.
-   */
-  const filteredCourses = useMemo(() => {
-    const term = q.trim().toLowerCase();
-    return courses.filter(c => {
-      const okSubj = subj === "all" || c.subject === subj;
-      if (!term) return okSubj;
-      const hay = `${c.title} ${c.description || ""} ${(c.tags||[]).join(" ")} ${c.grade || ""}`.toLowerCase();
-      return okSubj && hay.includes(term);
-    });
-  }, [courses, q, subj]);
+  // Main data fetching effect (Implements "Stale-While-Revalidate" caching pattern)
+  useEffect(() => {
+    let ignore = false;
+    
+    const fetchDashboardData = async () => {
+      const isTest = tab === "tests";
+      const endpoint = isTest ? "/api/tests" : "/api/courses";
+        
+      // Build the query string from active filters
+      const params = new URLSearchParams();
+      params.append("mine", "1");
+      params.append("page", page);
+      params.append("limit", 12);
+        
+      if (debouncedQ) params.append("q", debouncedQ);
+      if (subjectTab !== "all") params.append("subject", subjectTab);
+      if (filterGrade !== "All") params.append("grade", filterGrade);
+      if (filterStatus !== "All") params.append("status", filterStatus);
+      if (isTest && filterDifficulty !== "All") params.append("difficulty", filterDifficulty);
+
+      const queryString = params.toString();
+      // Create a unique cache key based on the current URL parameters
+      const cacheKey = `dashboard_v3_${tab}_${queryString}`;
+
+      // Check session storage for cached data to display instantly
+      const cachedData = sessionStorage.getItem(cacheKey);
+      if (cachedData) {
+        const parsed = JSON.parse(cachedData);
+        setData(parsed.data || []);
+        setPagination(parsed.pagination || { currentPage: page, totalPages: 1 });
+        setLoading(false);  // Hide skeleton since we have cached data
+      } else {
+        setLoading(true);   // Show skeleton if no cache exists
+      }
+
+      // Fetch fresh data from the server in the background to ensure it is up-to-date
+      try {
+        const res = await fetch(toAbsolute(`${endpoint}?${queryString}`), { credentials: "include" });
+        if (res.ok) {
+          const json = await res.json();
+          if (!ignore) {
+            const fetchedData = json.data || (Array.isArray(json) ? json : []);
+            const fetchedPagination = json.pagination || { currentPage: page, totalPages: 1 };
+                    
+            setData(fetchedData);
+            setPagination(fetchedPagination);
+            // Update the cache with the freshest data
+            sessionStorage.setItem(cacheKey, JSON.stringify({ data: fetchedData, pagination: fetchedPagination }));
+          }
+        }
+      } catch (e) {
+        console.error("Fetch error:", e);
+      } finally {
+        if (!ignore) setLoading(false);
+      }
+    };
+
+    fetchDashboardData();
+    return () => { ignore = true; };
+  }, [tab, page, debouncedQ, subjectTab, filterGrade, filterDifficulty, filterStatus]);
 
   // ==== Action Handlers ====
 
   /**
-   * Executes the deletion API call based on the data stored in the deleteModal state.
-   * Triggered when the user clicks "Delete Permanently" inside the custom modal.
+   * Opens the confirmation modal before executing a destructive action.
+   * Prevents accidental clicks from immediately deleting data.
    */
-  const executeDelete = async () => {
-    const { id, type } = deleteModal;
+  const confirmAction = (e, id, type, title, action) => {
+    e.stopPropagation();
+    setActionModal({ isOpen: true, id, type, title, action });
+  };
+
+  /**
+   * Executes either a Hard Delete or an Archive (Soft Delete) based on the modal's state.
+   */
+  const executeAction = async () => {
+    const { id, type, action } = actionModal;
     try {
-      // Determine the correct API endpoint based on the item type
-      const endpoint = type === 'test' ? `/api/tests/${id}` : `/api/courses/${id}`;
+      // Determine the correct API endpoint and HTTP method
+      const endpoint = type === "test" 
+        ? `/tests/${id}${action === 'archive' ? '/archive' : ''}` 
+        : `/courses/${id}${action === 'archive' ? '/archive' : ''}`;
       
-      const res = await fetch(toAbsolute(endpoint), {
-        method: "DELETE",
-        credentials: "include",
+      // Automatically handle CSRF tokens
+      if (action === 'archive') {
+         await api.patch(endpoint);   // Archive is an update
+      } else {
+         await api.delete(endpoint);  // Permanent deletion
+      }
+      
+      // Clear relevant session storage cache to force a fresh fetch on next load
+      Object.keys(sessionStorage).forEach(key => {
+        if (key.startsWith(`dashboard_v3_${tab}`)) sessionStorage.removeItem(key);
       });
       
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data?.message || `HTTP ${res.status}`);
-      }
-
-      setToast({ type: "success", msg: "Deleted permanently." });
-      
-      // Optimistically remove the item from the local state to avoid a full page reload
-      if (type === 'test') {
-        setTests(prev => prev.filter(x => String(x._id) !== String(id)));
+      if (action === 'delete') {
+        // Optimistically remove the item from the UI
+        setData(prev => prev.filter(item => item._id !== id));
       } else {
-        setCourses(prev => prev.filter(x => String(x._id) !== String(id)));
+        // Reload the page to reflect the new "Archived" status correctly
+        window.location.reload();
       }
+      
+      setToast({ type: "success", msg: `${type === "test" ? "Test" : "Course"} ${action}d.` });
     } catch (e) {
-      setToast({ type: "error", msg: `Delete failed: ${e.message}` });
+      // Extract error message safely
+      const errorMsg = e.response?.data?.message || e.message;
+      setToast({ type: "error", msg: `Action failed: ${errorMsg}` });
     } finally {
-      // Close the modal and reset its state regardless of success or failure
-      setDeleteModal({ isOpen: false, id: null, type: null, title: "" });
-      setTimeout(() => setToast(null), 4000);
+      // Close the modal
+      setActionModal({ isOpen: false, id: null, type: null, title: "", action: "" });
     }
   };
 
-  // ==== Render ====
+  const fmtDate = (d) => new Date(d).toLocaleDateString();
+  const formatType = tab === "tests" ? "Test" : "Course";
+
+  /**
+   * Skeleton placeholder component shown while data is loading.
+   * Helps prevent Cumulative Layout Shift (CLS) by maintaining the grid structure.
+   */
+  const SkeletonCard = () => (
+    <div className="t-card grid-item skeleton-card">
+      <div className="t-card-thumb skeleton skeleton-img"></div>
+
+      <div className="t-card-body">
+        <div className="skeleton skeleton-title"></div>
+        <div className="skeleton skeleton-title" style={{ width: '60%' }}></div>
+        <div className="status-row"><div className="skeleton skeleton-badge-large"></div></div>
+        <div className="t-meta"><div className="skeleton skeleton-badge-small"></div><div className="skeleton skeleton-badge-small"></div></div>
+      </div>
+
+      <div className="t-card-footer" style={{ display: 'flex', justifyContent: 'space-between' }}>
+        <div className="skeleton skeleton-btn"></div><div className="skeleton skeleton-btn"></div><div className="skeleton skeleton-btn" style={{ width: '20%' }}></div>
+      </div>
+    </div>
+  );
+
+  // ==== Render UI ====
 
   return (
     <div className="teacher-page">
       <SiteHeader />
-
-      <main className="teacher-container">
+      <div className="teacher-container">
+        
+        {/* ==== Dashboard Header & Tabs ==== */}
         <div className="dash-top">
-          <h1 className="pg-title">Instructor Dashboard</h1>
+          <div>
+            <h1 className="pg-title">Instructor Dashboard</h1>
+            <div className="tabs-row">
+              {TABS.map((t) => (
+                <button
+                  key={t.key}
+                  className={`tab ${tab === t.key ? "active" : ""}`}
+                  onClick={() => {
+                      setTab(t.key);
+                      // Reset all dropdown filters when switching main tabs
+                      setFilterGrade("All");
+                      setFilterDifficulty("All");
+                      setFilterStatus("All");
+                  }}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
 
-          {/* ---- Tab Navigation ---- */}
-          <div className="tabs-row">
-            {TABS.map(t => (
-              <button
-                key={t.key}
-                className={`tab ${tab === t.key ? "active" : ""}`}
-                onClick={() => setTab(t.key)}
-              >
-                {t.label}
-              </button>
+          <button className="primary-btn" onClick={() => navigate(tab === "tests" ? "/instructor/tests/new" : "/instructor/courses/new")}>
+            + New {formatType}
+          </button>
+        </div>
+
+        {/* ==== Toolbar: Search & Filters ==== */}
+        <div className="teacher-toolbar">
+          <div className="toolbar-top-row">
+            {/* Search Bar */}
+            <div className="search">
+              <i className="bi bi-search"></i>
+              <input placeholder={`Search ${tab}...`} value={q} onChange={(e) => setQ(e.target.value)} />
+              {q && <button className="clear-btn" onClick={() => setQ("")}>✕</button>}
+            </div>
+                
+            {/* Filter Dropdowns */}
+            <div className="filter-group">
+              <div className="filter-item">
+                <i className="bi bi-funnel-fill"></i>
+                <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
+                  <option value="All">All Status</option>
+                  {STATUSES.filter(s => s !== "All").map(s => ( <option key={s} value={s}>{s}</option> ))}
+                </select>
+              </div>
+
+              <div className="filter-item">
+                <i className="bi bi-mortarboard-fill"></i>
+                <select value={filterGrade} onChange={(e) => setFilterGrade(e.target.value)}>
+                  <option value="All">All Grades</option>
+                  {GRADES.map(g => ( <option key={g} value={g}>Grade {g}</option> ))}
+                </select>
+              </div>
+
+              {/* Difficulty filter only makes sense for tests, hide it for courses */}
+              {tab === "tests" && (
+                <div className="filter-item">
+                  <i className="bi bi-bar-chart-steps"></i>
+                    <select value={filterDifficulty} onChange={(e) => setFilterDifficulty(e.target.value)}>
+                      <option value="All">All Difficulties</option>
+                      <option value="Easy">Easy</option>
+                      <option value="Medium">Medium</option>
+                      <option value="Hard">Hard</option>
+                    </select>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Subject Filter Tabs */}
+          <div className="subj-tabs">
+            {SUBJECTS.map((s) => (
+              <button key={s.key} className={`subj-tab ${subjectTab === s.key ? "active" : ""}`} onClick={() => setSubjectTab(s.key)}>{s.name}</button>
             ))}
           </div>
         </div>
 
-        {/* ---- Toolbar (Search, Filter, Add New) ---- */}
-        {(tab === "tests" || tab === "courses") && (
-          <div className="bar">
-            <div className="bar-left">
-              {/* Search Input */}
-              <div className="search">
-                <i className="bi bi-search" />
-                <input
-                  placeholder={tab === "tests" ? "Search your tests…" : "Search your courses…"}
-                  value={q}
-                  onChange={(e) => setQ(e.target.value)}
-                />
-              </div>
-              {/* Subject Filter Dropdown */}
-              <select
-                className="sel"
-                value={subj}
-                onChange={(e) => setSubj(e.target.value)}
-              >
-                {SUBJECTS.map(s => (
-                  <option key={s.key} value={s.key}>{s.name}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="bar-right">
-              {/* Dynamic Add Button based on active tab */}
-              {tab === "tests" ? (
-                <button
-                  className="primary-btn"
-                  onClick={() => navigate("/instructor/tests/new")}
+        {/* Data Grid & Cards */}
+        {loading && data.length === 0 ? (
+          <div className="t-grid">{[...Array(8)].map((_, i) => <SkeletonCard key={i} />)}</div>
+        ) : data.length === 0 ? (
+          <div className="empty">No {tab} found. Try adjusting your search or filters.</div>
+        ) : (
+          <>
+            <div className="t-grid">
+              {data.map((item) => (
+                <div 
+                  key={item._id} 
+                  className={`t-card grid-item ${item.visibility === 'rejected' ? 'status-rejected' : ''} ${item.visibility === 'archived' ? 'status-archived' : ''}`} 
+                  onClick={() => navigate(tab === "tests" ? `/instructor/tests/${item._id}/edit` : `/instructor/courses/${item._id}/edit`)}
                 >
-                  <i className="bi bi-plus-lg" /> Add New Test
-                </button>
-              ) : (
-                <button
-                  className="primary-btn"
-                  onClick={() => navigate("/instructor/courses/new")}
-                >
-                  <i className="bi bi-plus-lg" /> Add New Course
-                </button>
-              )}
-            </div>
-          </div>
-        )}
+                  {/* Card Thumbnail / Icon Header */}
+                  <div className={`t-card-thumb thumb-${(item.subject || "").toLowerCase()}`}>
+                    {tab === "courses" && item.coverUrl ? ( <img src={item.coverUrl} alt="" className="grid-thumb-img" /> ) : ( <i className={tab === "tests" ? "bi bi-trophy" : "bi bi-journal-album"}></i> )}
+                  </div>
 
-        {/* ==== Tab: Tests List ==== */}
-        {tab === "tests" && (
-          <section className="list-wrap">
-            {loading ? (
-              <div className="empty">Loading…</div>
-            ) : filteredTests.length === 0 ? (
-              <div className="empty">
-                No tests found. Click <b>Add New Test</b> to create one.
-              </div>
-            ) : (
-              <div className="cards">
-                {filteredTests.map(t => (
-                  <article key={t._id} className="tcard">
-                    <div className="tcard-main">
-                      {/* Header with Title and Content Moderation Status Badge */}
-                      <div className="tcard-header">
-                        <h3 className="t-title">{t.title}</h3>
-                        <span className={`status-badge ${t.visibility || 'pending'}`}>
-                          {t.visibility || 'pending'}
-                        </span>
+                  {/* Card Body Information */}
+                  <div className="t-card-body">
+                    <h3 className="t-title">{item.title}</h3>
+                    
+                    {/* Moderation Status Badges */}
+                    <div className="status-row">
+                      {item.visibility === "draft" && <span className="status-badge draft"><i className="bi bi-pencil-fill"></i> Draft</span>}
+                      {item.visibility === "pending" && <span className="status-badge pending"><i className="bi bi-hourglass-split"></i> Pending Review</span>}
+                      {item.visibility === "rejected" && <span className="status-badge rejected"><i className="bi bi-x-circle-fill"></i> Rejected</span>}
+                      {item.visibility === "published" && <span className="status-badge published"><i className="bi bi-check-circle-fill"></i> Published</span>}
+                      {item.visibility === "archived" && <span className="status-badge archived"><i className="bi bi-archive-fill"></i> Archived</span>}
+                    </div>
+
+                    {/* Metadata Chips (Subject, Grade, Difficulty) */}
+                    <div className="t-meta">
+                      <span className={`chip chip-${item.subject}`}>{item.subject}</span>
+                      {item.grade && <span className="chip grade">Grade {item.grade}</span>}
+                      {tab === "tests" && <span className="chip diff">{getDifficulty(item.tags)}</span>}
+                    </div>
+
+                    {/* Inline Admin Feedback (Only shown if rejected) */}
+                    {item.adminFeedback && item.visibility === 'rejected' && (
+                      <div style={{ fontSize: '12px', color: '#b91c1c', background: '#fee2e2', padding: '8px', borderRadius: '6px', marginBottom: '12px' }}>
+                        <strong>Feedback:</strong> {item.adminFeedback}
                       </div>
+                    )}
 
-                      {/* Display Admin Feedback if the test was rejected */}
-                      {t.visibility === 'rejected' && t.adminFeedback && (
-                        <div className="feedback-alert">
-                          <strong>Admin Feedback:</strong> {t.adminFeedback}
-                        </div>
-                      )}
+                    {/* Bottom Stats Row (Dates, Questions/Sections count) */}
+                    <div className="t-stats-row">
+                      <span className="meta-item"><i className="bi bi-calendar-event"></i> {fmtDate(item.updatedAt)}</span>
+                      {tab === "tests" ? ( <span className="meta-item"><i className="bi bi-list-task"></i> {item.numQuestions || (item.questions?.length || 0)} Qs</span> ) : ( <span className="meta-item"><i className="bi bi-journal-album"></i> {item.sections?.length || 0} Secs</span> )}
+                    </div>
 
-                      {t.description && (
-                        <p className="t-desc" title={t.description}>{t.description}</p>
+                    {/* Highlighted Student Attempts (Only for Tests) */}
+                    {tab === "tests" && item.attempts > 0 && (
+                      <div className="attempts-row attempts-highlight"><i className="bi bi-lightning-charge-fill"></i> {item.attempts} attempts</div>
+                    )}
+                  </div>
+
+                  {/* Card Footer Actions */}
+                  <div className="t-card-footer">
+                    <div className="t-actions">
+                      {tab === "tests" && (
+                        <button className="act-btn result" onClick={(e) => { e.stopPropagation(); navigate(`/tests/public/${item._id}/leaderboard`); }} title="View Results">
+                          <i className="bi bi-trophy"></i> Results
+                        </button>
                       )}
                       
-                      {/* Metadata Chips */}
-                      <div className="t-meta">
-                        <span className="chip">{(t.subject||"").toUpperCase()}</span>
-                        {t.grade && <span className="chip">Grade {t.grade}</span>}
-                        <span className="chip">{t.numQuestions} Qs</span>
-                        {Array.isArray(t.tags) && t.tags.map((tg, i) => (
-                          <span className="tag" key={i}>{tg}</span>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Action Buttons */}
-                    <div className="tcard-actions">
-                      <button
-                        className="ghost-btn-edit"
-                        onClick={() => navigate(`/instructor/tests/${t._id}/edit`)}
-                      >
-                        <i className="bi bi-pencil-square" /> Edit
+                      <button className="act-btn edit" title="Edit/View">
+                        <i className="bi bi-pencil-square"></i> Edit
                       </button>
-                      <button
-                        className="danger-btn"
-                        // Triggers the custom modal instead of native window.confirm
-                        onClick={() => setDeleteModal({ isOpen: true, id: t._id, type: 'test', title: t.title })}
-                      >
-                        <i className="bi bi-trash-fill" /> Delete
-                      </button>
-                    </div>
 
-                    <div className="tcard-foot">
-                      <span className="muted">Updated {new Date(t.updatedAt).toLocaleString()}</span>
-                      <span className="dot">•</span>
-                      <span className="muted">Created {new Date(t.createdAt).toLocaleDateString()}</span>
+                      {/* Safely handle deletion: Live items get Archived, drafts/rejected get Hard Deleted */}
+                      {item.visibility === "published" ? (
+                        <button className="act-btn archive" title="Archive" onClick={(e) => confirmAction(e, item._id, tab === "tests" ? "test" : "course", item.title, "archive")}>
+                          <i className="bi bi-archive"></i> Archive
+                        </button>
+                      ) : (
+                        <button className="act-btn del" title="Delete" onClick={(e) => confirmAction(e, item._id, tab === "tests" ? "test" : "course", item.title, "delete")}>
+                          <i className="bi bi-trash"></i> Delete
+                        </button>
+                      )}
                     </div>
-                  </article>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* ==== Pagination Controls ==== */}
+            {pagination.totalPages > 1 && (
+              <div className="t-pagination">
+                <button className="page-btn" disabled={pagination.currentPage === 1} onClick={() => setPage(p => p - 1)}>
+                  <i className="bi bi-chevron-left"></i> Prev
+                </button>
+
+                {/* Generate numbered page buttons dynamically */}
+                {[...Array(pagination.totalPages)].map((_, i) => (
+                  <button key={i + 1} className={`page-btn ${pagination.currentPage === i + 1 ? 'active' : ''}`} onClick={() => setPage(i + 1)}>{i + 1}</button>
                 ))}
+
+                <button className="page-btn" disabled={pagination.currentPage === pagination.totalPages} onClick={() => setPage(p => p + 1)}>
+                  Next <i className="bi bi-chevron-right"></i>
+                </button>
               </div>
             )}
-          </section>
+          </>
         )}
+      </div>
 
-        {/* ==== Tab: Courses List ==== */}
-        {tab === "courses" && (
-          <section className="list-wrap">
-            {loading ? (
-              <div className="empty">Loading…</div>
-            ) : filteredCourses.length === 0 ? (
-              <div className="empty">
-                No courses found. Click <b>Add New Course</b> to create one.
-              </div>
-            ) : (
-              <div className="cards">
-                {filteredCourses.map(c => {
-                  // Calculate total number of lessons across all sections
-                  const sections = Array.isArray(c.sections) ? c.sections : [];
-                  const lessons = sections.reduce((a, s) => a + (s.lessons?.length || 0), 0);
-                  return (
-                    <article key={c._id} className="tcard">
-                      <div className="tcard-main">
-                        {/* Header with Title and Content Moderation Status Badge */}
-                        <div className="tcard-header">
-                            <h3 className="t-title">{c.title}</h3>
-                            <span className={`status-badge ${c.visibility || 'pending'}`}>
-                            {c.visibility || 'pending'}
-                            </span>
-                        </div>
-
-                        {/* Display Admin Feedback if the course was rejected */}
-                        {c.visibility === 'rejected' && c.adminFeedback && (
-                            <div className="feedback-alert">
-                            <strong>Admin Feedback:</strong> {c.adminFeedback}
-                            </div>
-                        )}
-
-                        {c.description && (
-                          <p className="t-desc" title={c.description}>{c.description}</p>
-                        )}
-                        
-                        {/* Metadata Chips */}
-                        <div className="t-meta">
-                          <span className="chip">{(c.subject||"").toUpperCase()}</span>
-                          {c.grade && <span className="chip">Grade {c.grade}</span>}
-                          <span className="chip">{lessons} lessons</span>
-                          {Array.isArray(c.tags) && c.tags.map((tg, i) => (
-                            <span className="tag" key={i}>{tg}</span>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Action Buttons */}
-                      <div className="tcard-actions">
-                        <button
-                          className="ghost-btn-edit"
-                          onClick={() => navigate(`/instructor/courses/${c._id}/edit`)}
-                        >
-                          <i className="bi bi-pencil-square" /> Edit
-                        </button>
-                        <button
-                          className="danger-btn"
-                          // Triggers the custom modal instead of native window.confirm
-                          onClick={() => setDeleteModal({ isOpen: true, id: c._id, type: 'course', title: c.title })}
-                        >
-                          <i className="bi bi-trash-fill" /> Delete
-                        </button>
-                      </div>
-
-                      <div className="tcard-foot">
-                        <span className="muted">Updated {new Date(c.updatedAt).toLocaleString()}</span>
-                        <span className="dot">•</span>
-                        <span className="muted">Created {new Date(c.createdAt).toLocaleDateString()}</span>
-                      </div>
-                    </article>
-                  );
-                })}
-              </div>
-            )}
-          </section>
-        )}
-      </main>
-
-      {/* ==== Delete Confirmation Modal Overlay ==== */}
-      {deleteModal.isOpen && (
-        // Clicking the overlay background closes the modal
-        <div className="modal-overlay" onClick={() => setDeleteModal({ isOpen: false, id: null, type: null, title: "" })}>
-          {/* Prevent clicks inside the modal content area from closing the modal */}
+      {/* ==== Action Confirmation Modal ==== */}
+      {actionModal.isOpen && (
+        <div className="modal-overlay" onClick={() => setActionModal({ isOpen: false, id: null, type: null, title: "", action: "" })}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <i className="bi bi-exclamation-triangle-fill"></i>
-              <h3>Confirm Deletion</h3>
+              {/* Change icon and color based on whether it's a delete or archive action */}
+              <i className={actionModal.action === 'archive' ? "bi bi-archive-fill" : "bi bi-exclamation-triangle-fill"} style={{color: actionModal.action === 'archive' ? '#eab308' : 'var(--error)'}}></i>
+              <h3>Confirm {actionModal.action === 'archive' ? 'Archiving' : 'Deletion'}</h3>
             </div>
+
             <div className="modal-body">
-              <p>Are you sure you want to permanently delete this {deleteModal.type}:</p>
-              <p><strong>"{deleteModal.title}"</strong>?</p>
-              <p style={{ fontSize: '0.85rem', color: 'var(--error)', marginTop: '12px' }}>
-                <i className="bi bi-info-circle-fill"></i> This action cannot be undone and will remove all associated data.
-              </p>
+              <p>Are you sure you want to {actionModal.action} this {actionModal.type}:</p>
+              <p><strong>"{actionModal.title}"</strong>?</p>
+
+              {/* Show context-specific warnings to the user */}
+              {actionModal.action === 'delete' ? (
+                <p style={{ fontSize: '0.85rem', color: 'var(--error)', marginTop: '12px' }}><i className="bi bi-info-circle-fill"></i> This action cannot be undone.</p>
+              ) : (
+                <p style={{ fontSize: '0.85rem', color: '#ca8a04', marginTop: '12px' }}><i className="bi bi-info-circle-fill"></i> This will hide it from students, but preserve existing points and progress.</p>
+              )}
             </div>
+
             <div className="modal-actions">
-              <button 
-                className="modal-btn-cancel" 
-                onClick={() => setDeleteModal({ isOpen: false, id: null, type: null, title: "" })}
-              >
-                Cancel
-              </button>
-              <button 
-                className="modal-btn-danger" 
-                onClick={executeDelete}
-              >
-                Delete Permanently
+              <button className="modal-btn-cancel" onClick={() => setActionModal({ isOpen: false, id: null, type: null, title: "", action: "" })}>Cancel</button>
+              <button className={actionModal.action === 'archive' ? "modal-btn-warning" : "modal-btn-danger"} onClick={executeAction}>
+                {actionModal.action === 'archive' ? 'Archive Now' : 'Delete Permanently'}
               </button>
             </div>
           </div>

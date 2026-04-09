@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import SiteHeader from "./Header"
 import SiteFooter from "./Footer"
 import defaultAvatar from "../images/defaultAvatar.png";
@@ -10,7 +10,7 @@ import "../css/HomePage.css";
 /**
  * HomePage Component
  * Serves as the landing page of the BrainBoost platform.
- * Features an AI-powered Learning Path generator, featured courses, 
+ * Features an AI-powered Learning Path generator, dynamic featured courses fetched from the backend, 
  * platform benefits, and student testimonials.
  */
 const HomePage = () => {
@@ -18,57 +18,160 @@ const HomePage = () => {
 
   // ==== State Management ====
 
-  // State for AI Learning Path
+  // ---- AI Learning Path States ----
   const [goal, setGoal] = useState("");
   const [pathResult, setPathResult] = useState(null);
   const [loadingPath, setLoadingPath] = useState(false);
   const [isSavingPath, setIsSavingPath] = useState(false);
   const [pathSaved, setPathSaved] = useState(false);
 
+  // ---- Featured Courses States ----
+  // Initializes an object grouping courses by subject to easily render categorized rows
+  const [featuredCourses, setFeaturedCourses] = useState({
+    math: [], english: [], physics: [], chemistry: []
+  });
+  const [loadingCourses, setLoadingCourses] = useState(true);
+
+  // ==== Data Fetching ====
+
   /**
-   * Reusable UI Component for displaying a summarized course card.
-   * @param {Object} props - Component properties.
-   * @param {String} props.img - URL of the course thumbnail.
-   * @param {String} props.title - Title of the course.
-   * @param {String|Number} props.lessons - Total number of lessons.
-   * @param {String|Number} props.hours - Total duration in hours.
-   * @param {String} props.price - Display price.
+   * Fetches public courses from the backend on component mount.
+   * Groups the fetched courses by subject and limits each category to the 3 most recent courses.
    */
-  const CourseCard = ({ img, title, lessons, hours, price = "$40" }) => (
-  <article className="fc-card">
-    <div className="fc-thumb">
-      <img src={img} alt="" />
-    </div>
+  useEffect(() => {
+    const fetchFeaturedCourses = async () => {
+      try {
+        setLoadingCourses(true);
+        
+        // Fetch all published courses from the public API endpoint
+        const res = await api.get('/courses/public');
+        const allCourses = Array.isArray(res.data) ? res.data : [];
 
-    <div className="fc-info">
-      <h4 className="fc-title">{title}</h4>
+        // Temporary object to group courses by subject, capped at 3 courses per subject
+        const grouped = { math: [], english: [], physics: [], chemistry: [] };
+        
+        allCourses.forEach(course => {
+          const subj = (course.subject || "").toLowerCase();
+          // If the subject matches one of our keys and the array has less than 3 items, add it
+          if (grouped[subj] && grouped[subj].length < 3) {
+            grouped[subj].push(course);
+          }
+        });
 
-      <div className="fc-meta">
-        <span className="fc-meta-item">
-          <i className="fc-ic fc-ic-lessons" /> {lessons} lessons
-        </span>
-        <span className="fc-dot">•</span>
-        <span className="fc-meta-item">
-          <i className="fc-ic fc-ic-hours" /> {hours} hours
-        </span>
+        // Update state with the newly grouped data
+        setFeaturedCourses(grouped);
+      } catch (err) {
+        console.error("Failed to fetch featured courses:", err);
+      } finally {
+        setLoadingCourses(false);
+      }
+    };
+
+    fetchFeaturedCourses();
+  }, []);
+
+  // ==== UI Helper Components ====
+
+  /**
+   * Reusable UI Component for displaying a summarized course card on the homepage.
+   */
+  const CourseCard = ({ id, img, title, lessons, hours, price, onClick }) => (
+    <article className="fc-card" onClick={onClick} role="button" tabIndex={0}>
+      <div className="fc-thumb">
+        <img src={img || skillsPlaceholder} alt={title} />
       </div>
 
-      <div className="fc-price">{price}</div>
-    </div>
-  </article>
+      <div className="fc-info">
+        <h4 className="fc-title">{title}</h4>
+
+        <div className="fc-meta">
+          <span className="fc-meta-item">
+            <i className="fc-ic fc-ic-lessons" /> {lessons || 0} lessons
+          </span>
+          <span className="fc-dot">•</span>
+          <span className="fc-meta-item">
+            <i className="fc-ic fc-ic-hours" /> {hours || 0} hours
+          </span>
+        </div>
+
+        <div className="fc-price">
+          {!price || price === 0 ? "Free" : `$${price}`}
+        </div>
+      </div>
+    </article>
   );
+
+  /**
+   * Renders placeholder skeleton cards while courses are being fetched.
+   * Prevents layout shift and provides visual feedback that data is loading.
+   */
+  const renderSkeletons = () => (
+    <div className="fc-grid">
+      {[1, 2, 3].map((i) => (
+        <article key={i} className="fc-card" style={{ pointerEvents: 'none' }}>
+          <div className="fc-thumb skeleton-box" style={{ height: '180px', borderRadius: '10px 10px 0 0' }}></div>
+          <div className="fc-info">
+            <div className="skeleton-box" style={{ height: '24px', width: '80%', marginBottom: '15px' }}></div>
+            <div className="skeleton-box" style={{ height: '16px', width: '60%', marginBottom: '20px' }}></div>
+            <div className="skeleton-box" style={{ height: '40px', width: '100%', borderRadius: '8px' }}></div>
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+
+  /**
+   * Helper function to render a complete Subject Section (e.g., Mathematics row).
+   * Hides the entire section if no courses exist for that subject after loading completes.
+   * * @param {String} subjectKey - The internal key for the subject (e.g., 'math')
+   * @param {String} subjectTitle - The display name for the subject (e.g., 'Mathematics')
+   */
+  const renderSubjectSection = (subjectKey, subjectTitle) => {
+    const courses = featuredCourses[subjectKey];
+    
+    // Completely hide the section if loading is done and there are no courses
+    if (!loadingCourses && (!courses || courses.length === 0)) return null;
+
+    return (
+      <div key={subjectKey} style={{ marginBottom: '2rem' }}>
+        <div className="fc-subject">
+          <h3>{subjectTitle}</h3>
+          {/* Navigate to the All Courses page with the specific subject pre-selected */}
+          <button className="fc-more" onClick={() => navigate(`/courses?subject=${subjectKey}`)}>
+            More <i className="bi bi-caret-right-fill"></i>
+          </button>
+        </div>
+        
+        {loadingCourses ? renderSkeletons() : (
+          <div className="fc-grid">
+            {courses.map(c => (
+              <CourseCard
+                key={c.id}
+                id={c.id}
+                img={c.coverUrl}
+                title={c.title}
+                lessons={c.lessons}
+                hours={c.hours}
+                price={c.priceUSD}
+                onClick={() => navigate(`/courses/${c.id}`)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   // ==== Event Handlers ====
 
   /**
-   * Sends the user's goal to the backend AI service to generate a personalized learning path.
+   * Sends the user's goal to the AI backend to generate a personalized learning path.
    */
   const handleGeneratePath = async () => {
-      if (!goal.trim()) return;
+      if (!goal.trim()) return; // Prevent empty requests
       setLoadingPath(true);
-      setPathSaved(false);  // Reset the save status when generating a new path
+      setPathSaved(false);  // Reset save state on new generation
       try {
-          // Call the backend API to prompt the AI agent
           const res = await api.post('/courses/learning-path', { goal });
           setPathResult(res.data);
       } catch (err) {
@@ -79,15 +182,13 @@ const HomePage = () => {
   };
 
   /**
-   * Saves the generated learning path to the authenticated user's profile.
-   * Redirects to the login page if the user is not authenticated.
+   * Saves the generated learning path to the user's database profile.
+   * Requires the user to be authenticated.
    */
   const handleSavePath = async () => {
       if (!pathResult) return;
-
       setIsSavingPath(true);
       try {
-        // Send the generated advice and path steps to the database
           await api.post('/learning/paths', {
               goal: goal,
               advice: pathResult.advice,
@@ -95,7 +196,7 @@ const HomePage = () => {
           });
           setPathSaved(true);
       } catch (error) {
-        // Handle unauthorized access (user not logged in)
+          // If the backend returns 401 Unauthorized, prompt the user to log in
           if (error.response && error.response.status === 401) {
               alert("Please login to save this learning path.");
               navigate('/login');
@@ -106,6 +207,8 @@ const HomePage = () => {
           setIsSavingPath(false);
       }
   };
+
+  // ==== Main Render ====
 
   return (
     <div className="homepage">
@@ -121,7 +224,6 @@ const HomePage = () => {
       </section>
 
       {/* --- AI Learning Path Section --- */}
-      {/* Allows users to input goals and receive personalized suggestions */}
       <section className="lp-section">
           <h2 className="lp-title">Not sure where to start?</h2>
           <p className="lp-sub">Tell our AI Advisor your goals (e.g., "I want to master Grade 10 Math"), and we'll build a path for you.</p>
@@ -142,7 +244,7 @@ const HomePage = () => {
               </button>
           </div>
 
-          {/* Display the generated path results */}
+          {/* Render the AI-generated learning path if data exists */}
           {pathResult && (
             <div className="lp-result">
               <div className="lp-advice">
@@ -186,95 +288,23 @@ const HomePage = () => {
           )}
       </section>
 
-      {/* ==== Featured Courses Section ==== */}
-      {/* Organized by Subject */}
+      {/* ==== Dynamic Featured Courses Section ==== */}
       <section className="featured">
         <h2 className="section-title">Featured Courses</h2>
         <p className="section-sub">
           Choose your favorite subject and start your journey of knowledge with BrainBoost.
         </p>
 
-        {/* --- Mathematics --- */}
-        <div className="fc-subject">
-          <h3>Mathematics</h3>
-          <button className="fc-more" onClick={() => navigate("/courses?subject=math")}>More <i class="bi bi-caret-right-fill"></i></button>
-        </div>
-        <div className="fc-grid">
-          <CourseCard
-            img={skillsPlaceholder}
-            title="Advanced Math Grade 12 – University Entrance Prep 2025"
-            lessons="60"
-            hours="56"
-            price="$40"
-          />
-          <CourseCard
-            img={skillsPlaceholder}
-            title="Calculus from Basics to Advanced"
-            lessons="45"
-            hours="35"
-            price="$40"
-          />
-        </div>
-
-        {/* --- English --- */}
-        <div className="fc-subject">
-          <h3>English</h3>
-          <button className="fc-more" onClick={() => navigate("/courses?subject=english")}>More <i class="bi bi-caret-right-fill"></i></button>
-        </div>
-        <div className="fc-grid">
-          <CourseCard
-            img={skillsPlaceholder}
-            title="English Mastery – Comprehensive Grammar for High School"
-            lessons="55"
-            hours="60"
-          />
-          <CourseCard
-            img={skillsPlaceholder}
-            title="Accelerate 1,000+ Vocabulary Words for University Exams"
-            lessons="40"
-            hours="45"
-          />
-        </div>
-
-        {/* --- Physics --- */}
-        <div className="fc-subject">
-          <h3>Physics</h3>
-          <button className="fc-more" onClick={() => navigate("/courses?subject=physics")}>More <i class="bi bi-caret-right-fill"></i></button>
-        </div>
-        <div className="fc-grid">
-          <CourseCard
-            img={skillsPlaceholder}
-            title="Physics Grade 12 – Intensive Exam Prep"
-            lessons="50"
-            hours="48"
-          />
-          <CourseCard
-            img={skillsPlaceholder}
-            title="Golden Formulas – Solve Every Physics Question Faster"
-            lessons="25"
-            hours="30"
-          />
-        </div>
-
-        {/* --- Chemistry --- */}
-        <div className="fc-subject">
-          <h3>Chemistry</h3>
-          <button className="fc-more" onClick={() => navigate("/courses?subject=chemistry")}>More <i class="bi bi-caret-right-fill"></i></button>
-        </div>
-        <div className="fc-grid">
-          <CourseCard
-            img={skillsPlaceholder}
-            title="Chemistry Essentials – University Exam Review 2025"
-            lessons="55"
-            hours="52"
-          />
-          <CourseCard
-            img={skillsPlaceholder}
-            title="Organic Reactions – Learn, Remember, Apply"
-            lessons="35"
-            hours="28"
-          />
-        </div>
+        {/* Dynamic rendering of course categories based on API data */}
+        {renderSubjectSection("math", "Mathematics")}
+        {renderSubjectSection("english", "English")}
+        {renderSubjectSection("physics", "Physics")}
+        {renderSubjectSection("chemistry", "Chemistry")}
+        
+        {/* If completely empty across all subjects, show a fallback message */}
+        {!loadingCourses && Object.values(featuredCourses).every(arr => arr.length === 0) && (
+            <p style={{textAlign: 'center', color: 'var(--text-secondary)'}}>More courses coming soon!</p>
+        )}
       </section>
 
       {/* ==== Skills Gained Section ==== */}
@@ -322,12 +352,10 @@ const HomePage = () => {
         <h2 className="why-title">Why should you study with BrainBoost</h2>
 
         <div className="why-container">
-          {/* Left big image */}
           <div className="why-image-left">
             <img src={skillsPlaceholder} alt="Why study with BrainBoost" />
           </div>
 
-          {/* Right cards */}
           <div className="why-right">
             <article className="why-card">
               <div className="why-thumb">
@@ -380,70 +408,46 @@ const HomePage = () => {
         <h2 className="t-title">Student Testimonials</h2>
 
         <div className="t-grid">
-          {/* Card 1 */}
           <article className="t-card">
             <div className="t-header">
-              <div className="t-avatar">
-                <img src={defaultAvatar} alt="Nguyen Minh Anh" />
-              </div>
-              <div className="t-meta">
-                <h4>Nguyen Minh Anh</h4>
-                <p className="t-sub">- Grade 11, Hanoi -</p>
-              </div>
+              <div className="t-avatar"><img src={defaultAvatar} alt="Nguyen Minh Anh" /></div>
+              <div className="t-meta"><h4>Nguyen Minh Anh</h4><p className="t-sub">- Grade 11, Hanoi -</p></div>
             </div>
-
             <p className="t-text">
               BrainBoost makes studying Math and Physics so much easier! The AI Tutor
               explains every step clearly, and the practice exercises are really helpful.
               I feel more confident every time I go to class.
             </p>
-
             <div className="t-stars" aria-label="5 out of 5">
               <span>★</span><span>★</span><span>★</span><span>★</span><span>★</span>
             </div>
           </article>
 
-          {/* Card 2 */}
           <article className="t-card">
             <div className="t-header">
-              <div className="t-avatar">
-                <img src={defaultAvatar} alt="Le Thanh Binh" />
-              </div>
-              <div className="t-meta">
-                <h4>Le Thanh Binh</h4>
-                <p className="t-sub">- Grade 12, Da Nang -</p>
-              </div>
+              <div className="t-avatar"><img src={defaultAvatar} alt="Le Thanh Binh" /></div>
+              <div className="t-meta"><h4>Le Thanh Binh</h4><p className="t-sub">- Grade 12, Da Nang -</p></div>
             </div>
-
             <p className="t-text">
               English used to be my weakest subject, but thanks to BrainBoost, I can now
               write essays and understand reading passages much better. The lessons are
               fun, and the AI chat helps me whenever I get stuck.
             </p>
-
             <div className="t-stars" aria-label="5 out of 5">
               <span>★</span><span>★</span><span>★</span><span>★</span><span>★</span>
             </div>
           </article>
 
-          {/* Card 3 */}
           <article className="t-card">
             <div className="t-header">
-              <div className="t-avatar">
-                <img src={defaultAvatar} alt="Tran Quynh Chi" />
-              </div>
-              <div className="t-meta">
-                <h4>Tran Quynh Chi</h4>
-                <p className="t-sub">- Grade 7, Ho Chi Minh City -</p>
-              </div>
+              <div className="t-avatar"><img src={defaultAvatar} alt="Tran Quynh Chi" /></div>
+              <div className="t-meta"><h4>Tran Quynh Chi</h4><p className="t-sub">- Grade 7, Ho Chi Minh City -</p></div>
             </div>
-
             <p className="t-text">
               I love how BrainBoost combines learning and fun. Chemistry experiments are
               explained so clearly, and I finally understand how everything connects.
               It’s like having a private tutor at home!
             </p>
-
             <div className="t-stars" aria-label="5 out of 5">
               <span>★</span><span>★</span><span>★</span><span>★</span><span>★</span>
             </div>

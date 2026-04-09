@@ -173,3 +173,25 @@
 .published-warning-banner i { font-size: 28px; color: #3b82f6; }
 .published-warning-banner p { margin: 4px 0 0 0; font-size: 14px; color: #475569; line-height: 1.5; }
 .published-warning-banner button { margin-left: auto; white-space: nowrap; }
+
+.skeleton {
+  background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%);
+  background-size: 200% 100%;
+  animation: skeletonLoading 1.5s infinite;
+  border-radius: 6px;
+}
+
+@keyframes skeletonLoading {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.skeleton-text { height: 16px; border-radius: 4px; margin-bottom: 6px; display: block; }
+.skeleton-input { height: 42px; border-radius: 10px; width: 100%; }
+.skeleton-textarea { height: 100px; border-radius: 10px; width: 100%; }
+.skeleton-card { 
+  border-color: transparent !important; 
+  box-shadow: 0 4px 12px rgba(0,0,0,.02) !important; 
+  cursor: default !important; 
+  pointer-events: none; 
+}

@@ -9,9 +9,7 @@ import "../css/CourseEditor.css";
 
 // ==== Constants & Helper Functions ====
 
-/** * Predefined list of subjects. 
- * Can be expanded or fetched dynamically from a database in the future. 
- */
+// Predefined list of subjects for course categorization
 const SUBJECTS = [
   { key: "math", name: "Mathematics" },
   { key: "english", name: "English" },
@@ -19,56 +17,53 @@ const SUBJECTS = [
   { key: "chemistry", name: "Chemistry" },
 ];
 
-/** Supported lesson types in the curriculum builder */
+// Supported content types within a course section
 const LESSON_TYPES = [
   { key: "lesson", name: "Lesson" },
   { key: "quiz", name: "Quiz" },
 ];
 
-/** Allowed file extensions for document and presentation uploads */
+// Allowed file extensions for document/presentation uploads
 const LESSON_FILE_EXTS = [".pdf", ".doc", ".docx", ".txt", ".ppt", ".pptx"];
 
-/** Validates if a string is a valid MongoDB ObjectId (24-character hex string) */
-const isMongoId = (val) =>
-  typeof val === "string" && /^[0-9a-fA-F]{24}$/.test(val);
+// Validates if a string is a proper MongoDB ObjectId (24-character hex)
+const isMongoId = (val) => typeof val === "string" && /^[0-9a-fA-F]{24}$/.test(val);
 
-/** * Factory function to generate an empty, default Lesson object.
- * Used when an instructor clicks "+ Lesson" in the curriculum builder.
+/**
+ * Factory function to generate a fresh, default lesson object.
+ * Maps exactly to the expected backend Lesson schema.
  */
 const emptyLesson = () => ({
-  title: "",
-  type: "lesson",
-  durationMin: "",
-  contentUrl: "",
-  originalDocUrl: "",
-  originalDocType: "",
-  aiSlides: [],
-  useAiSlides: false,
-  showOriginalToStudents: true,
+  title: "", type: "lesson", durationMin: "", contentUrl: "", originalDocUrl: "", originalDocType: "",
+  aiSlides: [], useAiSlides: false, showOriginalToStudents: true,
 });
 
-/** * Factory function to generate an empty Section object containing one default lesson.
+/**
+ * Factory function to generate a new section containing one default lesson.
  */
-const emptySection = (i) => ({
-  title: `Section ${i + 1}`,
-  lessons: [emptyLesson()],
-});
+const emptySection = (i) => ({ title: `Section ${i + 1}`, lessons: [emptyLesson()] });
 
 // ==== Main Component ====
 
+/**
+ * CourseEditor Component
+ * Complex form interface allowing instructors/admins to create or edit courses,
+ * manage deeply nested curriculum structures (sections -> lessons), upload files, 
+ * and trigger AI slide generation.
+ */
 export default function CourseEditor() {
   const { user } = useUser();
-  const { id } = useParams(); // If ID is present in URL, we are in Edit Mode; otherwise Create Mode
+  const { id } = useParams(); // Extracts the course ID from the URL (if editing)
   const isEdit = Boolean(id);
   const navigate = useNavigate();
-
-  // Role-based Access Control: Only admins and instructors can access this editor
+  
+  // Role-Based Access Control (RBAC): Only admins and instructors can access this editor
   const canEdit = user && (user.role === "admin" || user.role === "instructor");
 
   // ---- UI & Network States ----
-  const [loading, setLoading] = useState(isEdit);
-  const [saving, setSaving] = useState(false);
-  const [toast, setToast] = useState(null);
+  const [loading, setLoading] = useState(isEdit); // Show loading skeleton only if editing
+  const [saving, setSaving] = useState(false);    // Disables inputs during API submission
+  const [toast, setToast] = useState(null);       // Manages success/error popup notifications
 
   // ---- Course Metadata States ----
   const [title, setTitle] = useState("");
@@ -79,257 +74,175 @@ export default function CourseEditor() {
   const [price, setPrice] = useState("");
   const [description, setDescription] = useState("");
   const [coverUrl, setCoverUrl] = useState("");
-  const [learn, setLearn] = useState(["", "", "", ""]);
-  const [courseVisibility, setCourseVisibility] = useState("draft");
+  const [learn, setLearn] = useState(["", "", "", ""]); // "What you'll learn" bullet points
+  const [courseVisibility, setCourseVisibility] = useState("draft"); // Moderation status
 
   // ---- Curriculum Builder States ----
   const [sections, setSections] = useState([emptySection(0)]);
-  const [uploadingLesson, setUploadingLesson] = useState(null);
-  const [aiGeneratingLesson, setAiGeneratingLesson] = useState(null);
+  const [uploadingLesson, setUploadingLesson] = useState(null); // Tracks specific lesson index uploading a file
+  const [aiGeneratingLesson, setAiGeneratingLesson] = useState(null); // Tracks specific lesson generating AI slides
 
-  // Scroll to top on initial mount to ensure user starts at the top of the form
+  // Scroll to the top of the page on initial render
   useEffect(() => { window.scrollTo(0, 0); }, []);
 
-  // ==== Edit Mode ====
+  /**
+   * Helper function to populate all form states with data.
+   * Extracted to be used by both the Cache retrieval and the API fetch.
+   * @param {Object} c - Course object from backend or cache.
+   */
+  const populateForm = (c) => {
+    setTitle(c.title || "");
+    setSlug(c.slug || "");
+    setSubject(c.subject || SUBJECTS[0].key);
+    setGrade(c.grade || "");
+    setTags(Array.isArray(c.tags) ? c.tags : []);
+    setPrice(c.price ?? "");
+    setDescription(c.description || "");
+    setCoverUrl(c.coverUrl || "");
+    setLearn(Array.isArray(c.learn) && c.learn.length > 0 ? c.learn : ["", "", "", ""]);
+    setCourseVisibility(c.visibility || "draft");
 
+    // Normalize deeply nested sections and lessons arrays
+    setSections(
+      Array.isArray(c.sections) && c.sections.length
+        ? c.sections.map((s) => ({
+            title: s.title || "",
+            lessons: (s.lessons || []).map((ls) => ({
+              title: ls.title || "",
+              type: ls.type || "lesson",
+              durationMin: ls.durationMin ?? "",
+              contentUrl: ls.contentUrl || "",
+              originalDocUrl: ls.originalDocUrl || "",
+              originalDocType: ls.originalDocType || "",
+              aiSlides: Array.isArray(ls.aiSlides) ? ls.aiSlides : [],
+              useAiSlides: !!ls.useAiSlides,
+              showOriginalToStudents: typeof ls.showOriginalToStudents === "boolean" ? ls.showOriginalToStudents : true,
+            })),
+          }))
+        : [emptySection(0)]
+    );
+  };
+
+  // ==== Caching & Data Fetching (Edit Mode Only) ====
+  
   useEffect(() => {
-    // If we are creating a new course, skip fetching
     if (!isEdit) return;
 
-    (async () => {
-      setLoading(true);
-      try {
-        const res = await fetch(toAbsolute(`/api/courses/${id}`), { credentials: "include", });
-        if (!res.ok) throw new Error("Failed to fetch course");
-        const c = await res.json();
+    let cancelled = false; // Prevents memory leaks if component unmounts
+    
+    const fetchCourse = async () => {
+      const cacheKey = `course_edit_v1_${id}`;
+      const cached = sessionStorage.getItem(cacheKey);
 
-        // Populate metadata states with fetched data, using fallbacks for safety
-        setTitle(c.title || "");
-        setSlug(c.slug || "");
-        setSubject(c.subject || SUBJECTS[0].key);
-        setGrade(c.grade || "");
-        setTags(Array.isArray(c.tags) ? c.tags : []);
-        setPrice(c.price ?? "");
-        setDescription(c.description || "");
-        setCoverUrl(c.coverUrl || "");
-        setLearn(Array.isArray(c.learn) && c.learn.length > 0 ? c.learn : ["", "", "", ""]);
-        setCourseVisibility(c.visibility || "draft");
-
-        // Populate curriculum states, applying fallback defaults if nested data is missing
-        setSections(
-          Array.isArray(c.sections) && c.sections.length
-            ? c.sections.map((s) => ({
-                title: s.title || "",
-                lessons: (s.lessons || []).map((ls) => ({
-                  title: ls.title || "",
-                  type: ls.type || "lesson",
-                  durationMin: ls.durationMin ?? "",
-                  contentUrl: ls.contentUrl || "",
-                  originalDocUrl: ls.originalDocUrl || "",
-                  originalDocType: ls.originalDocType || "",
-                  aiSlides: Array.isArray(ls.aiSlides) ? ls.aiSlides : [],
-                  useAiSlides: !!ls.useAiSlides,
-                  showOriginalToStudents:
-                    typeof ls.showOriginalToStudents === "boolean"
-                      ? ls.showOriginalToStudents
-                      : true,
-                })),
-              }))
-            : [emptySection(0)]
-        );
-      } catch (e) {
-        setToast({ type: "error", msg: `Load failed: ${e.message}` });
-      } finally {
+      // 1. Cache-First Strategy: Display cached data instantly to prevent loading screens
+      if (cached) {
+        populateForm(JSON.parse(cached));
         setLoading(false);
-        setTimeout(() => setToast(null), 3500);
+      } else {
+        setLoading(true);
       }
-    })();
+
+      try {
+        const res = await api.get(`/courses/${id}`);
+        
+        // 2. Silently update the cache in the background with fresh server data
+        sessionStorage.setItem(cacheKey, JSON.stringify(res.data));
+        
+        // 3. Only populate the form from the network if no cache was used.
+        // This prevents overwriting text the instructor might have started typing.
+        if (!cached && !cancelled) {
+          populateForm(res.data);
+          setLoading(false);
+        }
+      } catch (e) {
+        if (!cancelled && !cached) {
+          setToast({ type: "error", msg: `Load failed: ${e.response?.data?.message || e.message}` });
+          setLoading(false);
+        }
+      }
+    };
+
+    fetchCourse();
+    return () => { cancelled = true; };
   }, [isEdit, id]);
 
   // ==== Curriculum Builder Operations ====
+  // Uses immutable state updates (spread operators) to ensure React re-renders correctly.
 
-  /** Adds a new empty section to the end of the curriculum */
-  const addSection = () =>
-    setSections((prev) => [...prev, emptySection(prev.length)]);
+  const addSection = () => setSections((prev) => [...prev, emptySection(prev.length)]);
+  const removeSection = (si) => setSections((prev) => prev.length === 1 ? prev : prev.filter((_, i) => i !== si));
+  const changeSectionTitle = (si, val) => setSections((prev) => { const n = [...prev]; n[si] = { ...n[si], title: val }; return n; });
+  const addLesson = (si) => setSections((prev) => { const n = [...prev]; n[si] = { ...n[si], lessons: [...n[si].lessons, emptyLesson()] }; return n; });
+  const removeLesson = (si, li) => setSections((prev) => { const n = [...prev]; const list = [...n[si].lessons]; if (list.length === 1) return prev; list.splice(li, 1); n[si] = { ...n[si], lessons: list }; return n; });
+  const setLesson = (si, li, patch) => setSections((prev) => { const n = [...prev]; const list = [...n[si].lessons]; list[li] = { ...list[li], ...patch }; n[si] = { ...n[si], lessons: list }; return n; });
 
-  /** Removes a section by index, preventing deletion if it's the only section left */
-  const removeSection = (si) =>
-    setSections((prev) =>
-      prev.length === 1 ? prev : prev.filter((_, i) => i !== si)
-    );
+  // ==== External Operations (Upload, Generate AI, Submit, Clone) ====
 
-  /** Updates the title of a specific section */
-  const changeSectionTitle = (si, val) =>
-    setSections((prev) => {
-      const n = [...prev];
-      n[si] = { ...n[si], title: val };
-      return n;
-    });
-
-  /** Adds a new empty lesson to a specific section */
-  const addLesson = (si) =>
-    setSections((prev) => {
-      const n = [...prev];
-      const sec = { ...n[si], lessons: [...n[si].lessons, emptyLesson()] };
-      n[si] = sec;
-      return n;
-    });
-
-  /** Removes a lesson by index from a specific section, maintaining a minimum of 1 lesson */
-  const removeLesson = (si, li) =>
-    setSections((prev) => {
-      const n = [...prev];
-      const list = [...n[si].lessons];
-      if (list.length === 1) return prev; // Enforce minimum 1 lesson per section
-      list.splice(li, 1);
-      n[si] = { ...n[si], lessons: list };
-      return n;
-    });
-
-  /** * Updates specific properties of a lesson without overwriting the whole object.
-   * Takes a 'patch' object containing the fields to update.
+  /**
+   * Handles uploading a document (PDF, Word, PPT) to the backend.
    */
-  const setLesson = (si, li, patch) =>
-    setSections((prev) => {
-      const n = [...prev];
-      const list = [...n[si].lessons];
-      list[li] = { ...list[li], ...patch };
-      n[si] = { ...n[si], lessons: list };
-      return n;
-    });
-
-  // ==== File Upload Handler ====
-
   const handleLessonFileChange = async (si, li, file) => {
     if (!file) return;
-
-    // Validate file extension against allowed types to prevent malicious uploads
+    
+    // Validate file extension locally
     const lowerName = file.name.toLowerCase();
-    const ok = LESSON_FILE_EXTS.some((ext) => lowerName.endsWith(ext));
-    if (!ok) {
-      setToast({
-        type: "error",
-        msg: "Only PDF, Word, text, or slide (PPT/PPTX) files are allowed.",
-      });
-      setTimeout(() => setToast(null), 3500);
-      return;
+    if (!LESSON_FILE_EXTS.some((ext) => lowerName.endsWith(ext))) {
+      setToast({ type: "error", msg: "Only PDF, Word, text, or slide (PPT/PPTX) files are allowed." });
+      setTimeout(() => setToast(null), 3500); return;
     }
 
     try {
-      setUploadingLesson(`${si}-${li}`);
-
-      // Prepare form data for the backend Multer/Cloudinary upload endpoint
-      const fd = new FormData();
+      setUploadingLesson(`${si}-${li}`); // Show loading indicator on specific lesson
+      
+      const fd = new FormData(); 
       fd.append("file", file);
-
-      // Request signed upload to the backend controller
       const res = await api.post("/courses/upload-doc", fd);
-      const data = res.data;
-      const url = data.url || "";
-      const mime = (data.mimeType || file.type || "").toLowerCase();
-
-      // Determine document type string to help the frontend select the correct viewer iframe later
+      
+      const { url, mimeType } = res.data;
+      const mime = (mimeType || file.type || "").toLowerCase();
+      
+      // Determine standardized document type for the frontend viewer
       let docType = "";
       if (mime.includes("pdf")) docType = "pdf";
-      else if (
-        mime.includes("word") ||
-        mime.includes("officedocument.wordprocessingml.document")
-      )
-        docType = "docx";
-      else if (mime.includes("presentation") || mime.includes("powerpoint"))
-        docType = "pptx";
+      else if (mime.includes("word") || mime.includes("officedocument.wordprocessingml.document")) docType = "docx";
+      else if (mime.includes("presentation") || mime.includes("powerpoint")) docType = "pptx";
 
-      // Update the target lesson state with the returned Cloudinary URLs
-      setLesson(si, li, {
-        contentUrl: url,
-        originalDocUrl: url,
-        originalDocType: docType,
-      });
-
-      setToast({ type: "success", msg: "Document/slide uploaded." });
+      // Update lesson state with Cloudinary URLs
+      setLesson(si, li, { contentUrl: url, originalDocUrl: url, originalDocType: docType });
+      setToast({ type: "success", msg: "Document uploaded." });
       setTimeout(() => setToast(null), 2500);
     } catch (e) {
-      console.error("Upload-doc error:", e);
       setToast({ type: "error", msg: `Upload failed: ${e.message}` });
-      setTimeout(() => setToast(null), 4000);
-    } finally {
-      setUploadingLesson(null);
-    }
+    } finally { setUploadingLesson(null); }
   };
 
-  // ==== AI Slide Generation Handler ====
-
+  /**
+   * Triggers the AI microservice to read the uploaded document and generate presentation slides.
+   */
   const handleGenerateSlides = async (si, li, lesson) => {
-    // Prerequisites for AI generation: Opt-in must be checked and a document must be uploaded
-    if (!lesson.useAiSlides) {
-      setToast({
-        type: "error",
-        msg: "Please tick 'Allow BrainBoost to generate AI slides' first.",
-      });
-      setTimeout(() => setToast(null), 3000);
-      return;
-    }
-
-    if (!lesson.originalDocUrl) {
-      setToast({
-        type: "error",
-        msg: "Please upload a teaching document first.",
-      });
-      setTimeout(() => setToast(null), 2500);
-      return;
-    }
+    if (!lesson.useAiSlides) return setToast({ type: "error", msg: "Please tick 'Allow AI slides' first." });
+    if (!lesson.originalDocUrl) return setToast({ type: "error", msg: "Please upload a document first." });
 
     const hasValidCourseId = isEdit && id && isMongoId(id);
-
     try {
       setAiGeneratingLesson(`${si}-${li}`);
-
-      let endpoint;
-      let payloadObj;
-
-      // Determine API endpoint based on whether the course is saved in DB or is brand new
-      if (hasValidCourseId) {
-        // Use the course-specific endpoint to read existing document text
-        endpoint = `/courses/${id}/sections/${si}/lessons/${li}/gen-slides`;
-        payloadObj = { numSlides: 10 };
-      } else {
-        // Use the generic generation endpoint providing the raw document URL
-        endpoint = "/ai-slides/generate";
-        payloadObj = { docUrl: lesson.originalDocUrl, maxSlides: 10 };
-      }
-
+      
+      // Select endpoint based on whether the course is already saved in the DB
+      const endpoint = hasValidCourseId ? `/courses/${id}/sections/${si}/lessons/${li}/gen-slides` : "/ai-slides/generate";
+      const payloadObj = hasValidCourseId ? { numSlides: 10 } : { docUrl: lesson.originalDocUrl, maxSlides: 10 };
+      
       const res = await api.post(endpoint, payloadObj);
-
-      const data = res.data;
-
-      const slides = Array.isArray(data.slides) ? data.slides : [];
-
-      // Update lesson state with the generated slides array
-      setLesson(si, li, {
-        aiSlides: slides,
-        useAiSlides: true,
-      });
-
-      setToast({
-        type: "success",
-        msg: `Generated ${slides.length} AI slides for this lesson.`,
-      });
-      setTimeout(() => setToast(null), 3000);
+      
+      setLesson(si, li, { aiSlides: Array.isArray(res.data.slides) ? res.data.slides : [], useAiSlides: true });
+      setToast({ type: "success", msg: `Generated AI slides.` });
     } catch (e) {
-      console.error("[AI-SLIDES] Frontend error:", e);
-      setToast({
-        type: "error",
-        msg: `Generate slides failed: ${e.message}`,
-      });
-      setTimeout(() => setToast(null), 4000);
-    } finally {
-      setAiGeneratingLesson(null);
-    }
+      setToast({ type: "error", msg: `Generate failed: ${e.message}` });
+    } finally { setAiGeneratingLesson(null); setTimeout(() => setToast(null), 3000); }
   };
 
-  // ==== Validation & Submission ====
-
-  /** Validates all required fields before allowing submission */
+  /**
+   * Pre-submission validation to ensure required fields are filled.
+   */
   const validate = () => {
     if (!canEdit) return "Forbidden";
     if (!title.trim()) return "Please enter course title.";
@@ -337,343 +250,176 @@ export default function CourseEditor() {
     if (!subject) return "Please select a subject.";
     if (!description.trim()) return "Please enter course description.";
     if (!sections.length) return "Please add at least 1 section.";
-
-    // Deep validation for curriculum structure
+    
+    // Deep validation for nested curriculum
     for (let i = 0; i < sections.length; i++) {
-      const s = sections[i];
-      if (!s.title.trim()) return `Section ${i + 1}: title is required.`;
-      if (!s.lessons.length)
-        return `Section ${i + 1}: add at least 1 lesson.`;
-      for (let j = 0; j < s.lessons.length; j++) {
-        const L = s.lessons[j];
-        if (!L.title.trim())
-          return `Section ${i + 1}, Lesson ${j + 1}: title required.`;
-        if (!["lesson", "quiz"].includes(L.type))
-          return `Section ${i + 1}, Lesson ${j + 1}: invalid type.`;
+      if (!sections[i].title.trim()) return `Section ${i + 1}: title required.`;
+      if (!sections[i].lessons.length) return `Section ${i + 1}: add at least 1 lesson.`;
+      for (let j = 0; j < sections[i].lessons.length; j++) {
+        if (!sections[i].lessons[j].title.trim()) return `Sec ${i + 1}, Les ${j + 1}: title required.`;
       }
     }
     return null;
   };
 
+  /**
+   * Main submission handler.
+   * Prepares the payload and sends it to the API. 
+   * @param {String} targetVisibility - Either "draft" or "pending" depending on the button clicked.
+   */
   const handleSubmit = async (targetVisibility = "pending") => {
     const err = validate();
-    if (err) {
-      setToast({ type: "error", msg: err });
-      setTimeout(() => setToast(null), 3000);
-      return;
-    }
+    if (err) { setToast({ type: "error", msg: err }); setTimeout(() => setToast(null), 3000); return; }
 
     setSaving(true);
     try {
-      // Construct the payload, cleaning up empty arrays, strings, and whitespace
+      // Construct payload, sanitizing inputs (trimming strings, ensuring numbers)
       const payload = {
-        title: title.trim(),
-        slug: slug.trim(),
-        subject,
-        grade: grade.toString().trim(),
-        description,
-        tags,
-        price: price === "" ? null : Number(price),
-        coverUrl,
-        learn: learn.map(s => s.trim()).filter(Boolean),
-        visibility: targetVisibility, // Trạng thái muốn lưu
+        title: title.trim(), slug: slug.trim(), subject, grade: grade.toString().trim(), description, tags, price: price === "" ? null : Number(price), coverUrl,
+        learn: learn.map(s => s.trim()).filter(Boolean), visibility: targetVisibility,
         sections: sections.map((s) => ({
           title: s.title.trim(),
           lessons: s.lessons.map((L) => ({
-            title: L.title.trim(),
-            type: L.type,
-            durationMin: L.durationMin !== "" ? Number(L.durationMin) : 0,
-            contentUrl: (L.contentUrl || "").trim(),
-            originalDocUrl: (L.originalDocUrl || "").trim(),
-            originalDocType: L.originalDocType || "",
-            aiSlides: Array.isArray(L.aiSlides) ? L.aiSlides : [],
-            useAiSlides: !!L.useAiSlides,
-            showOriginalToStudents:
-              typeof L.showOriginalToStudents === "boolean"
-                ? L.showOriginalToStudents
-                : true,
+            title: L.title.trim(), type: L.type, durationMin: L.durationMin !== "" ? Number(L.durationMin) : 0, contentUrl: (L.contentUrl || "").trim(),
+            originalDocUrl: (L.originalDocUrl || "").trim(), originalDocType: L.originalDocType || "", aiSlides: Array.isArray(L.aiSlides) ? L.aiSlides : [],
+            useAiSlides: !!L.useAiSlides, showOriginalToStudents: typeof L.showOriginalToStudents === "boolean" ? L.showOriginalToStudents : true,
           })),
         })),
       };
 
       const url = isEdit ? `/courses/${id}` : `/courses`;
-
-      if (isEdit) {
-        await api.patch(url, payload);
-      } else {
-        await api.post(url, payload);
-      }
+      if (isEdit) await api.patch(url, payload);
+      else await api.post(url, payload);
         
       setToast({ type: "success", msg: targetVisibility === "draft" ? "Draft saved!" : "Submitted for review!" });
-
-      // Redirect back to instructor dashboard upon successful creation/update
+      
+      // Invalidate the cache for this course so the dashboard reflects the latest changes
+      sessionStorage.removeItem(`course_edit_v1_${id}`);
+      
       setTimeout(() => navigate("/instructor"), 700);
     } catch (e) {
-      const errorMsg = e.response?.data?.message || e.message;
-      setToast({ type: "error", msg: `Save failed: ${errorMsg}` });
+      setToast({ type: "error", msg: `Save failed: ${e.response?.data?.message || e.message}` });
       setTimeout(() => setToast(null), 4000);
-    } finally {
-      setSaving(false);
-    }
+    } finally { setSaving(false); }
   };
 
-  /** * Safety Clone logic.
-   * Triggered when editing a live (published) course. 
-   * Creates a duplicate draft version to prevent breaking the live environment.
+  /**
+   * Moderation Workflow Feature:
+   * Creates a draft clone of a live, published course so instructors can edit it safely 
+   * without affecting active students.
    */
   const handleCloneDraft = async () => {
     try {
         setSaving(true);
         const res = await api.post(`/courses/${id}/clone`);
         setToast({ type: "success", msg: "Draft version created! Redirecting..." });
-        setTimeout(() => {
-            navigate(`/instructor/courses/${res.data.id}/edit`);
-            window.location.reload(); 
-        }, 1000);
-    } catch(e) {
-        setToast({ type: "error", msg: "Failed to create draft." });
+        
+        // Fast navigation to the new cloned draft
+        navigate(`/instructor/courses/${res.data.id}/edit`);
         setSaving(false);
+    } catch(e) { 
+      setToast({ type: "error", msg: "Failed to create draft." });
+      setSaving(false); 
     }
   };
 
   // ==== Render ====
 
-  // Render access denied state if user lacks permissions
-  if (!canEdit) {
-    return (
-      <div className="course-page">
-        <SiteHeader />
-        <div className="course-container">
-          <div className="empty">
-            You do not have permission to access this page.
+  if (!canEdit) return (<div className="course-page"><SiteHeader /><div className="course-container"><div className="empty">Permission Denied</div></div><SiteFooter /></div>);
+
+  /**
+   * Skeleton Loading UI
+   * Replicates the shape of the editor form to prevent Cumulative Layout Shift (CLS).
+   */
+  const SkeletonEditor = () => (
+    <>
+      <section className="card skeleton-card">
+        <h3>Course information</h3>
+        <div className="form-grid">
+          <div className="form-row"><span className="skeleton-text" style={{width:'50px'}}></span><div className="skeleton skeleton-input"></div></div>
+          <div className="form-row"><span className="skeleton-text" style={{width:'100px'}}></span><div className="skeleton skeleton-input"></div></div>
+          <div className="form-row"><span className="skeleton-text" style={{width:'60px'}}></span><div className="skeleton skeleton-input"></div></div>
+          <div className="form-row"><span className="skeleton-text" style={{width:'50px'}}></span><div className="skeleton skeleton-input"></div></div>
+          <div className="form-row full"><span className="skeleton-text" style={{width:'80px'}}></span><div className="skeleton skeleton-textarea"></div></div>
+          <div className="form-row"><span className="skeleton-text" style={{width:'120px'}}></span><div className="skeleton skeleton-input"></div></div>
+          <div className="form-row"><span className="skeleton-text" style={{width:'100px'}}></span><div className="skeleton skeleton-input"></div></div>
+          <div className="form-row full"><span className="skeleton-text" style={{width:'150px'}}></span><div className="skeleton skeleton-input"></div></div>
+          <div className="form-row full">
+              <span className="skeleton-text" style={{width:'120px'}}></span>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                  <div className="skeleton skeleton-input"></div><div className="skeleton skeleton-input"></div>
+              </div>
           </div>
         </div>
-        <SiteFooter />
-      </div>
-    );
-  }
+      </section>
+      <section className="card skeleton-card">
+          <h3>Curriculum</h3>
+          <div className="skeleton skeleton-textarea" style={{height:'80px', marginBottom: '12px'}}></div>
+          <div className="sec-card">
+              <div className="skeleton skeleton-input" style={{height:'40px', marginBottom:'10px'}}></div>
+              <div className="skeleton skeleton-input" style={{height:'80px'}}></div>
+          </div>
+      </section>
+    </>
+  );
 
   return (
     <div className="course-page">
       <SiteHeader />
-
       <main className="course-container">
-        <h1 className="pg-title">
-          {isEdit ? "Edit Course" : "Create Course"}
-        </h1>
+        <h1 className="pg-title">{isEdit ? "Edit Course" : "Create Course"}</h1>
 
-        {loading ? (
-          <div className="empty">Loading…</div>
-        ) : (
+        {loading ? ( <SkeletonEditor /> ) : (
           <>
-            {/* ==== Meta Information Form ==== */}
+            {/* Metadata Form: Visual opacity is lowered if the course is currently live (Published) */}
             <section className="card" style={{ opacity: courseVisibility === "published" ? 0.6 : 1, pointerEvents: courseVisibility === "published" ? "none" : "auto" }}>
               <h3>Course information</h3>
               <div className="form-grid">
-                <label className="form-row">
-                  <span>Title</span>
-                  <input
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                  />
+                <label className="form-row"><span>Title</span><input value={title} onChange={(e) => setTitle(e.target.value)} /></label>
+                <label className="form-row"><span>Slug (optional)</span><input placeholder="my-awesome-course" value={slug} onChange={(e) => setSlug(e.target.value)} /></label>
+                <label className="form-row"><span>Subject</span><select value={subject} onChange={(e) => setSubject(e.target.value)}>{SUBJECTS.map((s) => (<option key={s.key} value={s.key}>{s.name}</option>))}</select></label>
+                <label className="form-row"><span>Grade</span><input value={grade} onChange={(e) => setGrade(e.target.value)} /></label>
+                <label className="form-row full"><span>Description</span><textarea rows={4} value={description} onChange={(e) => setDescription(e.target.value)} /></label>
+                <label className="form-row"><span>Tags (comma separated)</span><input value={tags.join(", ")} onChange={(e) => setTags(e.target.value.split(",").map((s) => s.trim()).filter(Boolean))} /></label>
+                <label className="form-row"><span>Price (optional)</span><input type="number" min="0" step="1" placeholder="e.g. 0 or 199" value={price} onChange={(e) => setPrice(e.target.value)} /></label>
+                <label className="form-row full"><span>Cover image URL</span><input className="url-input" placeholder="https://…" value={coverUrl} onChange={(e) => setCoverUrl(e.target.value)} />
+                  {coverUrl?.trim() && (<img src={coverUrl} alt="cover" className="cover-preview" style={{maxWidth: '200px'}} />)}
                 </label>
-
-                {/* Slug Inputs */}
-                <label className="form-row">
-                  <span>Slug (optional)</span>
-                  <input
-                    placeholder="my-awesome-course"
-                    value={slug}
-                    onChange={(e) => setSlug(e.target.value)}
-                  />
-                </label>
-
-                {/* Subject Inputs */}
-                <label className="form-row">
-                  <span>Subject</span>
-                  <select
-                    value={subject}
-                    onChange={(e) => setSubject(e.target.value)}
-                  >
-                    {SUBJECTS.map((s) => (
-                      <option key={s.key} value={s.key}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                {/* Grade Inputs */}
-                <label className="form-row">
-                  <span>Grade</span>
-                  <input
-                    value={grade}
-                    onChange={(e) => setGrade(e.target.value)}
-                  />
-                </label>
-
-                {/* Description Inputs */}
-                <label className="form-row full">
-                  <span>Description</span>
-                  <textarea
-                    rows={4}
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                  />
-                </label>
-
-                {/* Tags Inputs */}
-                <label className="form-row">
-                  <span>Tags (comma separated)</span>
-                  <input
-                    value={tags.join(", ")}
-                    onChange={(e) =>
-                      setTags(
-                        e.target.value
-                          .split(",")
-                          .map((s) => s.trim())
-                          .filter(Boolean)
-                      )
-                    }
-                  />
-                </label>
-
-                {/* Price Inputs */}
-                <label className="form-row">
-                  <span>Price (optional)</span>
-                  <input
-                    type="number"
-                    min="0"
-                    step="1"
-                    placeholder="e.g. 0 or 199"
-                    value={price}
-                    onChange={(e) => setPrice(e.target.value)}
-                  />
-                </label>
-
-                {/* Cover Image URL Inputs */}
-                <label className="form-row full">
-                  <span>Cover image URL (optional)</span>
-                  <input
-                    className="url-input"
-                    placeholder="https://… (image URL)"
-                    value={coverUrl}
-                    onChange={(e) => setCoverUrl(e.target.value)}
-                  />
-                  {coverUrl?.trim() && (
-                    <img
-                      src={coverUrl}
-                      alt="cover"
-                      className="cover-preview"
-                      style={{maxWidth: '200px'}}
-                    />
-                  )}
-                </label>
-
-                {/* "What you'll learn" Goals Inputs */}
+                
+                {/* Dynamic List for 'What you'll learn' goals */}
                 <div className="form-row full">
                   <span>What you'll learn</span>
-                  <p style={{fontSize: '13px', color: 'var(--text-secondary)', margin: '0 0 8px 0'}}>
-                    Add key skills students will gain. Leave input empty to ignore.
-                  </p>
+                  <p style={{fontSize: '13px', color: 'var(--text-secondary)', margin: '0 0 8px 0'}}>Add key skills students will gain. Leave input empty to ignore.</p>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                     {learn.map((item, idx) => (
                       <div key={idx} style={{ display: 'flex', gap: '8px' }}>
-                        <input
-                          placeholder={`Goal ${idx + 1}`}
-                          value={item}
-                          onChange={(e) => {
-                            const newLearn = [...learn];
-                            newLearn[idx] = e.target.value;
-                            setLearn(newLearn);
-                          }}
-                          style={{ flex: 1 }}
-                        />
-                        <button 
-                          type="button" 
-                          className="mini danger" 
-                          onClick={() => setLearn(learn.filter((_, i) => i !== idx))}
-                          title="Remove"
-                        >
-                          ✕
-                        </button>
+                        <input placeholder={`Goal ${idx + 1}`} value={item} onChange={(e) => { const newLearn = [...learn]; newLearn[idx] = e.target.value; setLearn(newLearn); }} style={{ flex: 1 }} />
+                        <button type="button" className="mini danger" onClick={() => setLearn(learn.filter((_, i) => i !== idx))}>✕</button>
                       </div>
                     ))}
                   </div>
-                  <button 
-                    type="button" 
-                    className="ghost-btn" 
-                    style={{ width: 'fit-content', marginTop: '8px' }}
-                    onClick={() => setLearn([...learn, ""])}
-                  >
-                    + Add more goal
-                  </button>
+                  <button type="button" className="ghost-btn" style={{ width: 'fit-content', marginTop: '8px' }} onClick={() => setLearn([...learn, ""])}>+ Add more goal</button>
                 </div>
               </div>
             </section>
 
-            {/* ==== Curriculum Builder ==== */}
+            {/* Curriculum Builder Section */}
             <section className="card">
               <h3>Curriculum</h3>
-
-              {/* Instructor Hints & Instructions */}
               <div className="upload-hints">
-                <div className="upload-hints-title">
-                  Teaching files & AI slides
-                </div>
-                <p className="upload-hints-text">
-                  For each lesson choose <strong>Lesson</strong> or{" "}
-                  <strong>Quiz</strong>. You can upload a PDF/Word/Slides file.
-                  Students can either view the original document or
-                  AI-generated slides in the player.
-                </p>
-                <ul>
-                  <li>
-                    <strong>Lesson:</strong> upload your teaching document and
-                    optionally let BrainBoost generate AI slides.
-                  </li>
-                  <li>
-                    <strong>Quiz:</strong> set a quiz duration (in minutes) and
-                    link it with your quiz content later.
-                  </li>
-                  <li>
-                    Always review AI-generated slides and formulas before using
-                    them in class.
-                  </li>
-                  <li>
-                    Avoid uploading confidential exam papers or sensitive
-                    personal data. Only extracted text is sent to the AI
-                    provider.
-                  </li>
-                </ul>
+                <div className="upload-hints-title">Teaching files & AI slides</div>
+                <p className="upload-hints-text">Choose <strong>Lesson</strong> or <strong>Quiz</strong>. Upload a PDF/Word/PPT file and let BrainBoost generate AI slides.</p>
               </div>
 
+              {/* Disabled interactions if the course is already published */}
               <div className="sec-list" style={{ opacity: courseVisibility === "published" ? 0.6 : 1, pointerEvents: courseVisibility === "published" ? "none" : "auto" }}>
                 {sections.map((sec, si) => (
                   <div key={si} className="sec-card">
                     <div className="sec-head">
-                      <input
-                        className="sec-title"
-                        value={sec.title}
-                        onChange={(e) =>
-                          changeSectionTitle(si, e.target.value)
-                        }
-                      />
+                      <input className="sec-title" value={sec.title} onChange={(e) => changeSectionTitle(si, e.target.value) } />
                       <div className="sec-actions">
-                        <button
-                          className="mini"
-                          type="button"
-                          onClick={() => addLesson(si)}
-                        >
-                          + Lesson
-                        </button>
-                        <button
-                          className="mini danger"
-                          type="button"
-                          onClick={() => removeSection(si)}
-                        >
-                          Delete Section
-                        </button>
+                        <button className="mini" type="button" onClick={() => addLesson(si)}>+ Lesson</button>
+                        <button className="mini danger" type="button" onClick={() => removeSection(si)}>Delete Section</button>
                       </div>
                     </div>
 
@@ -681,176 +427,36 @@ export default function CourseEditor() {
                       {sec.lessons.map((ls, li) => (
                         <div key={li} className="lesson-row">
                           <span className="ls-idx">{li + 1}.</span>
-
-                          <input
-                            className="ls-title"
-                            placeholder="Lesson title"
-                            value={ls.title}
-                            onChange={(e) =>
-                              setLesson(si, li, {
-                                title: e.target.value,
-                              })
-                            }
-                          />
-
+                          <input className="ls-title" placeholder="Lesson title" value={ls.title} onChange={(e) => setLesson(si, li, { title: e.target.value }) } />
                           <select className="ls-type" value={ls.type} onChange={(e) => setLesson(si, li, { type: e.target.value })}>
                             {LESSON_TYPES.map((t) => (<option key={t.key} value={t.key}>{t.name}</option>))}
                           </select>
-
-                          {/* Shared duration input for both lessons and quizzes */}
-                          <input
-                            className="ls-dur"
-                            type="number"
-                            min="0"
-                            placeholder="Mins"
-                            title={ls.type === 'lesson' ? 'Estimated time to learn (mins)' : 'Time limit for quiz (mins)'}
-                            value={ls.durationMin ?? ""}
-                            onChange={(e) =>
-                              setLesson(si, li, {
-                                durationMin: e.target.value,
-                              })
-                            }
-                          />
-
-                          {/* Resource Block: Access checkboxes and File Uploader */}
+                          <input className="ls-dur" type="number" min="0" placeholder="Mins" value={ls.durationMin ?? ""} onChange={(e) => setLesson(si, li, { durationMin: e.target.value }) } />
+                          
                           <div className="ls-resource">
                             <div className="lesson-switch-row">
-                              <label className="lesson-switch-label">
-                                <input
-                                  type="checkbox"
-                                  checked={!!ls.showOriginalToStudents}
-                                  onChange={(e) =>
-                                    setLesson(si, li, {
-                                      showOriginalToStudents: e.target.checked,
-                                    })
-                                  }
-                                />
-                                <span>
-                                  Let students open the original document
-                                </span>
-                              </label>
-
-                              <label className="lesson-switch-label">
-                                <input
-                                  type="checkbox"
-                                  checked={!!ls.useAiSlides}
-                                  onChange={(e) =>
-                                    setLesson(si, li, {
-                                      useAiSlides: e.target.checked,
-                                    })
-                                  }
-                                />
-                                <span>
-                                  Allow BrainBoost to generate AI slides
-                                </span>
-                              </label>
+                              <label className="lesson-switch-label"><input type="checkbox" checked={!!ls.showOriginalToStudents} onChange={(e) => setLesson(si, li, { showOriginalToStudents: e.target.checked }) } /><span>Original document access</span></label>
+                              <label className="lesson-switch-label"><input type="checkbox" checked={!!ls.useAiSlides} onChange={(e) => setLesson(si, li, { useAiSlides: e.target.checked }) } /><span>Allow AI slides</span></label>
                             </div>
-
+                            
                             {/* File Upload Controls */}
                             <div className="ls-file-actions">
-                              <label className="mini">
-                                Upload teaching file
-                                <input
-                                  type="file"
-                                  accept=".pdf,.doc,.docx,.txt,.ppt,.pptx"
-                                  style={{ display: "none" }}
-                                  onChange={(e) => {
-                                    const file =
-                                      e.target.files && e.target.files[0];
-                                    if (file) {
-                                      handleLessonFileChange(si, li, file);
-                                      e.target.value = "";
-                                    }
-                                  }}
-                                />
+                              <label className="mini">Upload file
+                                <input type="file" accept=".pdf,.doc,.docx,.txt,.ppt,.pptx" style={{ display: "none" }} onChange={(e) => { const file = e.target.files?.[0]; if (file) handleLessonFileChange(si, li, file); e.target.value = ""; }} />
                               </label>
-
-                              {uploadingLesson === `${si}-${li}` && (
-                                <span className="ls-uploading">Uploading…</span>
-                              )}
-
-                              {(ls.contentUrl || ls.originalDocUrl) && (
-                                <button
-                                  type="button"
-                                  className="mini danger"
-                                  onClick={() =>
-                                    setLesson(si, li, {
-                                      contentUrl: "",
-                                      originalDocUrl: "",
-                                      originalDocType: "",
-                                      aiSlides: [],
-                                    })
-                                  }
-                                >
-                                  Remove file
-                                </button>
-                              )}
+                              {uploadingLesson === `${si}-${li}` && (<span className="ls-uploading">Uploading…</span>)}
+                              {(ls.contentUrl || ls.originalDocUrl) && (<button type="button" className="mini danger" onClick={() => setLesson(si, li, { contentUrl: "", originalDocUrl: "", originalDocType: "", aiSlides: [] })}>Remove</button>)}
                             </div>
-
-                            {/* AI Slide Generation Trigger */}
+                            
+                            {/* AI Slide Generation Button */}
                             <div className="lesson-ai-actions">
-                              <button
-                                type="button"
-                                className="mini primary"
-                                disabled={
-                                  !ls.originalDocUrl ||
-                                  !ls.useAiSlides ||
-                                  aiGeneratingLesson === `${si}-${li}`
-                                }
-                                onClick={() =>
-                                  handleGenerateSlides(si, li, ls)
-                                }
-                              >
-                                {aiGeneratingLesson === `${si}-${li}`
-                                  ? "Generating slides…"
-                                  : "Generate AI slides"}
+                              <button type="button" className="mini primary" disabled={!ls.originalDocUrl || !ls.useAiSlides || aiGeneratingLesson === `${si}-${li}`} onClick={() => handleGenerateSlides(si, li, ls)}>
+                                {aiGeneratingLesson === `${si}-${li}` ? "Generating…" : "Generate AI slides"}
                               </button>
-
-                              {!ls.originalDocUrl && (
-                                <span className="lesson-hint">
-                                  Upload a document first to generate slides.
-                                </span>
-                              )}
-
-                              {Array.isArray(ls.aiSlides) &&
-                                ls.aiSlides.length > 0 && (
-                                  <span className="lesson-hint">
-                                    AI slides ready: {ls.aiSlides.length} slide
-                                    (s).
-                                  </span>
-                                )}
                             </div>
-
-                            {/* Live status preview of the lesson modes */}
-                            {(ls.originalDocUrl || ls.aiSlides?.length) && (
-                              <div className="lesson-ai-preview">
-                                <div className="lesson-ai-preview-title">
-                                  Lesson display modes
-                                </div>
-                                <p>
-                                  {ls.originalDocUrl
-                                    ? "• Original document will be available in the player."
-                                    : "• No original document uploaded yet."}
-                                  <br />
-                                  {ls.useAiSlides
-                                    ? `• AI slides ${
-                                        ls.aiSlides?.length
-                                          ? `(${ls.aiSlides.length}) `
-                                          : ""
-                                      }will be used when students choose the AI slide mode.`
-                                    : "• AI slides are currently disabled for this lesson."}
-                                </p>
-                              </div>
-                            )}
                           </div>
-
-                          <button
-                            className="mini danger"
-                            type="button"
-                            onClick={() => removeLesson(si, li)}
-                          >
-                            ✕
-                          </button>
+                          
+                          <button className="mini danger" type="button" onClick={() => removeLesson(si, li)}>✕</button>
                         </div>
                       ))}
                     </div>
@@ -858,30 +464,23 @@ export default function CourseEditor() {
                 ))}
               </div>
 
-              {/* Form Action Buttons - Conditional Buttons based on status */}
+              {/* Bottom Action Area: Changes completely based on Moderation Status */}
               {courseVisibility === "published" ? (
+                  // Warning Banner displayed for Live courses to prevent accidental edits
                   <div className="published-warning-banner">
                       <i className="bi bi-info-circle-fill"></i>
                       <div>
-                          <strong>This course is currently Live (Published).</strong>
-                          <p>To protect students' learning progress, you cannot edit a live course directly. Please create a Draft version to make changes.</p>
+                          <strong>Live Course.</strong><p>Cannot edit directly. Create a draft version to update safely.</p>
                       </div>
-                      <button type="button" className="primary-btn" onClick={handleCloneDraft} disabled={saving}>
-                          {saving ? "Creating..." : "Create Draft to Edit"}
-                      </button>
+                      <button type="button" className="primary-btn" onClick={handleCloneDraft} disabled={saving}>{saving ? "Creating..." : "Create Draft"}</button>
                   </div>
               ) : (
+                  // Standard save/submit actions for Drafts and Pending courses
                   <div className="actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '12px' }}>
                       <button className="ghost-btn" type="button" onClick={() => navigate("/instructor")}>Cancel</button>
-                      <button className="ghost-btn" type="button" onClick={addSection} disabled={saving}>
-                        + Add Section
-                      </button>
-                      <button className="ghost-btn" type="button" onClick={() => handleSubmit("draft")} disabled={saving}>
-                          {saving ? "..." : "Save as Draft"}
-                      </button>
-                      <button className="primary-btn" type="button" onClick={() => handleSubmit("pending")} disabled={saving}>
-                          {saving ? "Submitting..." : (isEdit ? "Update & Submit for Review" : "Submit for Review")}
-                      </button>
+                      <button className="ghost-btn" type="button" onClick={addSection} disabled={saving}>+ Add Section</button>
+                      <button className="ghost-btn" type="button" onClick={() => handleSubmit("draft")} disabled={saving}>{saving ? "..." : "Save as Draft"}</button>
+                      <button className="primary-btn" type="button" onClick={() => handleSubmit("pending")} disabled={saving}>{saving ? "Submitting..." : (isEdit ? "Update & Submit" : "Submit for Review")}</button>
                   </div>
               )}
             </section>
@@ -889,7 +488,7 @@ export default function CourseEditor() {
         )}
       </main>
 
-      {/* Global toast notification system */}
+      {/* Global Toast Notification System */}
       {toast && <div className={`toast ${toast.type}`}>{toast.msg}</div>}
       <SiteFooter />
     </div>

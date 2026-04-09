@@ -250,3 +250,21 @@
   background: var(--bg-hover);
   box-shadow: 0 4px 10px rgba(0,0,0,.05);
 }
+
+.skeleton {
+  background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%);
+  background-size: 200% 100%;
+  animation: skeletonLoading 1.5s infinite;
+  border-radius: 6px;
+}
+
+@keyframes skeletonLoading {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.skeleton-card { cursor: default !important; pointer-events: none; }
+.skeleton-img { height: 100%; width: 100%; border-radius: 0; }
+.skeleton-badge-small { height: 20px; width: 60px; border-radius: 999px; display: inline-block; margin-right: 6px;}
+.skeleton-title { height: 20px; width: 80%; margin-bottom: 12px; }
+.skeleton-btn { height: 36px; width: 80px; border-radius: 10px; display: inline-block; }

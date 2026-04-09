@@ -1,6 +1,3 @@
-/* ==========================================
-   HOMEPAGE GENERAL
-   ========================================== */
 .homepage {
   color: var(--text-main);
   line-height: 1.6;
@@ -14,9 +11,6 @@ img {
   display: block;
 }
 
-/* ==========================================
-   HERO SECTION
-   ========================================== */
 .hero {
   text-align: center;
   padding: clamp(3rem, 6vw, 5rem) 1.5rem;
@@ -38,9 +32,6 @@ img {
   margin: 0;
 }
 
-/* ==========================================
-   COMMON TITLES
-   ========================================== */
 .section-title, .why-title, .lp-title, .t-title {
   text-align: center;
   font-size: clamp(32px, 5vw, 48px);
@@ -59,9 +50,6 @@ img {
   padding: 0 1rem;
 }
 
-/* ==========================================
-   LEARNING PATH SECTION
-   ========================================== */
 .lp-section {
   padding: clamp(3rem, 5vw, 5rem) 1.5rem;
   text-align: center;
@@ -100,7 +88,7 @@ img {
 
 .lp-btn {
   width: 100%;
-  max-width: 400px; /* Bỏ min-width để không tràn màn hình nhỏ */
+  max-width: 400px;
   padding: 1rem 1.5rem;
   font-size: 1.1rem;
   font-weight: 800;
@@ -116,7 +104,6 @@ img {
 .lp-btn:hover { background: var(--primary-hover); transform: translateY(-3px); }
 .lp-btn:disabled { background: var(--border-input); cursor: not-allowed; box-shadow: none; transform: none; color: var(--text-secondary); }
 
-/* Lộ trình kết quả */
 .lp-result {
   max-width: 900px;
   margin: 0 auto;
@@ -182,9 +169,6 @@ img {
 
 .path-go-btn:hover { background: var(--bg-hover); }
 
-/* ==========================================
-   FEATURED COURSES SECTION
-   ========================================== */
 .featured {
   padding: clamp(3rem, 5vw, 5rem) 1.5rem;
 }
@@ -224,12 +208,10 @@ img {
   max-width: 1200px;
   margin: 0 auto 2rem;
   display: grid;
-  /* Sử dụng auto-fit để tự động xuống hàng, card nhỏ nhất là 280px */
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 1.5rem;
 }
 
-/* Card Styles */
 .fc-card {
   background: var(--bg-card);
   border-radius: 16px;
@@ -238,6 +220,7 @@ img {
   transition: all .2s ease;
   display: flex;
   flex-direction: column;
+  cursor: pointer;
 }
 
 .fc-card:hover {
@@ -296,9 +279,6 @@ img {
   border-radius: 8px;
 }
 
-/* ==========================================
-   SHARED LAYOUT: SKILLS, ABOUT, WHY
-   ========================================== */
 .skills-section, .about-section, .why-section {
   padding: clamp(2rem, 5vw, 4rem) 1.5rem;
 }
@@ -312,7 +292,6 @@ img {
   margin: 0 auto;
 }
 
-/* Xoá fix size và margin thừa của Ảnh */
 .skills-image img, .about-image img, .why-image-left img {
   width: 100%;
   max-width: 550px;
@@ -320,7 +299,7 @@ img {
   object-fit: cover;
   border-radius: 20px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
-  margin: 0 auto; /* Căn giữa ảnh */
+  margin: 0 auto;
 }
 
 .skills-content h2, .about-content h2 {
@@ -364,9 +343,6 @@ img {
 
 .view-course-button:hover { background: var(--primary-hover); transform: translateY(-2px); }
 
-/* ==========================================
-   WHY CARDS SECTION
-   ========================================== */
 .why-title { margin-bottom: 3rem; }
 
 .why-right {
@@ -408,9 +384,6 @@ img {
 .why-card-body h3 { margin: 0 0 6px 0; font-size: 1.25rem; color: var(--text-main); }
 .why-card-body p { margin: 0; font-size: 0.95rem; color: var(--text-secondary); line-height: 1.5; text-align: left;}
 
-/* ==========================================
-   TESTIMONIALS SECTION
-   ========================================== */
 .testimonials-section {
   padding: clamp(3rem, 5vw, 5rem) 1.5rem;
   background: var(--bg-card);
@@ -453,26 +426,18 @@ img {
 
 .t-stars span { color: #f59e0b; font-size: 1.2rem; margin-right: 2px; }
 
-/* ==========================================
-   RESPONSIVE DESIGN (MEDIA QUERIES)
-   ========================================== */
-
-/* Tablet & Mobile (Dưới 992px) */
 @media (max-width: 992px) {
-  /* Chuyển Skills, About, Why thành 1 cột dọc xếp chồng lên nhau */
   .skills-container, .about-container, .why-container {
     grid-template-columns: 1fr;
     text-align: center;
     gap: 2.5rem;
   }
   
-  /* Đảo vị trí About (đưa chữ lên trên ảnh) */
   .about-container {
     display: flex;
     flex-direction: column-reverse;
   }
 
-  /* Căn giữa list icon */
   .skill-list li {
     text-align: left;
     justify-content: flex-start;
@@ -481,7 +446,6 @@ img {
   .view-course-button { margin: 0 auto; }
 }
 
-/* Mobile nhỏ (Dưới 600px) */
 @media (max-width: 600px) {
   .fc-subject { flex-direction: column; gap: 10px; align-items: flex-start; }
   
@@ -491,4 +455,16 @@ img {
   .why-card { grid-template-columns: 60px 1fr; padding: 1rem; }
   .why-thumb { width: 60px; height: 60px; }
   .why-card-body h3 { font-size: 1.1rem; }
+}
+
+.skeleton-box {
+  background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%);
+  background-size: 200% 100%;
+  animation: skeletonLoading 1.5s infinite;
+  border-radius: 12px;
+}
+
+@keyframes skeletonLoading {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }

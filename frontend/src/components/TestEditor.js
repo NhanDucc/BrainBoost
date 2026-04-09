@@ -399,11 +399,8 @@ export default function TestEditor() {
       const res = await api.post(`/tests/${id}/clone`);
       setToast({ type: "success", msg: "Draft version created! Redirecting..." });
         
-      // Wait for Toast, then redirect to the newly created clone's edit page
-      setTimeout(() => {
-        navigate(`/instructor/tests/${res.data.id}/edit`);
-        window.location.reload(); 
-      }, 1000);
+      navigate(`/instructor/tests/${res.data.id}/edit`);
+      setSaving(false);
     } catch(e) {
       setToast({ type: "error", msg: "Failed to create draft." });
       setSaving(false);

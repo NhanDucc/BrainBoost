@@ -6,7 +6,6 @@
   padding-inline: clamp(12px,3vw,24px);
 }
 
-/* ===== Toolbar (search + tabs) ===== */
 .tests-toolbar{
 display: flex;
   flex-direction: column;
@@ -23,7 +22,7 @@ display: flex;
 }
 
 .searchbox{
-flex: 1 1 300px; /* Cho phép co giãn tốt hơn */
+flex: 1 1 300px;
   display: flex; align-items: center; gap: 8px;
   padding: 10px 14px;
   background: var(--bg-input);
@@ -40,7 +39,6 @@ flex: 1 1 300px; /* Cho phép co giãn tốt hơn */
   width: 26px; height: 26px; border-radius: 50%; font-weight: bold;
 }
 
-/* Kiểu dáng cho Bộ lọc */
 .filter-group {
   display: flex;
   gap: 12px;
@@ -91,7 +89,6 @@ flex: 1 1 300px; /* Cho phép co giãn tốt hơn */
   box-shadow:0 10px 20px rgba(0, 0, 0, .15);
 }
 
-/* ===== Section per subject ===== */
 .subject-section{ margin-top:18px; }
 .subject-title{
   text-align: center;
@@ -170,7 +167,6 @@ flex: 1 1 300px; /* Cho phép co giãn tốt hơn */
 }
 .primary-btn:hover{ background:var(--primary-hover); box-shadow:0 14px 32px rgba(0,0,0,.15); }
 
-/* Preview modal */
 .modal-backdrop {
   position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6);
   backdrop-filter: blur(4px);
@@ -278,3 +274,21 @@ font-size: 15px;
 .empty-state{
   text-align:center; color:var(--text-secondary); margin: 18px 0;
 }
+
+.skeleton {
+  background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%);
+  background-size: 200% 100%;
+  animation: skeletonLoading 1.5s infinite;
+  border-radius: 6px;
+}
+
+@keyframes skeletonLoading {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.skeleton-card { cursor: default !important; pointer-events: none; }
+.skeleton-img { height: 100%; width: 100%; border-radius: 0; }
+.skeleton-badge-small { height: 20px; width: 60px; border-radius: 999px; display: inline-block; margin-right: 6px;}
+.skeleton-title { height: 20px; width: 80%; margin-bottom: 12px; }
+.skeleton-btn { height: 36px; width: 80px; border-radius: 10px; display: inline-block; }

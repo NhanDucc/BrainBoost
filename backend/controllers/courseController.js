@@ -2,6 +2,7 @@ const Course = require("../models/Course");
 const axios = require("axios");
 const mongoose = require("mongoose");
 const LessonProgress = require("../models/LessonProgress");
+const Enrollment = require("../models/Enrollment");
 
 const AI_AGENT_URL = process.env.AI_AGENT_URL
 
@@ -53,15 +54,18 @@ const createCourse = async (req, res) => {
 /**
  * * GET /api/courses/:id
  * Retrieves a specific course by its ID for editing purposes.
- * Ensures that only the creator (instructor) can access the raw course data.
+ * Ensures that only the creator (instructor) OR an admin can access the raw course data.
  */
 const getCourse = async (req, res) => {
   try {
     const c = await Course.findById(req.params.id).lean();
     if (!c) return res.status(404).json({ message: "Not found" });
 
-    // Authorization check: Verify if the requester is the course creator
-    if (String(c.createdBy) !== String(req.userId)) {
+    // Authorization check: Verify if the requester is the course creator or an Admin
+    const isOwner = String(c.createdBy) === String(req.userId);
+    const isAdmin = String(req.userRole) === "admin";
+
+    if (!isOwner && !isAdmin) {
       return res.status(403).json({ message: "Forbidden" });
     }
 
@@ -635,8 +639,86 @@ const createDraftClone = async (req, res) => {
   }
 };
 
+/**
+ * * GET /api/courses/:id/check-enrollment
+ * Kiểm tra xem User hiện tại đã sở hữu khóa học này chưa.
+ */
+const checkEnrollment = async (req, res) => {
+  try {
+      const enrollment = await Enrollment.findOne({ user: req.userId, course: req.params.id, status: 'active' });
+      res.json({ isEnrolled: !!enrollment });
+  } catch (e) {
+      console.error("checkEnrollment error:", e);
+      res.status(500).json({ message: "Server error" });
+  }
+};
+
+/**
+ * * POST /api/courses/:id/enroll
+ * Mock Purchase: Giả lập việc mua/đăng ký khóa học thành công.
+ */
+const enrollCourse = async (req, res) => {
+  try {
+      const courseId = req.params.id;
+      const userId = req.userId;
+
+      // 1. Kiểm tra khóa học có tồn tại và đang được Public hay không
+      const course = await Course.findById(courseId);
+      if (!course || course.visibility !== 'published') {
+          return res.status(404).json({ message: "Course not found or not available." });
+      }
+
+      // 2. Kiểm tra xem đã mua trước đó chưa
+      const existing = await Enrollment.findOne({ user: userId, course: courseId });
+      if (existing) {
+          return res.status(400).json({ message: "You are already enrolled in this course." });
+      }
+
+      // 3. Tạo bản ghi mua hàng thành công (Lúc nào gắn Payment thật sẽ xử lý charge tiền ở đây)
+      await Enrollment.create({
+          user: userId,
+          course: courseId,
+          status: 'active'
+      });
+
+      res.status(201).json({ message: "Enrollment successful!" });
+  } catch (e) {
+      console.error("enrollCourse error:", e);
+      res.status(500).json({ message: "Server error" });
+  }
+};
+
+/**
+ * * GET /api/courses/enrolled
+ * Lấy danh sách các khóa học mà học sinh (user hiện tại) đã đăng ký mua (trạng thái active).
+ */
+const getMyEnrolledCourses = async (req, res) => {
+  try {
+      // Tìm trong bảng Enrollment, populate (kéo theo) dữ liệu từ bảng Course
+      const enrollments = await Enrollment.find({ user: req.userId, status: 'active' })
+          .populate({
+              path: 'course',
+              select: 'title coverUrl subject grade' // Chỉ lấy các trường cần thiết để hiển thị UI
+          })
+          .sort({ enrolledAt: -1 }); // Mới mua xếp lên đầu
+
+      // Lọc bỏ những bản ghi bị lỗi (vd: khóa học đã bị admin xóa cứng khỏi DB)
+      const validEnrollments = enrollments.filter(e => e.course);
+      
+      // Trả về mảng dữ liệu gọn gàng
+      res.json(validEnrollments.map(e => ({
+          enrolledAt: e.enrolledAt,
+          course: e.course
+      })));
+  } catch (e) {
+      console.error("getMyEnrolledCourses error:", e);
+      res.status(500).json({ message: "Server error" });
+  }
+};
+
 module.exports = {
   createCourse, getCourse, updateCourse, listCourses, listPublicCourses,
   getPublicCourseById, deleteCourse, generateLessonSlides, createLearningPath, markLessonProgress,
-  getAdminCourses, reviewCourse, archiveCourse, createDraftClone, 
+  getAdminCourses, reviewCourse, archiveCourse, createDraftClone, checkEnrollment,
+  enrollCourse, getMyEnrolledCourses, 
 };

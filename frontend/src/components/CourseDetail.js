@@ -3,6 +3,8 @@ import { useParams, useNavigate, Link } from "react-router-dom";
 import { toAbsolute } from "../utils/url";
 import SiteHeader from "./Header";
 import SiteFooter from "./Footer";
+import { useUser } from "../context/UserContext";
+import { api } from "../api";
 import "../css/CourseDetail.css";
 
 // ==== Helper Functions ====
@@ -56,15 +58,20 @@ export default function CourseDetail() {
     // ---- Routing Hooks ----
     const { courseId } = useParams();
     const navigate = useNavigate();
+    const { user } = useUser();
 
     // ---- Data & Network States ----
     const [course, setCourse] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
 
+    // ---- Enrollment & Purchase States ----
+    const [isEnrolled, setIsEnrolled] = useState(false);
+    const [enrollLoading, setEnrollLoading] = useState(false);
+    const [checkingEnrollment, setCheckingEnrollment] = useState(true);
+    const [toast, setToast] = useState(null);
+
     // ---- UI States ----
-    // Tracks the indices of the syllabus sections that are currently expanded in the accordion.
-    // Initializes with `[0]` so the first section is expanded by default.
     const [expandedSections, setExpandedSections] = useState([0]);
 
     // ==== Data Fetching (Stale-While-Revalidate Caching Strategy) ====
@@ -74,11 +81,11 @@ export default function CourseDetail() {
         let cancelled = false;
 
         async function fetchCourse() {
-            // 1. Define a unique cache key for this specific course using its ID
+            // Define a unique cache key for this specific course using its ID
             const cacheKey = `course_detail_v1_${courseId}`;
             const cached = sessionStorage.getItem(cacheKey);
 
-            // 2. Cache-First Rendering: If cache exists, show it immediately (0s loading time)
+            // Cache-First Rendering: If cache exists, show it immediately (0s loading time)
             if (cached) {
                 setCourse(JSON.parse(cached));
                 setLoading(false);
@@ -89,7 +96,7 @@ export default function CourseDetail() {
             setError("");
 
             try {
-                // 3. Fetch fresh data from the backend to ensure accuracy (e.g., price changes, new lessons)
+                // Fetch fresh data from the backend to ensure accuracy (e.g., price changes, new lessons)
                 const res = await fetch(toAbsolute(`/api/courses/public/${courseId}`));
 
                 if (!res.ok) {
@@ -106,7 +113,7 @@ export default function CourseDetail() {
 
                 const data = await res.json();
                 
-                // 4. Silently update the state and the cache with the fresh data
+                // Silently update the state and the cache with the fresh data
                 if (!cancelled) {
                     setCourse(data);
                     sessionStorage.setItem(cacheKey, JSON.stringify(data));
@@ -127,6 +134,34 @@ export default function CourseDetail() {
             cancelled = true;
         };
     }, [courseId]);
+
+    // ==== Check Enrollment Status with Caching ====
+    useEffect(() => {
+        if (user && courseId) {
+            // Create a cache key bound to both the course ID and the user ID
+            const enrollCacheKey = `enrollment_${courseId}_${user._id || user.id || 'user'}`;
+            const cachedEnrollment = sessionStorage.getItem(enrollCacheKey);
+
+            // Cache-First: If cached as enrolled, immediately show "Go to Course"
+            if (cachedEnrollment === "true") {
+                setIsEnrolled(true);
+                setCheckingEnrollment(false); 
+            } else {
+                setCheckingEnrollment(true);
+            }
+
+            // Background API Call: Verify status with the server silently
+            api.get(`/courses/${courseId}/check-enrollment`)
+                .then(res => {
+                    setIsEnrolled(res.data.isEnrolled);
+                    sessionStorage.setItem(enrollCacheKey, res.data.isEnrolled ? "true" : "false");
+                })
+                .catch(err => console.error("Enrollment check error:", err))
+                .finally(() => setCheckingEnrollment(false));
+        } else {
+            setCheckingEnrollment(false); 
+        }
+    }, [user, courseId]);
 
     // ==== Derived Data Calculations ====
 
@@ -169,6 +204,44 @@ export default function CourseDetail() {
                 ? prev.filter((i) => i !== idx) // Remove index if it's already open (collapse)
                 : [...prev, idx]                // Add index if it's closed (expand)
         );
+    };
+
+    /**
+     * Handles the Mock Purchase or Free Enrollment flow.
+     */
+    const handleEnrollClick = async () => {
+        // Redirect to login if unauthenticated
+        if (!user) {
+            navigate('/login');
+            return;
+        }
+
+        // Redirect directly to the learning dashboard if already enrolled
+        if (isEnrolled) {
+            navigate(`/courses/${courseId}/learn`);
+            return;
+        }
+
+        // Execute enrollment/purchase transaction
+        setEnrollLoading(true);
+        try {
+            await api.post(`/courses/${courseId}/enroll`);
+            setIsEnrolled(true);
+
+            // Update local cache to reflect immediate ownership
+            const enrollCacheKey = `enrollment_${courseId}_${user._id || user.id || 'user'}`;
+            sessionStorage.setItem(enrollCacheKey, "true");
+            
+            setToast({ type: "success", msg: "Success! Welcome to the course." });
+            
+            // Update local cache to reflect immediate ownership
+            setTimeout(() => navigate(`/courses/${courseId}/learn`), 1500);
+        } catch (err) {
+            const msg = err.response?.data?.message || "Enrollment failed.";
+            setToast({ type: "error", msg });
+        } finally {
+            setEnrollLoading(false);
+        }
     };
 
     // ==== Loading & Error Views ====
@@ -383,9 +456,23 @@ export default function CourseDetail() {
                             {/* Main Call to Action */}
                             <button
                                 className="enroll-btn"
-                                onClick={() => navigate(`/courses/${courseId}/learn`)}
+                                onClick={handleEnrollClick}
+                                disabled={enrollLoading}
+                                style={{ 
+                                    background: isEnrolled ? '#10b981' : 'var(--primary)',
+                                    opacity: (enrollLoading || checkingEnrollment) ? 0.7 : 1
+                                }}
                             >
-                                Enroll
+                                {checkingEnrollment
+                                    ? "Checking status..."
+                                    : enrollLoading 
+                                        ? "Processing..." 
+                                        : isEnrolled 
+                                            ? "Go to Course →" 
+                                            : isFree 
+                                                ? "Enroll for Free" 
+                                                : `Buy Now for $${course.priceUSD}`
+                                }
                             </button>
 
                             {/* Key Facts / Metadata List */}
@@ -413,6 +500,17 @@ export default function CourseDetail() {
                     </aside>
                 </section>
             </main>
+
+            {/* Custom Toast Notification for Enrollment Actions */}
+            {toast && (
+                <div style={{
+                    position: 'fixed', right: '16px', bottom: '16px', padding: '10px 14px', borderRadius: '10px',
+                    color: '#fff', fontWeight: '800', zIndex: 9999, boxShadow: '0 10px 24px rgba(0,0,0,.2)',
+                    background: toast.type === 'success' ? 'var(--success)' : 'var(--error)'
+                }}>
+                    {toast.msg}
+                </div>
+            )}
 
             <SiteFooter />
         </div>

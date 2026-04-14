@@ -20,7 +20,7 @@ router.patch("/admin/:id/review", auth, authorize("admin"), reviewTest);
 // Protected routes for instructors
 router.get("/", auth, authorize("instructor"), getMyTests);
 router.post("/", auth, authorize("instructor"), createTest);
-router.get("/:id", auth, authorize("instructor"), getOneTest);
+router.get("/:id", auth, authorize("instructor", "admin"), getOneTest);
 router.patch("/:id", auth, authorize("instructor"), updateTest);
 router.delete("/:id", auth, authorize("instructor"), deleteTest);
 router.patch("/:id/archive", auth, authorize("instructor"), archiveTest);

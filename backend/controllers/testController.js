@@ -227,17 +227,27 @@ const getMyTests = async (req, res) => {
 };
 
 /**
- *  * * GET /api/tests/:id
- * Retrieves a single test by ID and verifies that the requester is the test creator.
+ * * * GET /api/tests/:id
+ * Retrieves a single test by ID and verifies that the requester is the test creator or an admin.
  */
 const getOneTest = async (req, res) => {
   try {
+    // Fetch the test document from the database using the provided ID.
     const t = await Test.findById(req.params.id).lean();
+    
+    // Return a 404 Not Found error if the test does not exist in the database.
     if (!t) return res.status(404).json({ message: "Not found" });
 
-    // Authorization check: Only the creator can fetch the test editor details
-    if (String(t.createdBy) !== String(req.userId))
+    // Query the database to get the current user's details.
+    const currentUser = await User.findById(req.userId).lean();
+    const isAdmin = currentUser?.role === "admin";
+
+    // Authorization check: Evaluate if the requester is allowed to view this test.
+    if (String(t.createdBy) !== String(req.userId) && !isAdmin) {
+      // Deny access with a 403 Forbidden status if they fail the check.
       return res.status(403).json({ message: "Forbidden" });
+    }
+    
     res.json(t);
   } catch (e) {
     console.error(e);

@@ -4,290 +4,408 @@ import SiteFooter from "./Footer";
 import { api } from '../api';
 import '../css/Admin.css';
 
-/**
- * AdminDashboard Component
- * Acts as the central moderation hub for the platform.
- * Allows administrators to review, approve, or reject Instructor Applications, Courses, and Tests.
- */
 export default function AdminDashboard() {
-    // ==== Navigation & Filter States ====
-    const [mainTab, setMainTab] = useState('courses');     // Tracks the active category: 'applications', 'courses', or 'tests'
-    const [subStatus, setSubStatus] = useState('pending'); // Tracks the current filter: 'pending', 'approved', or 'rejected'
+    // ==== Navigation States ====
+    const [activeTab, setActiveTab] = useState('users');     
+    const [subStatus, setSubStatus] = useState('pending'); 
     
     // ==== Data & UI States ====
-    const [dataList, setDataList] = useState([]);          // Holds the fetched array of items to display in the table
-    const [msg, setMsg] = useState('');                    // Manages temporary success/error toast messages
+    const [dataList, setDataList] = useState([]);          
+    const [loading, setLoading] = useState(true);
+    const [msg, setMsg] = useState({ text: '', type: 'success' });
 
-    // ==== Reject Modal States ====
-    const [rejectModal, setRejectModal] = useState({ isOpen: false, id: null }); // Controls modal visibility and target item ID
-    const [rejectNote, setRejectNote] = useState('');                            // Stores the admin's feedback/reason for rejection
-    const [isSubmitting, setIsSubmitting] = useState(false);                     // Prevents double-clicking during API calls
+    // ==== User Management States ====
+    const [userSearch, setUserSearch] = useState('');
+    const [userRoleFilter, setUserRoleFilter] = useState('all');
+
+    // ==== Custom Modal States ====
+    const [confirmModal, setConfirmModal] = useState({
+        isOpen: false, title: '', message: '', isDanger: true, onConfirm: null
+    });
+    const [rejectModal, setRejectModal] = useState({ isOpen: false, id: null }); 
+    const [rejectNote, setRejectNote] = useState('');                            
+    const [approveModal, setApproveModal] = useState({ isOpen: false, id: null });
+    const [approveNote, setApproveNote] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);                     
 
     // ==== Data Fetching ====
-
-    /**
-     * Fetches data from the backend based on the currently selected mainTab and subStatus.
-     */
     const loadData = async () => {
+        setLoading(true);
         try {
             let res;
-            // Route the API request based on the selected main category
-            if (mainTab === 'applications') {
+            if (activeTab === 'users') {
+                res = await api.get('/admin/users');
+                let users = res.data || [];
+                if (userRoleFilter !== 'all') users = users.filter(u => u.role === userRoleFilter);
+                if (userSearch.trim()) {
+                    const q = userSearch.toLowerCase();
+                    users = users.filter(u => u.fullname?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q));
+                }
+                setDataList(users);
+            } else if (activeTab === 'applications') {
                 const statusQuery = subStatus === 'approved' ? 'approved' : subStatus;
                 res = await api.get(`/admin/instructors/applications?status=${statusQuery}`);
-            } else if (mainTab === 'courses') {
+                setDataList(res?.data || []);
+            } else if (activeTab === 'courses') {
                 const statusQuery = subStatus === 'approved' ? 'published' : subStatus;
                 res = await api.get(`/courses/admin/list?status=${statusQuery}`);
-            } else if (mainTab === 'tests') {
+                setDataList(res?.data || []);
+            } else if (activeTab === 'tests') {
                 const statusQuery = subStatus === 'approved' ? 'published' : subStatus;
                 res = await api.get(`/tests/admin/list?status=${statusQuery}`);
+                setDataList(res?.data || []);
             }
-            setDataList(res?.data || []);
         } catch (error) {
-            console.error("Failed to load data:", error);
+            console.error("Fetch error", error);
+            showMessage('Failed to load data.', 'error');
+        } finally {
+            setLoading(false);
         }
     };
 
-    // Re-fetch data whenever the user switches tabs or status filters
+    // Debounce effect: Waits 300ms after the user stops typing/clicking before fetching data
     useEffect(() => { 
-        loadData(); 
+        const delay = setTimeout(() => { loadData(); }, 300);
+        return () => clearTimeout(delay);
         /* eslint-disable-next-line */ 
-    }, [mainTab, subStatus]);
-
-    // ==== Action Handlers (Approve/Reject) ====
+    }, [activeTab, subStatus, userSearch, userRoleFilter]);
 
     /**
-     * Handles the quick-approval workflow.
-     * @param {String} id - The ID of the item being approved.
+     * Helper to show a temporary toast notification.
+     * Auto-hides after 3 seconds.
      */
-    const handleApprove = async (id) => {
-        let note = '';
-        // Optional: Allow admins to leave a welcome note for new instructor applications
-        if (mainTab === 'applications') {
-            note = prompt('Note to applicant (optional):') || '';
+    const showMessage = (text, type = 'success') => {
+        setMsg({ text, type });
+        setTimeout(() => setMsg({ text: '', type: '' }), 3000);
+    };
+
+    // ==== User Management Handlers ====
+
+    /**
+     * Intercepts role change attempts. 
+     * Triggers a warning modal if granting Admin rights to prevent accidental privilege escalation.
+     */
+    const handleRoleChangeRequest = (userId, newRole) => {
+        if (newRole === 'admin') {
+            setConfirmModal({
+                isOpen: true,
+                title: 'Grant Admin Privileges',
+                message: 'WARNING: Are you sure you want to grant ADMIN privileges to this user? They will have full access to the entire system.',
+                isDanger: false,
+                onConfirm: () => executeRoleChange(userId, newRole)
+            });
+        } else {
+            executeRoleChange(userId, newRole);
         }
-        await executeAction(id, 'approve', note);
+    };
+
+    const executeRoleChange = async (userId, newRole) => {
+        try {
+            await api.patch(`/admin/users/${userId}/role`, { role: newRole });
+            showMessage(`User role successfully updated to ${newRole}`);
+            setDataList(dataList.map(u => u._id === userId ? { ...u, role: newRole } : u));
+        } catch (err) { 
+            showMessage('Failed to update role. Please try again.', 'error'); 
+        } finally {
+            setConfirmModal({ isOpen: false, title: '', message: '', onConfirm: null });
+        }
     };
 
     /**
-     * Opens the Rejection Modal and attaches the target item's ID.
+     * Intercepts delete user attempts. 
+     * Blocks deletion of other admins and opens a confirmation modal for normal users.
      */
-    const openRejectModal = (id) => {
-        setRejectModal({ isOpen: true, id });
-        setRejectNote(''); // Reset the textarea to ensure no leftover text from previous actions
-    };
-
-    /**
-     * Closes the Rejection Modal and clears state.
-     */
-    const closeRejectModal = () => {
-        setRejectModal({ isOpen: false, id: null });
-        setRejectNote('');
-    };
-
-    /**
-     * Validates the rejection feedback and triggers the API call.
-     */
-    const confirmReject = async () => {
-        if (!rejectNote.trim()) {
-            alert('Please enter the feedback reason for rejection.');
+    const handleDeleteUserRequest = (userId, fullname, role) => {
+        if (role === 'admin') {
+            showMessage("ACTION DENIED: You cannot delete an Administrator account.", "error");
             return;
+        }
+        setConfirmModal({
+            isOpen: true,
+            title: 'Delete User Account',
+            message: `Are you sure you want to permanently delete the user: "${fullname}"? All their data will be lost. This action cannot be undone.`,
+            isDanger: true,
+            onConfirm: () => executeDeleteUser(userId, fullname)
+        });
+    };
+
+    const executeDeleteUser = async (userId, fullname) => {
+        try {
+            await api.delete(`/admin/users/${userId}`);
+            showMessage(`User "${fullname}" has been deleted successfully.`);
+            setDataList(dataList.filter(u => u._id !== userId));
+        } catch (err) { 
+            showMessage('Failed to delete user.', 'error'); 
+        } finally {
+            setConfirmModal({ isOpen: false, title: '', message: '', onConfirm: null });
+        }
+    };
+
+    // ==== Content Moderation Handlers ====
+
+    /**
+     * Handles the "Approve" button click. 
+     * Opens a modal for instructor applications (to add a note), or approves courses/tests directly.
+     */
+    const handleApproveClick = (id) => {
+        if (activeTab === 'applications') {
+            setApproveModal({ isOpen: true, id });
+            setApproveNote('');
+        } else {
+            executeAction(id, 'approve', '');
+        }
+    };
+
+    const confirmApproveApp = async () => {
+        setIsSubmitting(true);
+        await executeAction(approveModal.id, 'approve', approveNote);
+        setIsSubmitting(false);
+        setApproveModal({ isOpen: false, id: null });
+    };
+
+    const openRejectModal = (id) => { setRejectModal({ isOpen: true, id }); setRejectNote(''); };
+    const closeRejectModal = () => { setRejectModal({ isOpen: false, id: null }); setRejectNote(''); };
+
+    const confirmReject = async () => {
+        // Enforce providing a reason for rejection
+        if (!rejectNote.trim()) { 
+            showMessage('Please provide a reason for rejection.', 'error'); 
+            return; 
         }
         setIsSubmitting(true);
         await executeAction(rejectModal.id, 'reject', rejectNote);
         setIsSubmitting(false);
-        closeRejectModal(); // Close modal on success
+        closeRejectModal();
     };
 
     /**
-     * Core function to execute the API call for both Approve and Reject actions.
-     * Routes the PATCH request to the correct endpoint based on the active tab.
+     * Core function to execute moderation actions (Approve/Reject) across all content types.
      */
     const executeAction = async (id, actionType, note) => {
         try {
-            if (mainTab === 'applications') {
+            if (activeTab === 'applications') {
                 await api.patch(`/admin/instructors/applications/${id}/${actionType}`, { note });
-            } else if (mainTab === 'courses') {
-                // Map the action to the exact schema status string ('published' or 'rejected')
+            } else if (activeTab === 'courses') {
                 const status = actionType === 'approve' ? 'published' : 'rejected';
                 await api.patch(`/courses/admin/${id}/review`, { status, note });
-            } else if (mainTab === 'tests') {
+            } else if (activeTab === 'tests') {
                 const status = actionType === 'approve' ? 'published' : 'rejected';
                 await api.patch(`/tests/admin/${id}/review`, { status, note });
             }
-
-            // Display success message and refresh the table data
-            setMsg(actionType === 'approve' ? 'Approved successfully.' : 'Rejected successfully.');
+            showMessage(actionType === 'approve' ? 'Approved successfully.' : 'Rejected successfully.');
             loadData();
-            
-            // Auto-hide the message after 3 seconds
-            setTimeout(() => setMsg(''), 3000);
-        } catch (error) {
-            alert('Action failed! Please try again.');
+        } catch (error) { 
+            showMessage('Action failed!', 'error'); 
         }
     };
 
-    // ==== Dynamic UI Rendering ====
-
-    /**
-     * Dynamically generates table rows depending on whether the admin is viewing
-     * Instructor Applications or Educational Content (Courses/Tests).
-     */
-    const renderTableBody = () => {
-        // Fallback UI when no records exist
-        if (dataList.length === 0) {
-            return <tr><td colSpan="7" style={{textAlign:'center', padding: '20px'}}>No {mainTab} found.</td></tr>;
+    const getTitle = () => {
+        switch(activeTab) {
+            case 'users': return 'All Users';
+            case 'applications': return 'Instructor Applications';
+            case 'courses': return 'Courses Moderation';
+            case 'tests': return 'Tests Moderation';
+            default: return 'Admin Workspace';
         }
+    };
 
-        // Render UI specifically for Instructor Applications
-        if (mainTab === 'applications') {
-            return dataList.map(a => (
-                <tr key={a._id}>
-                    <td>{a.fullName}</td>
-                    <td>{a.email}</td>
-                    <td>{a.phone}</td>
-                    <td>{a.expertise}</td>
-                    <td>{a.experience || 0}</td>
-                    <td>{new Date(a.createdAt).toLocaleString()}</td>
+    // ==== Dynamic Table Renderer ====
+    const renderTableBody = () => {
+        if (loading) return <tr><td colSpan="7" style={{textAlign:'center', padding: '20px'}}>Loading data...</td></tr>;
+        if (dataList.length === 0) return <tr><td colSpan="7" style={{textAlign:'center', padding: '20px'}}>No records found.</td></tr>;
+
+        if (activeTab === 'users') {
+            return dataList.map(u => (
+                <tr key={u._id}>
+                    <td style={{ fontWeight: 'bold' }}>{u.fullname}</td>
+                    <td>{u.email}</td>
+                    <td style={{ color: 'var(--text-secondary)' }}>{new Date(u.createdAt).toLocaleDateString()}</td>
                     <td>
-                        {subStatus === 'pending' ? (
-                            <div className="action-buttons">
-                                <button onClick={() => handleApprove(a._id)}>Approve</button>
-                                <button onClick={() => openRejectModal(a._id)}>Reject</button>
-                            </div>
+                        <select 
+                            value={u.role}
+                            onChange={(e) => handleRoleChangeRequest(u._id, e.target.value)}
+                            style={{ 
+                                padding: '6px', borderRadius: '6px', cursor: 'pointer',
+                                border: '1px solid var(--border-color)', background: 'var(--bg-input)',
+                                color: u.role === 'admin' ? 'var(--error)' : u.role === 'instructor' ? 'var(--primary)' : 'var(--text-main)',
+                                fontWeight: 'bold', outline: 'none'
+                            }}
+                        >
+                            <option value="student">Student</option>
+                            <option value="instructor">Instructor</option>
+                            <option value="admin">Admin</option>
+                        </select>
+                    </td>
+                    <td style={{ textAlign: 'center' }}>
+                        {u.role === 'admin' ? (
+                            <span style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 'bold' }}>Admin</span>
                         ) : (
-                            <span className={`status-label ${a.status.toLowerCase()}`}>
-                                {a.status}
-                            </span>
+                            <button 
+                                onClick={() => handleDeleteUserRequest(u._id, u.fullname, u.role)} 
+                                style={{ background: 'transparent', border: 'none', color: 'var(--error)', cursor: 'pointer', fontSize: '18px' }} 
+                                title="Delete User"
+                            >
+                                <i className="bi bi-trash-fill"></i>
+                            </button>
                         )}
                     </td>
                 </tr>
             ));
         }
 
-        // Render shared UI structure for Courses and Tests
+        if (activeTab === 'applications') {
+            return dataList.map(a => (
+                <tr key={a._id}>
+                    <td>{a.fullName}</td><td>{a.email}</td><td>{a.phone}</td><td>{a.expertise}</td><td>{a.experience || 0}</td><td>{new Date(a.createdAt).toLocaleString()}</td>
+                    <td>{subStatus === 'pending' ? (<div className="action-buttons"><button onClick={() => handleApproveClick(a._id)}>Approve</button><button onClick={() => openRejectModal(a._id)}>Reject</button></div>) : (<span className={`status-label ${a.status.toLowerCase()}`}>{a.status}</span>)}</td>
+                </tr>
+            ));
+        }
+
         return dataList.map(item => (
             <tr key={item._id}>
                 <td>
                     <strong>{item.title}</strong>
-                    
-                    {/* Preview Button: Opens the content in a new tab so admins don't lose their place in the dashboard */}
                     <div style={{ marginTop: '6px' }}>
                         <a 
-                            href={mainTab === 'courses' ? `/courses/${item._id}` : `/tests/${item._id}`} 
+                            href={activeTab === 'courses' ? `/instructor/courses/${item._id}/edit` : `/instructor/tests/${item._id}/edit`} 
                             target="_blank" 
-                            rel="noopener noreferrer"
-                            style={{ 
-                                display: 'inline-flex', alignItems: 'center', gap: '4px',
-                                fontSize: '0.85rem', color: 'var(--primary)', 
-                                textDecoration: 'none', fontWeight: 'bold',
-                                background: 'var(--bg-input)', padding: '4px 8px',
-                                borderRadius: '6px'
-                            }}
+                            rel="noopener noreferrer" 
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.85rem', color: 'var(--primary)', textDecoration: 'none', fontWeight: 'bold', background: 'var(--bg-input)', padding: '4px 8px', borderRadius: '6px' }}
                         >
-                            <i className="bi bi-eye-fill"></i> Preview
+                            <i className="bi bi-eye-fill"></i> Preview Detail
                         </a>
                     </div>
                 </td>
-                <td style={{textTransform:'capitalize'}}>{item.subject}</td>
-                <td>{item.grade}</td>
-                <td>
-                    {item.createdBy?.fullname || 'Unknown'}<br/>
-                    <small style={{color: 'var(--text-secondary)'}}>{item.createdBy?.email || ''}</small>
-                </td>
-                {/* Dynamically show either Question count (for Tests) or Section count (for Courses) */}
-                <td>{item.numQuestions ? `${item.numQuestions} Qs` : `${item.sections?.length || 0} Sections`}</td>
-                <td>{new Date(item.updatedAt).toLocaleString()}</td>
-                <td>
-                    {/* Render action buttons if viewing pending items, otherwise just show the current status badge */}
-                    {subStatus === 'pending' ? (
-                        <div className="action-buttons">
-                            <button onClick={() => handleApprove(item._id)}>Approve</button>
-                            <button onClick={() => openRejectModal(item._id)}>Reject</button> 
-                        </div>
-                    ) : (
-                        <span className={`status-label ${item.visibility.toLowerCase()}`}>
-                            {item.visibility}
-                        </span>
-                    )}
-                </td>
+                <td style={{textTransform:'capitalize'}}>{item.subject}</td><td>{item.grade}</td>
+                <td>{item.createdBy?.fullname || 'Unknown'}<br/><small style={{color: 'var(--text-secondary)'}}>{item.createdBy?.email || ''}</small></td>
+                <td>{item.numQuestions ? `${item.numQuestions} Qs` : `${item.sections?.length || 0} Sections`}</td><td>{new Date(item.updatedAt).toLocaleString()}</td>
+                <td>{subStatus === 'pending' ? (<div className="action-buttons"><button onClick={() => handleApproveClick(item._id)}>Approve</button><button onClick={() => openRejectModal(item._id)}>Reject</button></div>) : (<span className={`status-label ${item.visibility.toLowerCase()}`}>{item.visibility}</span>)}</td>
             </tr>
         ));
     };
 
-    // ==== Render ====
-
     return (
         <div className="admin-page-container">
             <SiteHeader />
-            <div className="settings-wrap admin-page">
-                <div className="settings-card">
-                    <h2>Admin Dashboard</h2>
+            <div className="admin-page settings-wrap">
+                <div className="admin-dashboard-wrapper">
                     
-                    {/* ---- Main Tabs (Category Selection) ---- */}
-                    <div className="admin-main-tabs">
-                        <button 
-                            className={`main-tab ${mainTab === 'courses' ? 'active' : ''}`}
-                            onClick={() => { setMainTab('courses'); setSubStatus('pending'); }}
-                        >
-                            Courses Moderation
-                        </button>
-                        <button 
-                            className={`main-tab ${mainTab === 'tests' ? 'active' : ''}`}
-                            onClick={() => { setMainTab('tests'); setSubStatus('pending'); }}
-                        >
-                            Tests Moderation
-                        </button>
-                        <button 
-                            className={`main-tab ${mainTab === 'applications' ? 'active' : ''}`}
-                            onClick={() => { setMainTab('applications'); setSubStatus('pending'); }}
-                        >
-                            Instructor Applications
-                        </button>
-                    </div>
+                    {/* ==== SIDEBAR ==== */}
+                    <aside className="admin-sidebar">
+                        <div className="sidebar-section">
+                            <h4>People Management</h4>
+                            <button className={`sidebar-btn ${activeTab === 'users' ? 'active' : ''}`} onClick={() => setActiveTab('users')}>
+                                <i className="bi bi-people-fill"></i> All Users
+                            </button>
+                            <button className={`sidebar-btn ${activeTab === 'applications' ? 'active' : ''}`} onClick={() => { setActiveTab('applications'); setSubStatus('pending'); }}>
+                                <i className="bi bi-person-lines-fill"></i> Instructor Apps
+                            </button>
+                        </div>
+                        <div className="sidebar-section">
+                            <h4>Content</h4>
+                            <button className={`sidebar-btn ${activeTab === 'courses' ? 'active' : ''}`} onClick={() => { setActiveTab('courses'); setSubStatus('pending'); }}>
+                                <i className="bi bi-journal-album"></i> Courses
+                            </button>
+                            <button className={`sidebar-btn ${activeTab === 'tests' ? 'active' : ''}`} onClick={() => { setActiveTab('tests'); setSubStatus('pending'); }}>
+                                <i className="bi bi-ui-checks-grid"></i> Tests
+                            </button>
+                        </div>
+                    </aside>
 
-                    {/* ---- Sub Tabs (Status Filtering) ---- */}
-                    <div className="admin-sub-tabs">
-                        <button className={subStatus === 'pending' ? 'active' : ''} onClick={() => setSubStatus('pending')}>
-                            Pending Review
-                        </button>
-                        <button className={subStatus === 'approved' ? 'active' : ''} onClick={() => setSubStatus('approved')}>
-                            Approved / Published
-                        </button>
-                        <button className={subStatus === 'rejected' ? 'active' : ''} onClick={() => setSubStatus('rejected')}>
-                            Rejected
-                        </button>
-                    </div>
+                    {/* ==== MAIN CONTENT ==== */}
+                    <div className="settings-card" style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                            <h2>
+                                {activeTab === 'users' && <i className="bi bi-people-fill text-primary" style={{marginRight:'8px'}}></i>}
+                                {getTitle()}
+                            </h2>
+                        </div>
 
-                    {/* Success/Error Feedback Message */}
-                    {msg && <div className="settings-msg">{msg}</div>}
+                        {/* Search & Filter */}
+                        {activeTab === 'users' ? (
+                            <div style={{ display: 'flex', gap: '16px', marginBottom: '20px', flexWrap: 'wrap' }}>
+                                <input 
+                                    type="text" 
+                                    placeholder="Search by name or email..." 
+                                    value={userSearch} 
+                                    onChange={(e) => setUserSearch(e.target.value)}
+                                    style={{ flex: 1, padding: '10px 14px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-input)', color: 'var(--text-main)', outline: 'none' }}
+                                />
+                                <select 
+                                    value={userRoleFilter} 
+                                    onChange={(e) => setUserRoleFilter(e.target.value)}
+                                    style={{ padding: '10px 14px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-input)', color: 'var(--text-main)', outline: 'none' }}
+                                >
+                                    <option value="all">All Roles</option>
+                                    <option value="student">Students</option>
+                                    <option value="instructor">Instructors</option>
+                                    <option value="admin">Admins</option>
+                                </select>
+                            </div>
+                        ) : (
+                            <div className="admin-sub-tabs">
+                                <button className={subStatus === 'pending' ? 'active' : ''} onClick={() => setSubStatus('pending')}>Pending Review</button>
+                                <button className={subStatus === 'approved' ? 'active' : ''} onClick={() => setSubStatus('approved')}>Approved / Published</button>
+                                <button className={subStatus === 'rejected' ? 'active' : ''} onClick={() => setSubStatus('rejected')}>Rejected</button>
+                            </div>
+                        )}
 
-                    {/* ---- Data Table ---- */}
-                    <div className="results-table-wrap">
-                        <table className="results-table">
-                            <thead>
-                                {mainTab === 'applications' ? (
-                                    <tr>
-                                        <th>Fullname</th><th>Email</th><th>Phone</th><th>Expertise</th><th>Exp</th><th>Applied Date</th><th>Action</th>
-                                    </tr>
-                                ) : (
-                                    <tr>
-                                        <th>Title</th><th>Subject</th><th>Grade</th><th>Instructor</th><th>Content Size</th><th>Last Updated</th><th>Action</th>
-                                    </tr>
-                                )}
-                            </thead>
-                            <tbody>
-                                {renderTableBody()}
-                            </tbody>
-                        </table>
+                        {/* Toast */}
+                        {msg.text && (
+                            <div className="settings-msg" style={{ background: msg.type === 'error' ? 'var(--error)' : 'rgba(16, 185, 129, 0.1)', color: msg.type === 'error' ? '#fff' : 'var(--success)' }}>
+                                {msg.text}
+                            </div>
+                        )}
+
+                        <div className="results-table-wrap">
+                            <table className="results-table">
+                                <thead>
+                                    {activeTab === 'users' ? (
+                                        <tr><th>Name</th><th>Email</th><th>Joined Date</th><th>Role</th><th style={{ textAlign: 'center' }}>Actions</th></tr>
+                                    ) : activeTab === 'applications' ? (
+                                        <tr><th>Fullname</th><th>Email</th><th>Phone</th><th>Expertise</th><th>Exp</th><th>Applied Date</th><th>Action</th></tr>
+                                    ) : (
+                                        <tr><th>Title</th><th>Subject</th><th>Grade</th><th>Instructor</th><th>Content Size</th><th>Last Updated</th><th>Action</th></tr>
+                                    )}
+                                </thead>
+                                <tbody>{renderTableBody()}</tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             </div>
+
+            {/* ==== CUSTOM CONFIRM MODAL ==== */}
+            {confirmModal.isOpen && (
+                <div className="modal-overlay" onClick={() => setConfirmModal({ ...confirmModal, isOpen: false })}>
+                    <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <i className={`bi ${confirmModal.isDanger ? 'bi-exclamation-triangle-fill' : 'bi-shield-lock-fill'}`} style={{ color: confirmModal.isDanger ? 'var(--error)' : '#eab308' }}></i>
+                            <h3 style={{ color: 'var(--text-main)' }}>{confirmModal.title}</h3>
+                        </div>
+                        <div className="modal-body">
+                            <p style={{ fontSize: '15px', color: 'var(--text-secondary)' }}>{confirmModal.message}</p>
+                        </div>
+                        <div className="modal-actions">
+                            <button className="modal-btn-cancel" onClick={() => setConfirmModal({ ...confirmModal, isOpen: false })}>
+                                Cancel
+                            </button>
+                            <button 
+                                className="modal-btn-confirm" 
+                                style={!confirmModal.isDanger ? { background: '#eab308', boxShadow: '0 4px 12px rgba(234, 179, 8, 0.2)' } : {}}
+                                onClick={confirmModal.onConfirm}
+                            >
+                                Confirm
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
             
-            {/* ==== Reject Modal Overlay ==== */}
+            {/* ==== REJECT MODAL ==== */}
             {rejectModal.isOpen && (
                 <div className="modal-overlay" onClick={closeRejectModal}>
-                    {/* Stop propagation ensures clicking inside the modal doesn't trigger the overlay's onClick */}
                     <div className="modal-content" onClick={(e) => e.stopPropagation()}>
                         <div className="modal-header">
                             <i className="bi bi-exclamation-triangle-fill"></i>
@@ -296,27 +414,48 @@ export default function AdminDashboard() {
                         <div className="modal-body">
                             <p>Please provide constructive feedback so the instructor knows what to fix before re-submitting.</p>
                             <textarea 
-                                placeholder="E.g., The quality of the math formulas in lesson 2 is hard to read..."
-                                value={rejectNote}
-                                onChange={(e) => setRejectNote(e.target.value)}
-                                autoFocus
+                                placeholder="E.g., The quality of the math formulas in lesson 2 is hard to read..." 
+                                value={rejectNote} 
+                                onChange={(e) => setRejectNote(e.target.value)} 
+                                autoFocus 
                             />
                         </div>
                         <div className="modal-actions">
-                            <button 
-                                className="modal-btn-cancel" 
-                                onClick={closeRejectModal}
-                                disabled={isSubmitting}
-                            >
-                                Cancel
+                            <button className="modal-btn-cancel" onClick={closeRejectModal} disabled={isSubmitting}>Cancel</button>
+                            <button className="modal-btn-confirm" onClick={confirmReject} disabled={isSubmitting}>
+                                {isSubmitting ? 'Rejecting...' : 'Submit Rejection'}
                             </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ==== APPROVE MODAL ==== */}
+            {approveModal.isOpen && (
+                <div className="modal-overlay" onClick={() => setApproveModal({ isOpen: false, id: null })}>
+                    <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <i className="bi bi-check-circle-fill" style={{ color: 'var(--success)' }}></i>
+                            <h3>Approve Application</h3>
+                        </div>
+                        <div className="modal-body">
+                            <p>You can optionally leave a welcome note for the new instructor:</p>
+                            <textarea 
+                                placeholder="Welcome to the team!..." 
+                                value={approveNote} 
+                                onChange={(e) => setApproveNote(e.target.value)} 
+                                autoFocus 
+                            />
+                        </div>
+                        <div className="modal-actions">
+                            <button className="modal-btn-cancel" onClick={() => setApproveModal({ isOpen: false, id: null })} disabled={isSubmitting}>Cancel</button>
                             <button 
                                 className="modal-btn-confirm" 
-                                onClick={confirmReject}
-                                // Disable button if submitting OR if the feedback textarea is empty
-                                disabled={isSubmitting || !rejectNote.trim()}
+                                style={{ background: 'var(--success)', boxShadow: '0 4px 12px rgba(16, 185, 129, 0.2)' }}
+                                onClick={confirmApproveApp} 
+                                disabled={isSubmitting}
                             >
-                                {isSubmitting ? 'Rejecting...' : 'Submit Rejection'}
+                                {isSubmitting ? 'Approving...' : 'Approve Application'}
                             </button>
                         </div>
                     </div>

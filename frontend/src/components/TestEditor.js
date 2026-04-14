@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import SiteHeader from "./Header";
 import SiteFooter from "./Footer";
-import { toAbsolute } from "../utils/url";
+import { useUser } from "../context/UserContext";
 import FormulaEditor from "./FormulaEditor";
 import { api } from "../api";
 import "../css/TestEditor.css";
@@ -61,9 +61,13 @@ const emptyQuestion = (i) => ({
  */
 export default function TestEditor() {
   // ---- Routing & Context ----
+  const { user } = useUser();
   const { id } = useParams();
   const isEdit = Boolean(id); // Determines if we are editing an existing test (PATCH) or creating a new one (POST)
   const navigate = useNavigate();
+
+  // Flag to disable inputs if viewed by Admin (Read-Only Preview Mode)
+  const isAdminReview = user?.role === "admin";
 
   // ---- Test Metadata States ----
   const [title, setTitle] = useState("");
@@ -511,7 +515,7 @@ export default function TestEditor() {
         ) : (
           <>
             {/* ---- Test Metadata Section ---- */}
-            <section className="card" style={{ opacity: testVisibility === "published" ? 0.6 : 1, pointerEvents: testVisibility === "published" ? "none" : "auto" }}>
+            <section className="card" style={{ opacity: (testVisibility === "published" || isAdminReview) ? 0.6 : 1, pointerEvents: (testVisibility === "published" || isAdminReview) ? "none" : "auto" }}>
               <h3>Test information</h3>
               <div className="form-grid">
                 <label className="form-row">
@@ -602,7 +606,7 @@ export default function TestEditor() {
             <section className="card">
               <h3>Questions</h3>
 
-              <div className="q-list" style={{ opacity: testVisibility === "published" ? 0.6 : 1, pointerEvents: testVisibility === "published" ? "none" : "auto" }}>
+              <div className="q-list" style={{ opacity: (testVisibility === "published" || isAdminReview) ? 0.6 : 1, pointerEvents: (testVisibility === "published" || isAdminReview) ? "none" : "auto" }}>
                 {questions.map((q, qi) => (
                   <div key={qi} className="q-card">
 
@@ -647,16 +651,21 @@ export default function TestEditor() {
                 ))}
               </div>
 
-              {/* Form Action Buttons - Layout changes based on moderation status */}
-              {testVisibility === "published" ? (
+              {/* Form Action Buttons - Layout changes based on moderation status & Role */}
+              {isAdminReview ? (
+                <div className="published-warning-banner" style={{ background: '#eff6ff', borderColor: '#bfdbfe', color: '#1e3a8a', marginTop: '20px', padding: '16px', borderRadius: '10px', display: 'flex', gap: '12px' }}>
+                  <i className="bi bi-shield-lock-fill" style={{ fontSize: '24px' }}></i>
+                  <div>
+                    <strong>Admin Preview Mode.</strong><p style={{ margin: 0, marginTop: '4px', fontSize: '14px' }}>This is a read-only view for moderation purposes. You cannot modify the instructor's content.</p>
+                  </div>
+                </div>
+              ) : testVisibility === "published" ? (
                 <div className="published-warning-banner">
                   <i className="bi bi-info-circle-fill"></i>
                   <div>
                     <strong>This test is currently Live (Published).</strong>
                     <p>To protect students' scores, you cannot edit a live test directly. Please create a Draft version to make changes.</p>
                   </div>
-
-                  {/* Renders the clone button for safe updates */}
                   <button type="button" className="primary-btn" onClick={handleCloneDraft} disabled={saving}>
                     {saving ? "Creating..." : "Create Draft to Edit"}
                   </button>
@@ -664,12 +673,9 @@ export default function TestEditor() {
               ) : (
                 <div className="actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '12px' }}>
                   <button className="ghost-btn" type="button" onClick={() => navigate("/instructor")}>Cancel</button>
-
-                  {/* Save explicitly as draft (doesn't trigger admin review) */}
                   <button className="ghost-btn" type="button" onClick={() => handleSubmit("draft")} disabled={saving}>
                     {saving ? "..." : "Save as Draft"}
                   </button>
-
                   <button className="primary-btn" type="button" onClick={() => handleSubmit("pending")} disabled={saving}>
                     {saving ? "Submitting..." : (isEdit ? "Update & Submit for Review" : "Submit for Review")}
                   </button>

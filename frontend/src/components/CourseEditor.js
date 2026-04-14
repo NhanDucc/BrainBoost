@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import SiteHeader from "./Header";
 import SiteFooter from "./Footer";
-import { toAbsolute } from "../utils/url";
 import { useUser } from "../context/UserContext";
 import { api } from "../api";
 import "../css/CourseEditor.css";
@@ -59,6 +58,9 @@ export default function CourseEditor() {
   
   // Role-Based Access Control (RBAC): Only admins and instructors can access this editor
   const canEdit = user && (user.role === "admin" || user.role === "instructor");
+
+  // Identifies if an Admin is viewing this page in "Read-Only Preview Mode"
+  const isAdminReview = user?.role === "admin";
 
   // ---- UI & Network States ----
   const [loading, setLoading] = useState(isEdit); // Show loading skeleton only if editing
@@ -372,7 +374,7 @@ export default function CourseEditor() {
         {loading ? ( <SkeletonEditor /> ) : (
           <>
             {/* Metadata Form: Visual opacity is lowered if the course is currently live (Published) */}
-            <section className="card" style={{ opacity: courseVisibility === "published" ? 0.6 : 1, pointerEvents: courseVisibility === "published" ? "none" : "auto" }}>
+            <section className="card" style={{ opacity: (courseVisibility === "published" || isAdminReview) ? 0.6 : 1, pointerEvents: (courseVisibility === "published" || isAdminReview) ? "none" : "auto" }}>
               <h3>Course information</h3>
               <div className="form-grid">
                 <label className="form-row"><span>Title</span><input value={title} onChange={(e) => setTitle(e.target.value)} /></label>
@@ -412,7 +414,7 @@ export default function CourseEditor() {
               </div>
 
               {/* Disabled interactions if the course is already published */}
-              <div className="sec-list" style={{ opacity: courseVisibility === "published" ? 0.6 : 1, pointerEvents: courseVisibility === "published" ? "none" : "auto" }}>
+              <div className="sec-list" style={{ opacity: (courseVisibility === "published" || isAdminReview) ? 0.6 : 1, pointerEvents: (courseVisibility === "published" || isAdminReview) ? "none" : "auto" }}>
                 {sections.map((sec, si) => (
                   <div key={si} className="sec-card">
                     <div className="sec-head">
@@ -464,9 +466,15 @@ export default function CourseEditor() {
                 ))}
               </div>
 
-              {/* Bottom Action Area: Changes completely based on Moderation Status */}
-              {courseVisibility === "published" ? (
-                  // Warning Banner displayed for Live courses to prevent accidental edits
+              {/* Bottom Action Area: Changes completely based on Moderation Status & Role */}
+              {isAdminReview ? (
+                  <div className="published-warning-banner" style={{ background: '#eff6ff', borderColor: '#bfdbfe', color: '#1e3a8a' }}>
+                      <i className="bi bi-shield-lock-fill"></i>
+                      <div>
+                          <strong>Admin Preview Mode.</strong><p>This is a read-only view for moderation purposes. You cannot modify the instructor's content.</p>
+                      </div>
+                  </div>
+              ) : courseVisibility === "published" ? (
                   <div className="published-warning-banner">
                       <i className="bi bi-info-circle-fill"></i>
                       <div>
@@ -475,7 +483,6 @@ export default function CourseEditor() {
                       <button type="button" className="primary-btn" onClick={handleCloneDraft} disabled={saving}>{saving ? "Creating..." : "Create Draft"}</button>
                   </div>
               ) : (
-                  // Standard save/submit actions for Drafts and Pending courses
                   <div className="actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '12px' }}>
                       <button className="ghost-btn" type="button" onClick={() => navigate("/instructor")}>Cancel</button>
                       <button className="ghost-btn" type="button" onClick={addSection} disabled={saving}>+ Add Section</button>

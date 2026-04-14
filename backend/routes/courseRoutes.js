@@ -4,7 +4,8 @@ const { auth, authorize } = require("../middleware/auth");
 const {
   createCourse, getCourse, updateCourse, listCourses, listPublicCourses,
   getPublicCourseById, deleteCourse, generateLessonSlides, createLearningPath, markLessonProgress,
-  getAdminCourses, reviewCourse, archiveCourse, createDraftClone, 
+  getAdminCourses, reviewCourse, archiveCourse, createDraftClone, checkEnrollment,
+  enrollCourse, getMyEnrolledCourses, 
 } = require("../controllers/courseController");
 const { uploadDoc, toCloudinaryDoc } = require("../middleware/uploadDoc");
 
@@ -59,6 +60,7 @@ router.get("/admin/list", auth, authorize("admin"), getAdminCourses);
 router.patch("/admin/:id/review", auth, authorize("admin"), reviewCourse);
 
 // --- Private routes ---
+router.get("/enrolled", auth, getMyEnrolledCourses);
 router.get("/", auth, listCourses);
 router.post("/", auth, authorize("admin", "instructor"), createCourse);
 router.get("/:id", auth, getCourse);
@@ -67,5 +69,7 @@ router.delete("/:id", auth, authorize("admin", "instructor"), deleteCourse);
 router.post("/:id/progress", auth, markLessonProgress);
 router.patch("/:id/archive", auth, authorize("instructor"), archiveCourse);
 router.post("/:id/clone", auth, authorize("instructor"), createDraftClone);
+router.get("/:id/check-enrollment", auth, checkEnrollment);
+router.post("/:id/enroll", auth, enrollCourse);
 
 module.exports = router;

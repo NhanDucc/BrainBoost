@@ -4,6 +4,7 @@ import SiteHeader from "./Header";
 import SiteFooter from "./Footer";
 import { useUser } from "../context/UserContext";
 import { api } from "../api";
+import ContentCover from "../components/ContentCover";
 import "../css/CourseEditor.css";
 
 // ==== Constants & Helper Functions ====
@@ -384,8 +385,14 @@ export default function CourseEditor() {
                 <label className="form-row full"><span>Description</span><textarea rows={4} value={description} onChange={(e) => setDescription(e.target.value)} /></label>
                 <label className="form-row"><span>Tags (comma separated)</span><input value={tags.join(", ")} onChange={(e) => setTags(e.target.value.split(",").map((s) => s.trim()).filter(Boolean))} /></label>
                 <label className="form-row"><span>Price (optional)</span><input type="number" min="0" step="1" placeholder="e.g. 0 or 199" value={price} onChange={(e) => setPrice(e.target.value)} /></label>
-                <label className="form-row full"><span>Cover image URL</span><input className="url-input" placeholder="https://…" value={coverUrl} onChange={(e) => setCoverUrl(e.target.value)} />
-                  {coverUrl?.trim() && (<img src={coverUrl} alt="cover" className="cover-preview" style={{maxWidth: '200px'}} />)}
+                <label className="form-row full"><span>Cover image URL</span>
+                  <input className="url-input" placeholder="https://…" value={coverUrl} onChange={(e) => setCoverUrl(e.target.value)} />
+                  {/* Preview */}
+                  {(coverUrl?.trim() || title?.trim()) ? (
+                    <div style={{ maxWidth: '280px', height: '150px', marginTop: '12px', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border-color)' }}>
+                      <ContentCover coverUrl={coverUrl} title={title} subject={subject} grade={grade} />
+                    </div>
+                  ) : null}
                 </label>
                 
                 {/* Dynamic List for 'What you'll learn' goals */}

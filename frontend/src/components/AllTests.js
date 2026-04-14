@@ -5,6 +5,7 @@ import SiteFooter from "./Footer";
 import skillsPlaceholder from "../images/skills-placeholder.png";
 import { toAbsolute } from "../utils/url";
 import { api } from "../api";
+import ContentCover from "../components/ContentCover";
 import "../css/AllTests.css";
 
 // ==== Constants & Configurations ====
@@ -302,7 +303,13 @@ export default function Tests() {
                         <div className="tests-grid">
                         {items.map((t) => (
                             <article className="test-card" key={t.id} onClick={() => setPreviewId(t.id)}>
-                                <div className="test-thumb"><img src={t.thumb} alt="" /></div>
+                                <div className="test-thumb">
+                                    <ContentCover 
+                                        title={t.title} 
+                                        subject={t.subjectKey || t.subject} 
+                                        grade={t.grade} 
+                                    />
+                                </div>
                                 <div className="test-info">
                                     <div className="test-topline" style={{ flexWrap: 'wrap' }}>
                                         <span className={`chip chip-${(t.subjectKey || "").toLowerCase()}`}>{t.subject}</span>
@@ -330,7 +337,13 @@ export default function Tests() {
                     <div className="tests-grid">
                     {filtered.map((t) => (
                         <article className="test-card" key={t.id} onClick={() => setPreviewId(t.id)}>
-                            <div className="test-thumb"><img src={t.thumb} alt="" /></div>
+                            <div className="test-thumb">
+                                <ContentCover 
+                                    title={t.title} 
+                                    subject={t.subjectKey || t.subject} 
+                                    grade={t.grade} 
+                                />
+                            </div>
                             <div className="test-info">
                                 <div className="test-topline" style={{ flexWrap: 'wrap' }}>
                                     <span className={`chip chip-${(t.subjectKey || "").toLowerCase()}`}>{t.subject}</span>

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../../api";
+import ContentCover from '../ContentCover';
 
 // ==== Constants ====
 
@@ -147,7 +148,13 @@ export default function StudentDashboard({ user }) {
                 <div className="enrolled-grid">
                     {enrolledCourses.map(enr => (
                         <div key={enr.course._id} className="enrolled-card" onClick={() => navigate(`/courses/${enr.course._id}/learn`)}>
-                            <img src={enr.course.coverUrl || "/img/course-placeholder.jpg"} alt={enr.course.title} className="ec-thumb" />
+                            <ContentCover 
+                                coverUrl={enr.course.coverUrl}
+                                title={enr.course.title}
+                                subject={enr.course.subject}
+                                grade={enr.course.grade}
+                                className="ec-thumb"
+                            />
                             <div className="ec-info">
                                 <h4 className="ec-title">{enr.course.title}</h4>
                                 <div className="ec-meta"><span className="chip chip-mini">{(enr.course.subject || "").toUpperCase()}</span><span className="ec-date">Bought: {new Date(enr.enrolledAt).toLocaleDateString()}</span></div>

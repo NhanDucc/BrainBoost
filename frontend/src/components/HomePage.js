@@ -5,6 +5,7 @@ import defaultAvatar from "../images/defaultAvatar.png";
 import skillsPlaceholder from "../images/skills-placeholder.png";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api.js";
+import ContentCover from "../components/ContentCover";
 import "../css/HomePage.css";
 
 /**
@@ -75,11 +76,11 @@ const HomePage = () => {
   /**
    * Reusable UI Component for displaying a summarized course card on the homepage.
    */
-  const CourseCard = ({ id, img, title, lessons, hours, price, onClick }) => (
-    <article className="fc-card" onClick={onClick} role="button" tabIndex={0}>
-      <div className="fc-thumb">
-        <img src={img || skillsPlaceholder} alt={title} />
-      </div>
+  const CourseCard = ({ id, img, title, subject, grade, lessons, hours, price, onClick }) => (
+  <article className="fc-card" onClick={onClick} role="button" tabIndex={0}>
+    <div className="fc-thumb">
+      <ContentCover coverUrl={img} title={title} subject={subject} grade={grade} />
+    </div>
 
       <div className="fc-info">
         <h4 className="fc-title">{title}</h4>
@@ -150,11 +151,13 @@ const HomePage = () => {
                 id={c.id}
                 img={c.coverUrl}
                 title={c.title}
+                subject={c.subject}// Thêm dòng này
+                grade={c.grade}
                 lessons={c.lessons}
                 hours={c.hours}
                 price={c.priceUSD}
                 onClick={() => navigate(`/courses/${c.id}`)}
-              />
+            />
             ))}
           </div>
         )}

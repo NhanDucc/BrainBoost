@@ -5,6 +5,7 @@ import SiteHeader from "./Header";
 import SiteFooter from "./Footer";
 import { useUser } from "../context/UserContext";
 import { api } from "../api";
+import ContentCover from "../components/ContentCover";
 import "../css/CourseDetail.css";
 
 // ==== Helper Functions ====
@@ -436,11 +437,13 @@ export default function CourseDetail() {
                     <aside className="detail-right">
                         <div className="right-card">
                             {/* Course Cover Image */}
-                            <div className="right-thumb">
-                                <img
-                                    src={course.coverUrl || "/img/course-placeholder.jpg"}
-                                    alt={course.title}
-                                    style={{ objectFit: "cover" }}
+                            <div className="right-thumb" style={{ overflow: 'hidden' }}>
+                                <ContentCover 
+                                    coverUrl={course.coverUrl} 
+                                    title={course.title} 
+                                    subject={course.subject} 
+                                    grade={course.grade} 
+                                    style={{ width: "100%", height: "100%" }}
                                 />
                             </div>
 

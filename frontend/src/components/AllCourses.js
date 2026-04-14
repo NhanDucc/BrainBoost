@@ -4,6 +4,7 @@ import SiteHeader from "./Header";
 import SiteFooter from "./Footer";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { toAbsolute } from "../utils/url";
+import ContentCover from '../components/ContentCover';
 
 // ==== Constants & Configurations ====
 
@@ -194,7 +195,12 @@ export default function AllCourses() {
       onClick={() => navigate(`/courses/${c.id}`)}
     >
       <div className="thumb">
-        <img src={c.coverUrl || "/img/course-placeholder.jpg"} alt="" />
+        <ContentCover 
+          coverUrl={c.coverUrl} 
+          title={c.title} 
+          subject={c.subject} 
+          grade={c.grade} 
+        />
       </div>
       
       <div className="info">

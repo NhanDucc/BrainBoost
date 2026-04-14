@@ -4,6 +4,7 @@ import { api } from "../api";
 import SiteHeader from "./Header";
 import SiteFooter from "./Footer";
 import { toAbsolute } from "../utils/url";
+import ContentCover from "../components/ContentCover";
 import "../css/InstructorDashboard.css";
 
 // ==== Constants & Configurations ====
@@ -322,49 +323,55 @@ export default function InstructorDashboard() {
                   className={`t-card grid-item ${item.visibility === 'rejected' ? 'status-rejected' : ''} ${item.visibility === 'archived' ? 'status-archived' : ''}`} 
                   onClick={() => navigate(tab === "tests" ? `/instructor/tests/${item._id}/edit` : `/instructor/courses/${item._id}/edit`)}
                 >
-                  {/* Card Thumbnail / Icon Header */}
-                  <div className={`t-card-thumb thumb-${(item.subject || "").toLowerCase()}`}>
-                    {tab === "courses" && item.coverUrl ? ( <img src={item.coverUrl} alt="" className="grid-thumb-img" /> ) : ( <i className={tab === "tests" ? "bi bi-trophy" : "bi bi-journal-album"}></i> )}
-                  </div>
 
-                  {/* Card Body Information */}
-                  <div className="t-card-body">
-                    <h3 className="t-title">{item.title}</h3>
+                {/* Card Thumbnail / Icon Header */}
+                <div className="t-card-thumb" style={{ padding: 0, height: '140px', overflow: 'hidden' }}>
+                  <ContentCover 
+                    coverUrl={item.coverUrl} 
+                    title={item.title} 
+                    subject={item.subject} 
+                    grade={item.grade} 
+                  />
+                </div>
+
+                {/* Card Body Information */}
+                <div className="t-card-body">
+                  <h3 className="t-title">{item.title}</h3>
                     
-                    {/* Moderation Status Badges */}
-                    <div className="status-row">
-                      {item.visibility === "draft" && <span className="status-badge draft"><i className="bi bi-pencil-fill"></i> Draft</span>}
-                      {item.visibility === "pending" && <span className="status-badge pending"><i className="bi bi-hourglass-split"></i> Pending Review</span>}
-                      {item.visibility === "rejected" && <span className="status-badge rejected"><i className="bi bi-x-circle-fill"></i> Rejected</span>}
-                      {item.visibility === "published" && <span className="status-badge published"><i className="bi bi-check-circle-fill"></i> Published</span>}
-                      {item.visibility === "archived" && <span className="status-badge archived"><i className="bi bi-archive-fill"></i> Archived</span>}
-                    </div>
-
-                    {/* Metadata Chips (Subject, Grade, Difficulty) */}
-                    <div className="t-meta">
-                      <span className={`chip chip-${item.subject}`}>{item.subject}</span>
-                      {item.grade && <span className="chip grade">Grade {item.grade}</span>}
-                      {tab === "tests" && <span className="chip diff">{getDifficulty(item.tags)}</span>}
-                    </div>
-
-                    {/* Inline Admin Feedback (Only shown if rejected) */}
-                    {item.adminFeedback && item.visibility === 'rejected' && (
-                      <div style={{ fontSize: '12px', color: '#b91c1c', background: '#fee2e2', padding: '8px', borderRadius: '6px', marginBottom: '12px' }}>
-                        <strong>Feedback:</strong> {item.adminFeedback}
-                      </div>
-                    )}
-
-                    {/* Bottom Stats Row (Dates, Questions/Sections count) */}
-                    <div className="t-stats-row">
-                      <span className="meta-item"><i className="bi bi-calendar-event"></i> {fmtDate(item.updatedAt)}</span>
-                      {tab === "tests" ? ( <span className="meta-item"><i className="bi bi-list-task"></i> {item.numQuestions || (item.questions?.length || 0)} Qs</span> ) : ( <span className="meta-item"><i className="bi bi-journal-album"></i> {item.sections?.length || 0} Secs</span> )}
-                    </div>
-
-                    {/* Highlighted Student Attempts (Only for Tests) */}
-                    {tab === "tests" && item.attempts > 0 && (
-                      <div className="attempts-row attempts-highlight"><i className="bi bi-lightning-charge-fill"></i> {item.attempts} attempts</div>
-                    )}
+                  {/* Moderation Status Badges */}
+                  <div className="status-row">
+                    {item.visibility === "draft" && <span className="status-badge draft"><i className="bi bi-pencil-fill"></i> Draft</span>}
+                    {item.visibility === "pending" && <span className="status-badge pending"><i className="bi bi-hourglass-split"></i> Pending Review</span>}
+                    {item.visibility === "rejected" && <span className="status-badge rejected"><i className="bi bi-x-circle-fill"></i> Rejected</span>}
+                    {item.visibility === "published" && <span className="status-badge published"><i className="bi bi-check-circle-fill"></i> Published</span>}
+                    {item.visibility === "archived" && <span className="status-badge archived"><i className="bi bi-archive-fill"></i> Archived</span>}
                   </div>
+
+                  {/* Metadata Chips (Subject, Grade, Difficulty) */}
+                  <div className="t-meta">
+                    <span className={`chip chip-${item.subject}`}>{item.subject}</span>
+                    {item.grade && <span className="chip grade">Grade {item.grade}</span>}
+                    {tab === "tests" && <span className="chip diff">{getDifficulty(item.tags)}</span>}
+                  </div>
+
+                  {/* Inline Admin Feedback (Only shown if rejected) */}
+                  {item.adminFeedback && item.visibility === 'rejected' && (
+                    <div style={{ fontSize: '12px', color: '#b91c1c', background: '#fee2e2', padding: '8px', borderRadius: '6px', marginBottom: '12px' }}>
+                      <strong>Feedback:</strong> {item.adminFeedback}
+                    </div>
+                  )}
+
+                  {/* Bottom Stats Row (Dates, Questions/Sections count) */}
+                  <div className="t-stats-row">
+                    <span className="meta-item"><i className="bi bi-calendar-event"></i> {fmtDate(item.updatedAt)}</span>
+                    {tab === "tests" ? ( <span className="meta-item"><i className="bi bi-list-task"></i> {item.numQuestions || (item.questions?.length || 0)} Qs</span> ) : ( <span className="meta-item"><i className="bi bi-journal-album"></i> {item.sections?.length || 0} Secs</span> )}
+                  </div>
+
+                  {/* Highlighted Student Attempts (Only for Tests) */}
+                  {tab === "tests" && item.attempts > 0 && (
+                    <div className="attempts-row attempts-highlight"><i className="bi bi-lightning-charge-fill"></i> {item.attempts} attempts</div>
+                  )}
+                </div>
 
                   {/* Card Footer Actions */}
                   <div className="t-card-footer">

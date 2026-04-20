@@ -2,7 +2,12 @@ const User = require('../models/User');
 const Course = require('../models/Course');
 const Test = require('../models/Test');
 const InstructorApplication = require('../models/InstructorApplication');
+const socketService = require('../services/socketService');
 
+/**
+ * * GET /api/admin/stats
+ * Retrieves high-level system statistics and a recent activity feed for the Admin Dashboard.
+ */
 exports.getDashboardStats = async (req, res) => {
     try {
         // Calculate System KPIs (Key Performance Indicators)
@@ -44,7 +49,10 @@ exports.getDashboardStats = async (req, res) => {
 
 // ==== User Management ====
 
-// Get a list of all users (Supports searching by name/email and filtering by role)
+/**
+ * * GET /api/admin/users
+ * Retrieves a list of all users. Supports searching by name/email and filtering by role.
+ */
 exports.getAllUsers = async (req, res) => {
     try {
         const { role, search } = req.query;
@@ -69,7 +77,10 @@ exports.getAllUsers = async (req, res) => {
     }
 };
 
-// Update a specific user's role
+/**
+ * * PATCH /api/admin/users/:id/role
+ * Updates a specific user's role (student, instructor, admin).
+ */
 exports.updateUserRole = async (req, res) => {
     try {
         const { role } = req.body;
@@ -91,7 +102,10 @@ exports.updateUserRole = async (req, res) => {
     }
 };
 
-// Delete a user from the platform
+/**
+ * DELETE /api/admin/users/:id
+ * Permanently deletes a user from the platform.
+ */
 exports.deleteUser = async (req, res) => {
     try {
         // Safety check: Prevent the admin from deleting their own account
@@ -103,5 +117,33 @@ exports.deleteUser = async (req, res) => {
         res.json({ message: 'User deleted successfully' });
     } catch (err) {
         res.status(500).json({ message: 'Failed to delete user' });
+    }
+};
+
+/**
+ * * POST /api/admin/broadcast
+ * Handles the transmission of a system-wide broadcast message to all users.
+ * Invokes the socket service to emit a real-time notification across the platform.
+ * * @param {Object} req - The Express request object containing the broadcast payload (title, message).
+ * @param {Object} res - The Express response object.
+ */
+exports.sendSystemBroadcast = async (req, res) => {
+    try {
+        // Extract the broadcast content from the incoming request body
+        const { title, message } = req.body;
+        
+        // Trigger the socket service to broadcast the notification to all connected clients
+        await socketService.broadcastNotification({
+            title,
+            message,
+            type: 'system' // Tagged as a system-level notification
+        });
+        
+        // Return a success response to the admin client
+        res.json({ message: 'System broadcast sent successfully!' });
+    } catch (error) {
+        // Log the error for server-side debugging and return a 500 status code
+        console.error('[AdminController] Broadcast Error:', error);
+        res.status(500).json({ message: 'Failed to send broadcast' });
     }
 };

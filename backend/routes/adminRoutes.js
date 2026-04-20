@@ -7,6 +7,8 @@ const adminController = require('../controllers/adminController');
 
 // Fetch system-wide KPIs and recent activity log for the admin dashboard
 router.get('/stats', auth, authorize('admin'), adminController.getDashboardStats);
+// Transmit a system-wide real-time broadcast notification
+router.post('/broadcast', auth, authorize('admin'), adminController.sendSystemBroadcast);
 
 // ==== Instructor Application Routes ====
 

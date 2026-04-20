@@ -28,7 +28,15 @@ export default function AdminDashboard() {
     const [approveNote, setApproveNote] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);                     
 
+    // Broadcast feature state
+    const [broadcastModal, setBroadcastModal] = useState({ isOpen: false, title: '', message: '' });
+    const [isBroadcasting, setIsBroadcasting] = useState(false);
+
     // ==== Data Fetching ====
+    
+    /**
+     * Fetches data based on the currently active tab and sub-status filter.
+     */
     const loadData = async () => {
         setLoading(true);
         try {
@@ -36,6 +44,7 @@ export default function AdminDashboard() {
             if (activeTab === 'users') {
                 res = await api.get('/admin/users');
                 let users = res.data || [];
+                // Apply client-side filtering for users
                 if (userRoleFilter !== 'all') users = users.filter(u => u.role === userRoleFilter);
                 if (userSearch.trim()) {
                     const q = userSearch.toLowerCase();
@@ -73,6 +82,8 @@ export default function AdminDashboard() {
     /**
      * Helper to show a temporary toast notification.
      * Auto-hides after 3 seconds.
+     * @param {string} text - The message to display.
+     * @param {string} type - 'success' or 'error'.
      */
     const showMessage = (text, type = 'success') => {
         setMsg({ text, type });
@@ -99,6 +110,9 @@ export default function AdminDashboard() {
         }
     };
 
+    /**
+     * Executes the API call to update a user's role.
+     */
     const executeRoleChange = async (userId, newRole) => {
         try {
             await api.patch(`/admin/users/${userId}/role`, { role: newRole });
@@ -129,6 +143,9 @@ export default function AdminDashboard() {
         });
     };
 
+    /**
+     * Executes the API call to permanently delete a user.
+     */
     const executeDeleteUser = async (userId, fullname) => {
         try {
             await api.delete(`/admin/users/${userId}`);
@@ -166,6 +183,9 @@ export default function AdminDashboard() {
     const openRejectModal = (id) => { setRejectModal({ isOpen: true, id }); setRejectNote(''); };
     const closeRejectModal = () => { setRejectModal({ isOpen: false, id: null }); setRejectNote(''); };
 
+    /**
+     * Confirms rejection and ensures an admin note is provided.
+     */
     const confirmReject = async () => {
         // Enforce providing a reason for rejection
         if (!rejectNote.trim()) { 
@@ -206,6 +226,32 @@ export default function AdminDashboard() {
             case 'courses': return 'Courses Moderation';
             case 'tests': return 'Tests Moderation';
             default: return 'Admin Workspace';
+        }
+    };
+
+    /**
+     * Handles sending a system-wide broadcast notification to all active users.
+     */
+    const handleSendBroadcast = async () => {
+        // Validate input data
+        if (!broadcastModal.title.trim() || !broadcastModal.message.trim()) {
+            showMessage('Please enter both a title and message for the broadcast.', 'error');
+            return;
+        }
+
+        setIsBroadcasting(true);
+        try {
+            await api.post('/admin/broadcast', {
+                title: broadcastModal.title,
+                message: broadcastModal.message
+            });
+            showMessage('System broadcast sent successfully!');
+            setBroadcastModal({ isOpen: false, title: '', message: '' }); // Close modal and reset state
+        } catch (error) {
+            console.error(error);
+            showMessage('Failed to send broadcast. Please try again.', 'error');
+        } finally {
+            setIsBroadcasting(false);
         }
     };
 
@@ -300,6 +346,9 @@ export default function AdminDashboard() {
                             </button>
                             <button className={`sidebar-btn ${activeTab === 'applications' ? 'active' : ''}`} onClick={() => { setActiveTab('applications'); setSubStatus('pending'); }}>
                                 <i className="bi bi-person-lines-fill"></i> Instructor Apps
+                            </button>
+                            <button className="sidebar-btn" onClick={() => setBroadcastModal({ isOpen: true, title: '', message: '' })}>
+                                <i className="bi bi-megaphone-fill text-warning"></i> System Broadcast
                             </button>
                         </div>
                         <div className="sidebar-section">
@@ -456,6 +505,60 @@ export default function AdminDashboard() {
                                 disabled={isSubmitting}
                             >
                                 {isSubmitting ? 'Approving...' : 'Approve Application'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ==== SYSTEM BROADCAST MODAL ==== */}
+            {broadcastModal.isOpen && (
+                <div className="modal-overlay" onClick={() => setBroadcastModal({ ...broadcastModal, isOpen: false })}>
+                    <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <i className="bi bi-megaphone-fill text-warning"></i>
+                            <h3>System Broadcast</h3>
+                        </div>
+                        <div className="modal-body">
+                            <p style={{ marginBottom: '12px', fontSize: '14px', color: 'var(--text-secondary)' }}>
+                                This notification will instantly appear as a popup (toast) for <strong>all online users</strong>.
+                            </p>
+                            
+                            <input 
+                                type="text" 
+                                placeholder="Title (e.g., Scheduled Maintenance)" 
+                                value={broadcastModal.title} 
+                                onChange={(e) => setBroadcastModal({ ...broadcastModal, title: e.target.value })} 
+                                style={{ 
+                                    width: '100%', padding: '10px', marginBottom: '12px', 
+                                    borderRadius: '6px', border: '1px solid var(--border-color)', 
+                                    background: 'var(--bg-input)', color: 'var(--text-main)' 
+                                }}
+                                autoFocus 
+                            />
+                            
+                            <textarea 
+                                placeholder="Broadcast message (e.g., The system will undergo maintenance at 00:00...)" 
+                                value={broadcastModal.message} 
+                                onChange={(e) => setBroadcastModal({ ...broadcastModal, message: e.target.value })} 
+                                rows="4"
+                            />
+                        </div>
+                        <div className="modal-actions">
+                            <button 
+                                className="modal-btn-cancel" 
+                                onClick={() => setBroadcastModal({ ...broadcastModal, isOpen: false })} 
+                                disabled={isBroadcasting}
+                            >
+                                Cancel
+                            </button>
+                            <button 
+                                className="modal-btn-confirm" 
+                                style={{ background: '#eab308', boxShadow: '0 4px 12px rgba(234, 179, 8, 0.2)' }}
+                                onClick={handleSendBroadcast} 
+                                disabled={isBroadcasting}
+                            >
+                                {isBroadcasting ? 'Broadcasting...' : 'Broadcast Now'}
                             </button>
                         </div>
                     </div>

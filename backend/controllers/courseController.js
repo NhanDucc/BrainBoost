@@ -3,6 +3,7 @@ const axios = require("axios");
 const mongoose = require("mongoose");
 const LessonProgress = require("../models/LessonProgress");
 const Enrollment = require("../models/Enrollment");
+const socketService = require('../services/socketService');
 
 const AI_AGENT_URL = process.env.AI_AGENT_URL
 
@@ -42,6 +43,14 @@ const createCourse = async (req, res) => {
       createdBy: req.userId,
       visibility: "pending",
       adminFeedback: ""
+    });
+
+    // Notify Admin of a new course pending review
+    await socketService.notifyAdmins({
+      title: "New Course Pending Review",
+      message: `An instructor has submitted the course "${doc.title}" for moderation.`,
+      type: "system",
+      link: `/admin/courses`
     });
 
     res.status(201).json({ id: doc._id, message: "Course submitted for review." });
@@ -121,6 +130,17 @@ const updateCourse = async (req, res) => {
     c.adminFeedback = "";
 
     await c.save();
+
+    // Notify Admin of course update
+    if (c.visibility === "pending") {
+      await socketService.notifyAdmins({
+        title: "Course Updated",
+        message: `The course "${c.title}" has been updated and re-submitted for review.`,
+        type: "system",
+        link: `/admin/courses`
+      });
+    }
+
     res.json({ message: "Updated" });
   } catch (e) {
     console.error("updateCourse error:", e);
@@ -586,6 +606,25 @@ const reviewCourse = async (req, res) => {
     }
 
     await c.save();
+
+    // Send Real-time notification to the Instructor
+    const actionText = status === "published" ? "approved" : "needs revision";
+    const messageText = status === "published" 
+      ? `Your course "${c.title}" has been approved. Students can now view and enroll in it!`
+      : `Your course "${c.title}" was rejected. Reason: ${note || "Please review the content."}`;
+
+    try {
+      await socketService.sendNotification({
+        userId: c.createdBy, 
+        title: `Content Moderation: ${actionText}`,
+        message: messageText,
+        type: "content", 
+        link: `/instructor/courses/${c._id}/edit`
+      });
+    } catch (err) {
+      console.error("Notification emission error:", err);
+    }
+
     res.json({ message: `Course ${status}` });
   } catch (e) {
     console.error(e);
@@ -641,78 +680,88 @@ const createDraftClone = async (req, res) => {
 
 /**
  * * GET /api/courses/:id/check-enrollment
- * Kiểm tra xem User hiện tại đã sở hữu khóa học này chưa.
+ * Checks if the current user is already enrolled in this course.
  */
 const checkEnrollment = async (req, res) => {
   try {
-      const enrollment = await Enrollment.findOne({ user: req.userId, course: req.params.id, status: 'active' });
-      res.json({ isEnrolled: !!enrollment });
+    const enrollment = await Enrollment.findOne({ user: req.userId, course: req.params.id, status: 'active' });
+    res.json({ isEnrolled: !!enrollment });
   } catch (e) {
-      console.error("checkEnrollment error:", e);
-      res.status(500).json({ message: "Server error" });
+    console.error("checkEnrollment error:", e);
+    res.status(500).json({ message: "Server error" });
   }
 };
 
 /**
  * * POST /api/courses/:id/enroll
- * Mock Purchase: Giả lập việc mua/đăng ký khóa học thành công.
+ * Mock Purchase: Simulates a successful course purchase/enrollment.
  */
 const enrollCourse = async (req, res) => {
   try {
-      const courseId = req.params.id;
-      const userId = req.userId;
+    const courseId = req.params.id;
+    const userId = req.userId;
 
-      // 1. Kiểm tra khóa học có tồn tại và đang được Public hay không
-      const course = await Course.findById(courseId);
+    // Check if the course exists and is currently published
+    const course = await Course.findById(courseId);
       if (!course || course.visibility !== 'published') {
-          return res.status(404).json({ message: "Course not found or not available." });
+        return res.status(404).json({ message: "Course not found or not available." });
       }
 
-      // 2. Kiểm tra xem đã mua trước đó chưa
-      const existing = await Enrollment.findOne({ user: userId, course: courseId });
-      if (existing) {
-          return res.status(400).json({ message: "You are already enrolled in this course." });
-      }
+    // Check if the user is already enrolled
+    const existing = await Enrollment.findOne({ user: userId, course: courseId });
+    if (existing) {
+      return res.status(400).json({ message: "You are already enrolled in this course." });
+    }
 
-      // 3. Tạo bản ghi mua hàng thành công (Lúc nào gắn Payment thật sẽ xử lý charge tiền ở đây)
-      await Enrollment.create({
-          user: userId,
-          course: courseId,
-          status: 'active'
-      });
+    // Create a successful enrollment record (A real payment gateway charge would go here)
+    await Enrollment.create({
+      user: userId,
+      course: courseId,
+      status: 'active'
+    });
 
-      res.status(201).json({ message: "Enrollment successful!" });
+    // Send Real-time notification to the Instructor
+    await socketService.sendNotification({
+      userId: course.createdBy,
+      title: "New Student!",
+      message: `A new student has enrolled in your course "${course.title}".`,
+      type: "system", 
+      link: `/instructor` 
+    });
+
+    res.status(201).json({ message: "Enrollment successful!" });
   } catch (e) {
-      console.error("enrollCourse error:", e);
-      res.status(500).json({ message: "Server error" });
+    console.error("enrollCourse error:", e);
+    res.status(500).json({ message: "Server error" });
   }
 };
 
 /**
  * * GET /api/courses/enrolled
- * Lấy danh sách các khóa học mà học sinh (user hiện tại) đã đăng ký mua (trạng thái active).
+ * Retrieves a list of active courses the current student is enrolled in.
  */
 const getMyEnrolledCourses = async (req, res) => {
   try {
-      // Tìm trong bảng Enrollment, populate (kéo theo) dữ liệu từ bảng Course
-      const enrollments = await Enrollment.find({ user: req.userId, status: 'active' })
-          .populate({
-              path: 'course',
-              select: 'title coverUrl subject grade' // Chỉ lấy các trường cần thiết để hiển thị UI
-          })
-          .sort({ enrolledAt: -1 }); // Mới mua xếp lên đầu
+    // Find active enrollments and populate necessary course data for the UI
+    // Sort by newest enrollment first
+    const enrollments = await Enrollment.find({ user: req.userId, status: 'active' })
+      .populate({
+        path: 'course',
+        select: 'title coverUrl subject grade' 
+      })
+      .sort({ enrolledAt: -1 }); 
 
-      // Lọc bỏ những bản ghi bị lỗi (vd: khóa học đã bị admin xóa cứng khỏi DB)
-      const validEnrollments = enrollments.filter(e => e.course);
+    // Filter out invalid records (e.g., if a course was hard-deleted by an admin)
+    const validEnrollments = enrollments.filter(e => e.course);
       
-      // Trả về mảng dữ liệu gọn gàng
-      res.json(validEnrollments.map(e => ({
-          enrolledAt: e.enrolledAt,
-          course: e.course
-      })));
+    // Return a clean array of data
+    res.json(validEnrollments.map(e => ({
+      enrolledAt: e.enrolledAt,
+      course: e.course
+    })));
   } catch (e) {
-      console.error("getMyEnrolledCourses error:", e);
-      res.status(500).json({ message: "Server error" });
+    console.error("getMyEnrolledCourses error:", e);
+    res.status(500).json({ message: "Server error" });
   }
 };
 

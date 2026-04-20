@@ -4,6 +4,7 @@ import { api } from "../api";
 import defaultAvatar from "../images/defaultAvatar.png";
 import { useUser } from "../context/UserContext";
 import { toAbsolute, withBust } from "../utils/url";
+import { useSocket } from "../context/SocketContext";
 import "../css/Header.css";
 
 // ==== Utility Functions ====
@@ -44,11 +45,15 @@ const SiteHeader = () => {
   const [showMobileNav, setShowMobileNav] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
 
+  // ---- Toast State ----
+  const [toast, setToast] = useState({ show: false, title: "", msg: "", type: "system" });
+
   // ---- Data States ----
   const [notifications, setNotifications] = useState([]);
   
   // ---- Global Context & Routing ----
   const { user, fetchMe, signOut } = useUser();
+  const socket = useSocket();
   const navigate = useNavigate();
 
   // ==== Lifecycle Effects ====
@@ -58,19 +63,63 @@ const SiteHeader = () => {
     fetchMe();
   }, [fetchMe]);
 
-  // Fetch notifications and set up event listeners once the user is authenticated
+  // Fetch initial notifications
   useEffect(() => {
     if (user) {
       fetchNotifications();
-
-      // Listen for custom global events to trigger a notification refresh (e.g., after AI grading)
-      const handleNewNotification = () => fetchNotifications();
-      window.addEventListener("new_notification", handleNewNotification);
-      
-      // Cleanup the event listener when the component unmounts.
-      return () => window.removeEventListener("new_notification", handleNewNotification);
     }
   }, [user]);
+
+  // ---- SOCKET.IO LISTENER (The Magic Happens Here) ----
+  useEffect(() => {
+    if (!socket) {
+        console.log("No socket connection in Header!");
+        return;
+    }
+
+    console.log("Header connected to Socket:", socket.id);
+
+    const handleNewNotification = (newNotif) => {
+      console.log("Received new notification:", newNotif);
+      // Add the new notification to the TOP of the current list
+      setNotifications(prev => [newNotif, ...prev]);
+
+      // Trigger the Toast display at the corner of the screen
+      setToast({
+        show: true,
+        title: newNotif.title,
+        msg: newNotif.message,
+        type: newNotif.type || "system"
+      });
+    };
+
+    socket.on('new_notification', handleNewNotification);
+
+    // Listen for the "Read" status sync event from other tabs
+    const handleSyncRead = ({ notifId }) => {
+        if (notifId === 'all') {
+            setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+        } else {
+            setNotifications(prev => prev.map(n => n._id === notifId ? { ...n, isRead: true } : n));
+        }
+    };
+    
+    socket.on('sync_read_status', handleSyncRead);
+
+    // Cleanup listeners when the component unmounts
+    return () => {
+      socket.off('new_notification', handleNewNotification);
+      socket.off('sync_read_status', handleSyncRead);
+    };
+  }, [socket]);
+
+  // Automatically hide the Toast after 4 seconds
+  useEffect(() => {
+    if (toast.show) {
+      const timer = setTimeout(() => setToast({ show: false, title: "", msg: "", type: "" }), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast.show]);
 
   // Handle clicks outside of dropdown menus to close them automatically
   useEffect(() => {
@@ -119,8 +168,8 @@ const SiteHeader = () => {
    * Initiates the logout process by hiding menus and showing the confirmation modal.
    */
   const handleLogoutClick = () => {
-    setShowMenu(false); // Đóng menu dropdown
-    setShowLogoutModal(true); // Mở Modal xác nhận lên
+    setShowMenu(false); // Close the dropdown menu
+    setShowLogoutModal(true); // Open the confirmation modal
   };
 
   /**
@@ -275,7 +324,8 @@ const SiteHeader = () => {
                               {notif.type === 'ai_grading' && <i className="bi bi-stars"></i>}
                               {notif.type === 'leaderboard' && <i className="bi bi-trophy-fill"></i>}
                               {notif.type === 'system' && <i className="bi bi-info-circle-fill"></i>}
-                              {!['ai_grading', 'leaderboard', 'system'].includes(notif.type) && <i className="bi bi-bell-fill"></i>}
+                              {notif.type === 'content' && <i className="bi bi-journal-check"></i>}
+                              {!['ai_grading', 'leaderboard', 'system', 'content'].includes(notif.type) && <i className="bi bi-bell-fill"></i>}
                             </div>
                             <div className="notif-content">
                               <div className="notif-title">{notif.title}</div>
@@ -376,6 +426,31 @@ const SiteHeader = () => {
             </div>
           </div>
         )}
+
+      {/* ==== CORNER TOAST NOTIFICATION ==== */}
+      {toast.show && (
+          <div className={`toast ${toast.type}`} style={{
+              position: 'fixed', right: '20px', bottom: '20px',
+              backgroundColor: 'var(--bg-card)',
+              color: 'var(--text-main)',
+              padding: '16px 20px',
+              borderRadius: '8px',
+              boxShadow: '0 10px 25px var(--shadow-color)',
+              zIndex: 9999,
+              borderLeft: '4px solid var(--primary)',
+              display: 'flex', flexDirection: 'column', gap: '6px',
+              minWidth: '280px', maxWidth: '350px',
+              cursor: 'pointer'
+          }} onClick={() => setToast({...toast, show: false})}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 'bold', fontSize: '15px' }}>
+                  <i className="bi bi-bell-fill" style={{ color: 'var(--primary)' }}></i>
+                  {toast.title}
+              </div>
+              <div style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
+                  {toast.msg}
+              </div>
+          </div>
+      )}
     </>
   );
 };

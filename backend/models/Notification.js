@@ -16,7 +16,7 @@ const notificationSchema = new mongoose.Schema({
     },
     type: { 
         type: String, 
-        enum: ['ai_grading', 'leaderboard', 'system'], 
+        enum: ['system', 'ai_grading', 'badge', 'leaderboard', 'content', 'support'], 
         default: 'system' 
     },
     isRead: { 
@@ -25,7 +25,7 @@ const notificationSchema = new mongoose.Schema({
     },
     link: { 
         type: String, 
-        default: '' // Đường dẫn để khi người dùng click vào thông báo sẽ chuyển hướng đến đúng trang
+        default: ''
     },
     createdAt: { 
         type: Date, 

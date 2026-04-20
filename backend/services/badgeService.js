@@ -1,125 +1,106 @@
 const EventEmitter = require('events');
-const User = require('../models/User');
-const Badge = require('../models/Badge');
-const Notification = require('../models/Notification');
-const TestResult = require('../models/TestResult');
+class BadgeEmitter extends EventEmitter {}
+const badgeEvents = new BadgeEmitter();
 
-// Initialize a global event emitter
-const badgeEvents = new EventEmitter();
+const User = require('../models/User');
+const socketService = require('./socketService');
 
 /**
- * Listen to BATCH event: WHEN USER SUBMITS ENTIRE TEST
- * Process the entire answers array in RAM to avoid VersionError and Database bottlenecks
+ * Core function to award a badge to a user.
+ * Checks if the user already owns the badge; if not, adds it and emits a real-time notification.
+ * @param {String} userId - The ID of the user receiving the badge.
+ * @param {String} badgeName - The name of the badge to award.
+ * @param {String} description - The description of the achievement.
  */
-badgeEvents.on('answers_batch_submitted', async ({ userId, subject, answers }) => {
+async function awardBadge(userId, badgeName, description) {
     try {
-        const user = await User.findById(userId);
-        if (!user || !subject) return;
-
-        const sKey = subject.toLowerCase();
-
-        for (const ans of answers) {
-            let qType = (ans.type || "mcq").toLowerCase();
-            if (qType === 'boolean') qType = 'tf';
-
-            // Check if the subject and question type container exists
-            if (user.streaks[sKey] && user.streaks[sKey][qType]) {
-                const target = user.streaks[sKey][qType];
-                
-                if (ans.isCorrect) {
-                    target.current += 1;
-                    // Update highest record if surpassed
-                    if (target.current > target.highest) {
-                        target.highest = target.current;
-                    }
-                } else {
-                    target.current = 0; // 1 wrong answer immediately resets the streak for that subject
-                }
-            }
-        }
-
-        // Find matching badges based on subject and qType
-        const earnedBadgeIds = user.earnedBadges.map(b => b.badgeId.toString());
-        const potentialBadges = await Badge.find({
-            _id: { $nin: earnedBadgeIds },
-            subject: sKey // Only consider badges for this subject
-        });
-
-        const newEarnedBadges = [];
-        for (const badge of potentialBadges) {
-            const bType = badge.criteria.questionType.toLowerCase();
-            // Use HIGHEST to compare with targetCount (20, 50, 120...)
-            if (user.streaks[sKey][bType] && user.streaks[sKey][bType].highest >= badge.criteria.targetCount) {
-                user.earnedBadges.push({ badgeId: badge._id });
-                newEarnedBadges.push(badge);
-            }
-        }
-
-        await user.save();
-
-        // Emit notification (fixed userId -> user to match Schema)
-        for (const badge of newEarnedBadges) {
-            await Notification.create({
-                user: user._id,
-                type: 'system',
-                title: `New Rank: ${badge.name}`,
-                message: `Awesome! You have achieved the ${badge.rank} rank in ${subject.toUpperCase()}!`,
-                link: '/profile'
-            });
-        }
-    } catch (error) {
-        console.error('Error calculating rank:', error);
-    }
-});
-
-badgeEvents.on('test_completed', async ({ userId, testId, percent }) => {
-    try {
-        // Only consider the Comeback badge if they score a perfect 100% this time
-        if (percent !== 100) return;
-
         const user = await User.findById(userId);
         if (!user) return;
 
-        // Find the "The Comeback Kid" badge in DB (assuming category is SPECIAL)
-        const comebackBadge = await Badge.findOne({ category: 'SPECIAL', name: 'The Comeback Kid' });
-        if (!comebackBadge) return;
+        // Ensure the user schema has a 'badges' array initialized
+        if (!user.badges) user.badges = [];
 
-        // Check if the user already has this badge (avoid awarding twice)
-        const hasBadge = user.earnedBadges.some(b => b.badgeId.toString() === comebackBadge._id.toString());
-        if (hasBadge) return;
-
-        // Fetch the entire history of THIS test for the user, sorted oldest to newest
-        const previousAttempts = await TestResult.find({ student: userId, test: testId })
-            .sort({ completedAt: 1 })
-            .lean();
-        
-        // CHECK "COMEBACK" CONDITIONS:
-        // If in previous attempts, there was at least 1 score below failing grade (e.g., < 40%)
-        // Note: pop() ignores the 100% result just saved
-        previousAttempts.pop(); 
-        const hadFailed = previousAttempts.some(attempt => attempt.finalPercent < 40);
-
-        if (hadFailed) {
-            // Conditions met to award badge!
-            user.earnedBadges.push({ badgeId: comebackBadge._id });
+        // Award the badge if the user does not already own it
+        if (!user.badges.includes(badgeName)) {
+            user.badges.push(badgeName);
             await user.save();
 
-            // Send notification
-            await Notification.create({
-                user: user._id,
-                title: 'New Badge: The Comeback Kid!',
-                message: `Incredible! You just made a spectacular comeback with a perfect 100% score on a test you previously failed.`,
-                type: 'system',
-                link: '/profile'
+            // Emit a real-time notification to the user's client
+            await socketService.sendNotification({
+                userId: user._id,
+                title: `New Badge: ${badgeName}`,
+                message: description,
+                type: 'badge', 
+                link: `/badges` // Link to the user's badge collection page
             });
-            console.log(`User ${userId} earned the Comeback Kid badge!`);
         }
-
     } catch (error) {
-        console.error('Error calculating Comeback badge:', error);
+        console.error("[BadgeService] Error awarding badge:", error);
+    }
+}
+
+// ==== Test Controller Event Listener ====
+
+/**
+ * Event: Fired when a user successfully completes a test.
+ * Payload: { userId, subject, percent }
+ */
+badgeEvents.on('test_completed', async ({ userId, subject, percent }) => {
+    // The Perfect Mind (Achieved 100%)
+    if (percent === 100) {
+        await awardBadge(
+            userId, 
+            "The Perfect Mind", 
+            "Excellent! You achieved a perfect 100% score on a test."
+        );
+    } 
+    // High Achiever (Achieved >= 85%)
+    else if (percent >= 85) {
+        await awardBadge(
+            userId, 
+            "High Achiever", 
+            "Great performance! You surpassed the 85% score mark."
+        );
     }
 });
 
-module.exports = {
-    badgeEvents
-};
+/**
+ * Event: Fired to evaluate answer streaks (Accuracy Streak).
+ * Payload: { userId, subject, answers }
+ */
+badgeEvents.on('answers_batch_submitted', async ({ userId, subject, answers }) => {
+    if (!answers || answers.length === 0) return;
+
+    // Calculate the maximum streak of consecutive correct answers
+    let maxStreak = 0;
+    let currentStreak = 0;
+
+    answers.forEach(ans => {
+        // Check if the answer is correct or has a positive score
+        if (ans.isCorrect || ans.score > 0) {
+            currentStreak++;
+            if (currentStreak > maxStreak) maxStreak = currentStreak;
+        } else {
+            currentStreak = 0;
+        }
+    });
+
+    // 10 correct answers in a row
+    if (maxStreak >= 10) {
+        await awardBadge(
+            userId, 
+            "Sharp Shooter", 
+            "Incredible! You answered 10 questions correctly in a row without making any mistakes."
+        );
+    }
+    // 5 correct answers in a row
+    else if (maxStreak >= 5) {
+        await awardBadge(
+            userId, 
+            "On Fire", 
+            "You are on fire! You have a streak of 5 correct answers in a row."
+        );
+    }
+});
+
+module.exports = { badgeEvents };

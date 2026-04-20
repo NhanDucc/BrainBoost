@@ -32,6 +32,7 @@
     "openai": "^6.10.0",
     "pdf-parse": "^1.1.1",
     "slugify": "^1.6.6",
+    "socket.io": "^4.8.3",
     "unpdf": "^1.4.0"
   },
   "devDependencies": {

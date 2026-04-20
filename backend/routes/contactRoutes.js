@@ -13,5 +13,7 @@ router.post('/', auth, contactController.send);
 router.get('/unread', auth, authorize('admin'), contactController.getUnreadMessages);
 // Mark a specific contact message as read/resolved using its ID
 router.put('/:id/read', auth, authorize('admin'), contactController.markAsRead);
+// Submit an admin reply to a specific support ticket and notify the user
+router.post('/:id/reply', auth, authorize('admin'), contactController.replyTicket);
 
 module.exports = router;

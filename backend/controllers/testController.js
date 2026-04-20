@@ -5,6 +5,7 @@ const TestResult = require("../models/TestResult");
 const User = require('../models/User');
 const Notification = require('../models/Notification');
 const { badgeEvents } = require('../services/badgeService');
+const socketService = require('../services/socketService');
 
 const AI_AGENT_URL = process.env.AI_AGENT_URL;
 
@@ -134,6 +135,14 @@ const createTest = async (req, res) => {
       createdBy: req.userId || null,
       visibility: "pending",
       adminFeedback: ""
+    });
+
+    // Notify Admin of a new test pending review
+    await socketService.notifyAdmins({
+      title: "New Test Pending Review",
+      message: `A new online test ("${doc.title}") has been submitted to the system.`,
+      type: "system",
+      link: `/admin/tests`
     });
 
     res.status(201).json({ id: doc._id, message: "Created" });
@@ -298,6 +307,17 @@ const updateTest = async (req, res) => {
     doc.adminFeedback = "";
 
     await doc.save();
+
+    // TRIGGER: Notify Admin of course update
+    if (doc.visibility === "pending") {
+      await socketService.notifyAdmins({
+        title: "Test Updated",
+        message: `The test "${doc.title}" has been updated and resubmitted for review.`,
+        type: "system",
+        link: `/admin/tests`
+      });
+    }
+
     res.json({ message: "Test updated and submitted for review." });
   } catch (e) {
     console.error(e);
@@ -306,7 +326,7 @@ const updateTest = async (req, res) => {
 };
 
 /**
- *  * * DELETE /api/tests/:id
+ * * DELETE /api/tests/:id
  * Deletes a test from the database after verifying the user's permissions.
  */
 const deleteTest = async (req, res) => {
@@ -472,8 +492,7 @@ const submitTest = async (req, res) => {
       { $limit: 10 }
     ]);
 
-    // Run a background job to send notifications regarding leaderboard changes.
-    // Executed asynchronously so the user gets an immediate API response.
+    // BACKGROUND JOB: Check Leaderboard and send notifications
     (async () => {
       try {
         const currentUserStr = req.userId.toString();
@@ -487,13 +506,17 @@ const submitTest = async (req, res) => {
           const newRank = i + 1;
           const oldRank = rankBefore[userIdStr];
 
-          // If rank dropped (e.g., from 1 to 2) AND it's not the user who just submitted
+          // Had a previous rank + New rank is lower (higher number) + Not sending to self
           if (oldRank && newRank > oldRank && userIdStr !== currentUserStr) {
             const userDoc = await User.findById(userIdStr);
-            if (userDoc && userDoc.preferences?.notifyLeaderboard) {
-              await Notification.create({
-                user: userDoc._id,
-                title: 'Leaderboard Alert!',
+            
+            // Allow notification to be sent unless user explicitly opted out
+            const wantsNotif = userDoc?.preferences?.notifyLeaderboard !== false; 
+            
+            if (userDoc && wantsNotif) {
+              await socketService.sendNotification({
+                userId: userDoc._id,
+                title: 'Leaderboard Rank Dropped',
                 message: `${currentUser.fullname} just beat your score on "${testInfo.title}"! You dropped to Rank #${newRank}.`,
                 type: 'leaderboard',
                 link: `/tests/${testId}`
@@ -506,10 +529,13 @@ const submitTest = async (req, res) => {
         for (const oldUserId in rankBefore) {
           if (!afterIds.includes(oldUserId) && oldUserId !== currentUserStr) {
             const userDoc = await User.findById(oldUserId);
-            if (userDoc && userDoc.preferences?.notifyLeaderboard) {
-              await Notification.create({
-                user: userDoc._id,
-                title: 'Leaderboard Alert!',
+            
+            const wantsNotif = userDoc?.preferences?.notifyLeaderboard !== false;
+
+            if (userDoc && wantsNotif) {
+              await socketService.sendNotification({
+                userId: userDoc._id,
+                title: 'Leaderboard Alert',
                 message: `${currentUser.fullname} pushed you out of the Top 10 on "${testInfo.title}". Try again to reclaim your spot!`,
                 type: 'leaderboard',
                 link: `/tests/${testId}`
@@ -518,7 +544,7 @@ const submitTest = async (req, res) => {
           }
         }
       } catch (error) {
-        console.error("Leaderboard Notification Error:", error);
+        console.error("[Leaderboard Notification Error]:", error);
       }
     })();
 
@@ -558,13 +584,13 @@ const updateEssayGrade = async (req, res) => {
       // Send an in-app notification to the student about the newly graded essay
       const student = await User.findById(result.student);
       if (student && student.preferences?.notifyAIGrading) {
-          await Notification.create({
-              user: student._id,
-              title: 'AI Grading Completed',
-              message: `Your essay for Question ${questionIdx} has been successfully graded. Score: ${aiData.score}/10.`,
-              type: 'ai_grading',
-              link: `/results/${result._id}`
-          });
+        await Notification.create({
+          user: student._id,
+          title: 'AI Grading Completed',
+          message: `Your essay for Question ${questionIdx} has been successfully graded. Score: ${aiData.score}/10.`,
+          type: 'ai_grading',
+          link: `/results/${result._id}`
+        });
       }
     }
 
@@ -648,24 +674,24 @@ const getTestLeaderboard = async (req, res) => {
  * Ensures students can only view their own test results.
  */
 const getTestResultById = async (req, res) => {
-    try {
-        // Fetch TestResult and populate the original test structure
-        const result = await TestResult.findById(req.params.resultId)
-            .populate('test')
-            .lean();
+  try {
+    // Fetch TestResult and populate the original test structure
+    const result = await TestResult.findById(req.params.resultId)
+      .populate('test')
+      .lean();
             
-        if (!result) return res.status(404).json({ message: "Result not found" });
+    if (!result) return res.status(404).json({ message: "Result not found" });
         
-        // Authorization Check: Only allow the student who took the test to view the results
-        if (String(result.student) !== String(req.userId)) {
-            return res.status(403).json({ message: "Forbidden: You can only view your own results." });
-        }
-        
-        res.json(result);
-    } catch (e) {
-        console.error(e);
-        res.status(500).json({ message: "Server error" });
+    // Authorization Check: Only allow the student who took the test to view the results
+    if (String(result.student) !== String(req.userId)) {
+      return res.status(403).json({ message: "Forbidden: You can only view your own results." });
     }
+        
+    res.json(result);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ message: "Server error" });
+  }
 };
 
 /**
@@ -674,55 +700,55 @@ const getTestResultById = async (req, res) => {
  * Allows the user to leave the page while the AI microservice processes the essay.
  */
 const triggerAIGrading = async (req, res) => {
-    const { resultId, questionIdx } = req.body;
+  const { resultId, questionIdx } = req.body;
 
-    // Respond immediately so the frontend UI doesn't block/hang
-    res.json({ message: "AI grading started in the background." });
+  // Respond immediately so the frontend UI doesn't block/hang
+  res.json({ message: "AI grading started in the background." });
 
-    // Execute the AI call in a detached asynchronous block
-    (async () => {
-        try {
-            const result = await TestResult.findById(resultId).populate('test');
-            if (!result) return;
+  // Execute the AI call in a detached asynchronous block
+  (async () => {
+    try {
+      const result = await TestResult.findById(resultId).populate('test');
+      if (!result) return;
 
-            const qIndex = parseInt(questionIdx) - 1;
-            const targetAnswer = result.answers[qIndex];
-            const originalQuestion = result.test.questions[qIndex];
+      const qIndex = parseInt(questionIdx) - 1;
+      const targetAnswer = result.answers[qIndex];
+      const originalQuestion = result.test.questions[qIndex];
 
-            if (!targetAnswer || !originalQuestion) return;
+      if (!targetAnswer || !originalQuestion) return;
 
-            // Send payload to Python AI Agent
-            const aiRes = await axios.post(`${AI_AGENT_URL}/grade-essay`, {
-                question: originalQuestion.stem,
-                student_answer: targetAnswer.studentAnswer || "",
-                model_answer: originalQuestion.modelAnswer || ""
-            });
+      // Send payload to Python AI Agent
+      const aiRes = await axios.post(`${AI_AGENT_URL}/grade-essay`, {
+        question: originalQuestion.stem,
+        student_answer: targetAnswer.studentAnswer || "",
+        model_answer: originalQuestion.modelAnswer || ""
+      });
 
-            const aiData = aiRes.data; // Expected: { score, feedback, suggestion }
+      const aiData = aiRes.data; // Expected: { score, feedback, suggestion }
 
-            // Save the AI feedback into the database
-            targetAnswer.score = aiData.score;
-            targetAnswer.aiFeedback = aiData.feedback;
-            targetAnswer.aiSuggestion = aiData.suggestion;
+      // Save the AI feedback into the database
+      targetAnswer.score = aiData.score;
+      targetAnswer.aiFeedback = aiData.feedback;
+      targetAnswer.aiSuggestion = aiData.suggestion;
             
-            result.markModified('answers');
-            await result.save();
+      result.markModified('answers');
+      await result.save();
 
-            // Dispatch an in-app notification when the background job completes
-            const student = await User.findById(result.student);
-            if (student && student.preferences?.notifyAIGrading) {
-                await Notification.create({
-                    user: student._id,
-                    title: 'AI Grading Completed',
-                    message: `Your essay for Question ${questionIdx} in "${result.test.title}" has been graded. Score: ${aiData.score}/10.`,
-                    type: 'ai_grading',
-                    link: `/results/${result._id}` 
-                });
-            }
-        } catch (err) {
-            console.error("Background AI Grading Failed:", err.message);
-        }
-    })();
+      // Dispatch an in-app notification when the background job completes
+      const student = await User.findById(result.student);
+      if (student && student.preferences?.notifyAIGrading) {
+        await Notification.create({
+          user: student._id,
+          title: 'AI Grading Completed',
+          message: `Your essay for Question ${questionIdx} in "${result.test.title}" has been graded. Score: ${aiData.score}/10.`,
+          type: 'ai_grading',
+          link: `/results/${result._id}` 
+        });
+      }
+    } catch (err) {
+      console.error("Background AI Grading Failed:", err.message);
+    }
+  })();
 };
 
 // ==== Admin Moderation Controllers ====
@@ -733,17 +759,17 @@ const triggerAIGrading = async (req, res) => {
  * Populates instructor details so admins know who submitted the test content.
  */
 const getAdminTests = async (req, res) => {
-    try {
-        const { status = "pending" } = req.query;
-        const tests = await Test.find({ visibility: status })
-            .populate('createdBy', 'fullname email')
-            .sort({ updatedAt: -1 })
-            .lean();
-        res.json(tests);
-    } catch (e) {
-        console.error(e);
-        res.status(500).json({ message: "Server error" });
-    }
+  try {
+    const { status = "pending" } = req.query;
+    const tests = await Test.find({ visibility: status })
+      .populate('createdBy', 'fullname email')
+      .sort({ updatedAt: -1 })
+      .lean();
+    res.json(tests);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ message: "Server error" });
+  }
 };
 
 /**
@@ -752,44 +778,59 @@ const getAdminTests = async (req, res) => {
  * On approval, it cleans the title and archives any previously existing versions of the same test.
  */
 const reviewTest = async (req, res) => {
-    try {
-        const { status, note } = req.body;
+  try {
+    const { status, note } = req.body;
 
-        // Prevent invalid statuses from polluting the database
-        if (!["published", "rejected"].includes(status)) {
-            return res.status(400).json({ message: "Invalid status" });
-        }
-
-        const t = await Test.findById(req.params.id);
-        if (!t) return res.status(404).json({ message: "Test not found" });
-
-        // Apply moderation decision
-        t.visibility = status;
-        t.adminFeedback = note || "";   // Store rejection reason (if any)
-
-        // Automation for approved tests
-        if (status === "published") {
-            // Cleans the "(Draft Edit)" tag from the title
-            t.title = t.title.replace(/\s*\(Draft Edit\)/i, "").trim();
-            
-            // Automatically archives the old version to avoid duplicate entries in the library
-            await Test.updateMany(
-                { 
-                    _id: { $ne: t._id }, 
-                    createdBy: t.createdBy, 
-                    title: t.title, 
-                    visibility: "published" 
-                },
-                { $set: { visibility: "archived" } }
-            );
-        }
-
-        await t.save();
-        res.json({ message: `Test ${status}` });
-    } catch (e) {
-        console.error(e);
-        res.status(500).json({ message: "Server error" });
+    // Prevent invalid statuses from polluting the database
+    if (!["published", "rejected"].includes(status)) {
+      return res.status(400).json({ message: "Invalid status" });
     }
+
+    const t = await Test.findById(req.params.id);
+    if (!t) return res.status(404).json({ message: "Test not found" });
+
+    // Apply moderation decision
+    t.visibility = status;
+    t.adminFeedback = note || "";   // Store rejection reason (if any)
+
+    // Automation for approved tests
+    if (status === "published") {
+      // Cleans the "(Draft Edit)" tag from the title
+      t.title = t.title.replace(/\s*\(Draft Edit\)/i, "").trim();
+            
+      // Automatically archives the old version to avoid duplicate entries in the library
+      await Test.updateMany(
+        {
+          _id: { $ne: t._id }, 
+          createdBy: t.createdBy, 
+          title: t.title, 
+          visibility: "published" 
+        },
+        { $set: { visibility: "archived" } }
+      );
+    }
+
+    await t.save();
+
+    // Send Real-time notification to the Instructor
+    const isApproved = status === "published";
+    const actionText = isApproved ? 'Test Published' : 'Test Needs Revision';
+    const messageText = isApproved 
+      ? `Congratulations! Your test "${t.title}" has been approved and is now visible to students.`
+      : `Your test "${t.title}" was rejected. Reason: ${note || "Please check the content."}`;
+
+    await socketService.sendNotification({
+      userId: t.createdBy, 
+      title: `Content Moderation: ${actionText}`,
+      message: messageText,
+      type: "content", 
+      link: `/instructor/tests/${t._id}/edit`
+    });
+
+    res.json({ message: `Test ${status}` });
+  } catch (e) {
+    res.status(500).json({ message: "Server error" });
+  }
 };
 
 /**
@@ -797,17 +838,17 @@ const reviewTest = async (req, res) => {
  * Manually moves a test to the archive to hide it from students without deleting its historical data.
  */
 const archiveTest = async (req, res) => {
-    try {
-        const t = await Test.findById(req.params.id);
-        if (!t) return res.status(404).json({ message: "Not found" });
-        if (String(t.createdBy) !== String(req.userId)) return res.status(403).json({ message: "Forbidden" });
+  try {
+    const t = await Test.findById(req.params.id);
+    if (!t) return res.status(404).json({ message: "Not found" });
+    if (String(t.createdBy) !== String(req.userId)) return res.status(403).json({ message: "Forbidden" });
         
-        t.visibility = "archived";
-        await t.save();
-        res.json({ message: "Test archived successfully" });
-    } catch (e) {
-        res.status(500).json({ message: "Server error" });
-    }
+    t.visibility = "archived";
+    await t.save();
+    res.json({ message: "Test archived successfully" });
+  } catch (e) {
+    res.status(500).json({ message: "Server error" });
+  }
 };
 
 /**
@@ -816,26 +857,26 @@ const archiveTest = async (req, res) => {
  * without affecting the current live version.
  */
 const createDraftClone = async (req, res) => {
-    try {
-        const t = await Test.findById(req.params.id).lean();
-        if (!t) return res.status(404).json({ message: "Not found" });
-        if (String(t.createdBy) !== String(req.userId)) return res.status(403).json({ message: "Forbidden" });
+  try {
+    const t = await Test.findById(req.params.id).lean();
+    if (!t) return res.status(404).json({ message: "Not found" });
+    if (String(t.createdBy) !== String(req.userId)) return res.status(403).json({ message: "Forbidden" });
 
-        // Removes unique IDs and timestamps to create a clean copy
-        const { _id, createdAt, updatedAt, ...restData } = t;
+    // Removes unique IDs and timestamps to create a clean copy
+    const { _id, createdAt, updatedAt, ...restData } = t;
 
-        const clonedTest = await Test.create({
-            ...restData,
-            title: `${t.title} (Draft Edit)`,
-            visibility: "draft",
-            adminFeedback: ""
-        });
+    const clonedTest = await Test.create({
+      ...restData,
+      title: `${t.title} (Draft Edit)`,
+      visibility: "draft",
+      adminFeedback: ""
+    });
         
-        res.status(201).json({ id: clonedTest._id, message: "Draft clone created" });
-    } catch (e) {
-        console.error(e);
-        res.status(500).json({ message: "Server error" });
-    }
+    res.status(201).json({ id: clonedTest._id, message: "Draft clone created" });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ message: "Server error" });
+  }
 };
 
 module.exports = { 

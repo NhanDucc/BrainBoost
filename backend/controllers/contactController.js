@@ -1,8 +1,10 @@
 const nodemailer = require('nodemailer');
 const User = require('../models/User');
 const ContactMessage = require('../models/ContactMessage');
+const socketService = require('../services/socketService');
 
 /**
+ * * POST /api/contact
  * Handles the submission of a contact form from the user.
  * Saves the message to the database and sends an email notification to the admin.
  */
@@ -31,12 +33,12 @@ exports.send = async (req, res) => {
 
         // Configure the email transporter using Gmail SMTP
         const transporter = nodemailer.createTransport({
-        service: 'gmail',
-        auth: {
-            user: process.env.EMAIL_USER, // e.g. iiduc124@gmail.com
-            pass: process.env.EMAIL_PASS  // 16-char app password (no spaces)
-        }
-        // Note: host/port/secure/tls are automatically handled by service: 'gmail'
+            service: 'gmail',
+            auth: {
+                user: process.env.EMAIL_USER, // e.g. iiduc124@gmail.com
+                pass: process.env.EMAIL_PASS  // 16-char app password (no spaces)
+            }
+            // Note: host/port/secure/tls are automatically handled by service: 'gmail'
         });
 
         // Verify the SMTP connection before sending (useful for debugging)
@@ -81,6 +83,7 @@ exports.send = async (req, res) => {
 };
 
 /**
+ * * GET /api/contact/unread
  * Retrieves all unread contact messages for the Admin dashboard.
  * Populates the user's basic info to display the sender details.
  */
@@ -97,6 +100,7 @@ exports.getUnreadMessages = async (req, res) => {
 };
 
 /**
+ * * PUT /api/contact/:id/read
  * Marks a specific contact message as read (resolving the ticket).
  */
 exports.markAsRead = async (req, res) => {
@@ -105,5 +109,36 @@ exports.markAsRead = async (req, res) => {
         res.json({ message: 'Marked as read' });
     } catch (err) {
         res.status(500).json({ message: 'Failed to mark as read' });
+    }
+};
+
+/**
+ * * POST /api/contact/:id/reply
+ * Replies to a support ticket and sends a real-time notification to the user.
+ */
+exports.replyTicket = async (req, res) => {
+    try {
+        const { replyMessage } = req.body;
+        const ticket = await ContactMessage.findById(req.params.id).populate('user');
+        
+        if (!ticket) return res.status(404).json({ message: 'Ticket not found' });
+
+        // Mark the ticket as resolved (Read)
+        ticket.isRead = true;
+        // ticket.adminReply = replyMessage; // (Optional: If your model has a field to store the admin's reply)
+        await ticket.save();
+
+        // Send a real-time notification directly to the user's screen (Student/Instructor)
+        await socketService.sendNotification({
+            userId: ticket.user._id,
+            title: 'Customer Support 🎧',
+            message: `Admin has replied to your support ticket: "${replyMessage}"`,
+            type: 'system',
+            link: '/contact' 
+        });
+
+        res.json({ message: 'Reply sent and ticket closed successfully!' });
+    } catch (err) {
+        res.status(500).json({ message: 'Failed to reply to ticket' });
     }
 };

@@ -325,7 +325,7 @@ export default function InstructorDashboard() {
                 >
 
                 {/* Card Thumbnail / Icon Header */}
-                <div className="t-card-thumb" style={{ padding: 0, height: '140px', overflow: 'hidden' }}>
+                <div className="t-card-thumb" style={{ padding: 0, height: '140px', overflow: 'hidden', borderRadius: '8px' }}>
                   <ContentCover 
                     coverUrl={item.coverUrl} 
                     title={item.title} 

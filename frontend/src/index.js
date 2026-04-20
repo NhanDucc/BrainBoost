@@ -5,12 +5,15 @@ import App from './App';
 import reportWebVitals from './reportWebVitals';
 import 'bootstrap-icons/font/bootstrap-icons.css';
 import { UserProvider } from './context/UserContext';
+import { SocketProvider } from './context/SocketContext';
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
   <React.StrictMode>
     <UserProvider>
-      <App />
+      <SocketProvider>
+        <App />
+      </SocketProvider>
     </UserProvider>
   </React.StrictMode>
 );

@@ -9,9 +9,13 @@ export default function AdminOverview() {
     const [adminData, setAdminData] = useState(null);
     const [unreadMsgs, setUnreadMsgs] = useState([]);
 
+    // State to manage the visibility and data of the Reply Modal
+    const [replyModal, setReplyModal] = useState({ isOpen: false, id: null, userMsg: '' });
+    const [replyText, setReplyText] = useState('');
+
     // ---- Data Fetching ----
 
-    // Fetches dashboard statistics and unread messages when the component mounts
+    // Fetches dashboard statistics and unread support messages when the component mounts
     useEffect(() => {
         api.get("/admin/stats").then(res => setAdminData(res.data)).catch(() => {});
         api.get("/contact/unread").then(res => setUnreadMsgs(res.data)).catch(() => {});
@@ -20,17 +24,30 @@ export default function AdminOverview() {
     // ---- Handlers ----
 
     /**
-     * Marks a specific support ticket as read.
-     * Updates the backend and then removes the message from the local UI state.
-     * @param {string} id - The unique ID of the message to mark as read.
+     * Opens the reply modal and populates it with the selected message data.
+     * @param {Object} msg - The support ticket message object.
      */
-    const handleMarkMsgRead = async (id) => {
+    const openReplyModal = (msg) => {
+        setReplyModal({ isOpen: true, id: msg._id, userMsg: msg.message });
+        setReplyText('');
+    };
+
+    /**
+     * Submits the admin's reply to the backend, sends a real-time notification to the user,
+     * and removes the resolved ticket from the local UI state.
+     */
+    const handleSendReply = async () => {
         try {
-            await api.put(`/contact/${id}/read`);
-            // Optimistic UI update: remove the read message from the current state array
-            setUnreadMsgs(prev => prev.filter(m => m._id !== id));
+            await api.post(`/contact/${replyModal.id}/reply`, { replyMessage: replyText });
+            
+            // Remove the resolved ticket from the pending list
+            setUnreadMsgs(prev => prev.filter(m => m._id !== replyModal.id));
+            
+            // Close and reset the modal
+            setReplyModal({ isOpen: false, id: null, userMsg: '' });
+            alert("Reply sent and ticket closed successfully!");
         } catch (err) { 
-            alert("Failed to mark as read"); 
+            alert("Failed to send reply. Please try again."); 
         }
     };
 
@@ -112,8 +129,8 @@ export default function AdminOverview() {
                                             {msg.message}
                                         </div>
                                         {/* Action button to resolve the ticket */}
-                                        <button className="ghost-btn" style={{ padding: '6px 12px', fontSize: '12px' }} onClick={() => handleMarkMsgRead(msg._id)}>
-                                            <i className="bi bi-check2-all"></i> Mark as Read
+                                        <button className="ghost-btn" style={{ padding: '6px 12px', fontSize: '12px' }} onClick={() => openReplyModal(msg)}>
+                                            <i className="bi bi-check2-all"></i> Reply & Resolve
                                         </button>
                                     </div>
                                 ))
@@ -158,6 +175,52 @@ export default function AdminOverview() {
                 </div>
                 
             </div>
+
+            {/* ==== Reply Support Ticket Modal ==== */}
+            {replyModal.isOpen && (
+                <div className="modal-overlay" onClick={() => setReplyModal({ isOpen: false, id: null, userMsg: '' })}>
+                    <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <i className="bi bi-reply-fill text-primary"></i>
+                            <h3>Reply to Support Ticket</h3>
+                        </div>
+                        <div className="modal-body">
+                            <div style={{ background: 'var(--bg-input)', padding: '12px', borderRadius: '8px', fontSize: '14px', marginBottom: '16px', color: 'var(--text-secondary)' }}>
+                                <strong style={{ color: 'var(--text-main)' }}>User's Message:</strong><br/>
+                                <div style={{ marginTop: '8px' }}>{replyModal.userMsg}</div>
+                            </div>
+                            
+                            <textarea 
+                                placeholder="Type your response here. This will be sent directly to the user..." 
+                                value={replyText} 
+                                onChange={(e) => setReplyText(e.target.value)} 
+                                rows="5"
+                                style={{ 
+                                    width: '100%', padding: '12px', borderRadius: '8px', 
+                                    border: '1px solid var(--border-color)', background: 'var(--bg-card)', 
+                                    color: 'var(--text-main)', outline: 'none', resize: 'vertical'
+                                }}
+                                autoFocus 
+                            />
+                        </div>
+                        <div className="modal-actions">
+                            <button 
+                                className="modal-btn-cancel" 
+                                onClick={() => setReplyModal({ isOpen: false, id: null, userMsg: '' })}
+                            >
+                                Cancel
+                            </button>
+                            <button 
+                                className="modal-btn-confirm" 
+                                onClick={handleSendReply}
+                                disabled={!replyText.trim()}
+                            >
+                                Send Reply
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

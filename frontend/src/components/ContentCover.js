@@ -48,6 +48,7 @@ export default function ContentCover({ title, subject, grade, coverUrl, classNam
                 textAlign: 'center',
                 width: '100%',
                 height: '100%',
+                borderRadius: '8px',
                 minHeight: '130px',
                 boxSizing: 'border-box',
                 overflow: 'hidden',
@@ -59,7 +60,8 @@ export default function ContentCover({ title, subject, grade, coverUrl, classNam
             <div style={{
                 position: 'absolute', inset: 0, opacity: 0.1,
                 backgroundImage: 'radial-gradient(circle at 2px 2px, #334155 1px, transparent 0)',
-                backgroundSize: '20px 20px'
+                backgroundSize: '20px 20px',
+                borderRadius: '8px',
             }}></div>
 
             {/* Typography for the Title */}

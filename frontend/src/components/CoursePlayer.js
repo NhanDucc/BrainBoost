@@ -859,6 +859,24 @@ export default function CoursePlayer() {
 
   // ==== Loading & Error Rendering ====
 
+  if (authChecked && !isLoggedIn && course && course.priceUSD > 0) {
+      return (
+          <div className="learning-page">
+              <SiteHeader />
+              <main className="learning-container">
+                  <div style={{ textAlign: 'center', padding: '4rem 2rem' }}>
+                      <h2>Premium Content</h2>
+                      <p>This is a premium course. Please sign in and enroll to access the lessons.</p>
+                      <button className="btn-primary" onClick={() => navigate('/login')} style={{ marginTop: '1rem' }}>
+                          Sign In to BrainBoost
+                      </button>
+                  </div>
+              </main>
+              <SiteFooter />
+          </div>
+      );
+  }
+
   if (loading) {
     return (
       <div className="learning-page">
@@ -1047,32 +1065,45 @@ export default function CoursePlayer() {
               )}
 
               {/* Static AI Assistant Panel */}
-              <div className="ai-chat-panel">
+              <div className="ai-chat-panel" style={{ position: 'relative' }}>
                   <header className="ai-modal-header">
                       <h3><i className="bi bi-robot text-primary"></i> BrainBoost AI</h3>
                   </header>
-                  <div className="ai-modal-body">
+                  <div className="ai-modal-body" style={{ filter: !isLoggedIn ? 'blur(2px)' : 'none', opacity: !isLoggedIn ? 0.6 : 1, pointerEvents: !isLoggedIn ? 'none' : 'auto' }}>
                       {chatMessages.map((m, idx) => (
                           <div key={idx} className={`ai-msg ai-msg-${m.from === "user" ? "user" : "ai"}`}>
                               <div className="ai-msg-bubble">{m.text}</div>
                           </div>
                       ))}
-                      {authChecked && !isLoggedIn && (
-                          <div className="ai-login-hint">Sign in to your account to chat.</div>
-                      )}
                   </div>
-                  <form className="ai-input-row" onSubmit={handleSendChat}>
+                  <form className="ai-input-row" onSubmit={handleSendChat} style={{ filter: !isLoggedIn ? 'blur(2px)' : 'none', pointerEvents: !isLoggedIn ? 'none' : 'auto' }}>
                       <input 
                           type="text" 
                           placeholder="Ask about this lesson..." 
                           value={chatInput} 
                           onChange={(e) => setChatInput(e.target.value)} 
-                          disabled={chatLoading || chatDisabled} 
+                          disabled={chatLoading} 
                       />
-                      <button type="submit" className="btn-primary" disabled={chatLoading || chatDisabled}>
+                      <button type="submit" className="btn-primary" disabled={chatLoading}>
                           {chatLoading ? "..." : <i className="bi bi-send-fill"></i>}
                       </button>
                   </form>
+
+                  {/* The Auth Wall Overlay for Guests */}
+                  {authChecked && !isLoggedIn && (
+                      <div style={{
+                          position: 'absolute', top: '50px', left: 0, right: 0, bottom: 0,
+                          display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center',
+                          background: 'rgba(255,255,255,0.85)', zIndex: 10, padding: '1rem', textAlign: 'center', borderRadius: '0 0 12px 12px'
+                      }}>
+                          <i className="bi bi-lock-fill text-primary" style={{ fontSize: '2rem', marginBottom: '8px' }}></i>
+                          <h4 style={{ margin: '0 0 8px 0', color: '#1e293b' }}>Unlock AI Tutor</h4>
+                          <p style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '16px' }}>Sign in to ask questions and get instant explanations from BrainBoost AI.</p>
+                          <button className="btn-primary" style={{ padding: '6px 16px', fontSize: '0.9rem' }} onClick={() => navigate('/login')}>
+                              Create Free Account
+                          </button>
+                      </div>
+                  )}
               </div>
           </aside>
         </div>

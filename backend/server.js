@@ -39,7 +39,24 @@ const app = express();
  * 'x-csrf-token' is whitelisted to support the Anti-CSRF security layer.
  */
 const corsOptions = {
-    origin: process.env.FRONTEND_URL,
+    origin: function (origin, callback) {
+        // Allow requests with no origin (like mobile apps or curl requests)
+        if (!origin) return callback(null, true);
+        
+        const allowedOrigins = [
+            process.env.FRONTEND_URL,
+            'http://localhost:80',
+            'http://127.0.0.1:80',
+            'http://98.94.47.135',  // VPS IP
+            'http://98.94.47.135:80' // VPS IP with port
+        ];
+        
+        if (allowedOrigins.indexOf(origin) !== -1) {
+            callback(null, true);
+        } else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
     credentials: true,  
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'X-Requested-With', 'Authorization', 'x-csrf-token'] 

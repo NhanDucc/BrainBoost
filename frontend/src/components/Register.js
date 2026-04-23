@@ -17,26 +17,24 @@ const Register = () => {
     // -- UI & Feedback States --
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-    // Lifecycle Effect ====
+    // ==== Lifecycle Effect ====
 
     /**
      * Auto-dismissal Effect
-     * Automatically clears error or success alerts after 3 seconds to maintain a clean UI.
+     * Automatically clears error alerts after 5 seconds to maintain a clean UI.
      */
     useEffect(() => {
-        // Do nothing if there are no messages to display
         if (!error && !success) return;
 
-        // Set a timer to clear messages
         const t = setTimeout(() => {
             setError('');
             setSuccess('');
-        }, 3000);
+        }, 5000);
 
-        // Cleanup function to prevent memory leaks if the component unmounts
         return () => clearTimeout(t);
     }, [error, success]);
 
@@ -44,30 +42,38 @@ const Register = () => {
 
     /**
      * Handles the submission of the registration form.
-     * Validates input, sends data to the API, and routes the user to the OTP verification page.
+     * Validates input, checks for common typos, sends data to the API, 
+     * and routes the user to the OTP verification page.
      */
     const handleRegister = async (e) => {
-        e.preventDefault(); // Prevent default page reload
-
-        // Reset feedback states before new submission
+        e.preventDefault(); 
         setError('');
         setSuccess('');
 
-        // Ensure passwords match
+        // 1. Basic Password Match Validation
         if (password !== confirmPassword) {
-            setError("Passwords do not match");
+            setError("Passwords do not match.");
             return;
         }
 
+        // 2. Frontend Typo Catcher (Lớp phòng ngự bắt lỗi gõ nhầm nhanh nhất)
+        const suspiciousDomains = ['gmaill.com', 'gmail.com.vn', 'yaho.com', 'hotmal.com', 'gmal.com'];
+        const domain = email.split('@')[1]?.toLowerCase();
+        
+        if (suspiciousDomains.includes(domain)) {
+            setError(`Are you sure? "${domain}" looks like a typo. Please check your email again.`);
+            return;
+        }
+
+        // 3. API Execution
+        setIsLoading(true);
         try {
-            // API Call: Register the new user
             await api.post('/auth/register', {
                 fullname, 
                 email, 
                 password
             });
 
-            // Post-Registration Action:
             // Save the email temporarily to local storage so the Verify page knows which account to verify
             localStorage.setItem('pendingEmail', email);
 
@@ -76,7 +82,10 @@ const Register = () => {
 
         } catch (err) {
             console.error("Registration Error:", err.response || err);
-            setError(err.response?.data?.message || 'Registration failed. Please try again.');
+            // Hiển thị lỗi từ Backend (Ví dụ: "Could not deliver OTP. Please ensure this email actually exists")
+            setError(err.response?.data?.message || 'Registration failed. Please check your information and try again.');
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -85,7 +94,7 @@ const Register = () => {
     return (
         <div className="register-container">
             <form onSubmit={handleRegister} className="register-box">
-                <h2>Register</h2>
+                <h2>Create Account</h2>
 
                 {/* Conditional rendering for feedback alerts */}
                 {error && <p className="alert error">{error}</p>}
@@ -99,17 +108,19 @@ const Register = () => {
                     placeholder="Enter your full name"
                     value={fullname}
                     onChange={(e) => setFullname(e.target.value)}
+                    disabled={isLoading}
                     required
                 />
 
                 {/* Email Input */}
-                <label htmlFor="email">Email</label>
+                <label htmlFor="email">Email Address</label>
                 <input
                     type="email"
                     id="email"
-                    placeholder="Enter your email"
+                    placeholder="Enter a valid email (e.g. name@gmail.com)"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
+                    disabled={isLoading}
                     required
                 />
 
@@ -119,9 +130,10 @@ const Register = () => {
                     <input
                         type={showPassword ? 'text' : 'password'}
                         id="password"
-                        placeholder="Enter your password"
+                        placeholder="Create a strong password"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
+                        disabled={isLoading}
                         required
                     />
                     <i 
@@ -137,9 +149,10 @@ const Register = () => {
                     <input
                         type={showConfirmPassword ? 'text' : 'password'}
                         id="confirm-password"
-                        placeholder="Confirm your password"
+                        placeholder="Type your password again"
                         value={confirmPassword}
                         onChange={(e) => setConfirmPassword(e.target.value)}
+                        disabled={isLoading}
                         required
                     />
                     <i 
@@ -150,13 +163,13 @@ const Register = () => {
                 </div>
 
                 {/* Submit Action */}
-                <button className="register-btn" type="submit">
-                    Register
+                <button className="register-btn" type="submit" disabled={isLoading}>
+                    {isLoading ? "Verifying Email..." : "Register"}
                 </button>
 
                 {/* Navigation Links */}
                 <p className="bottom-links">
-                    You already have an account? <Link to="/login">Login</Link>
+                    Already have an account? <Link to="/login">Sign in</Link>
                 </p>
             </form>
         </div>

@@ -211,16 +211,22 @@ export default function CourseDetail() {
      * Handles the Mock Purchase or Free Enrollment flow.
      */
     const handleEnrollClick = async () => {
-        // Redirect to login if unauthenticated
-        if (!user) {
-            navigate('/login');
-            return;
-        }
-
         // Redirect directly to the learning dashboard if already enrolled
         if (isEnrolled) {
             navigate(`/courses/${courseId}/learn`);
             return;
+        }
+
+        if (!user) {
+            if (isFree) {
+                // Let guests enter the free course player immediately to experience the content
+                navigate(`/courses/${courseId}/learn`);
+                return;
+            } else {
+                // If it's a paid course, force them to login before buying
+                navigate('/login', { state: { from: { pathname: `/courses/${courseId}` } } });
+                return;
+            }
         }
 
         // Execute enrollment/purchase transaction

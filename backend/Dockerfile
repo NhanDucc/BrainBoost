@@ -13,8 +13,8 @@ RUN npm install
 # Copy the rest of the backend source code
 COPY . .
 
-# Expose port 5000
-EXPOSE 5000
+# Expose port 8080
+EXPOSE 8080
 
 # Command to start the backend in development mode
 CMD ["npm", "run", "dev"]

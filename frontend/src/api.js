@@ -12,7 +12,7 @@ export const api = axios.create({
     baseURL: API_URL,
     
     // Instructs the browser to securely send and receive cookies (like JWT session tokens) 
-    // across different origins (e.g., from frontend port 3000 to backend port 8080).
+    // across different origins (e.g., from frontend port 80 to backend port 8080).
     withCredentials: true,
 });
 

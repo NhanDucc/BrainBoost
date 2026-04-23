@@ -28,7 +28,7 @@ services:
     build: ./frontend
     container_name: dev-frontend
     ports:
-      - "3000:3000"
+      - "80:80"
     volumes:
       - ./frontend:/app
       - /app/node_modules

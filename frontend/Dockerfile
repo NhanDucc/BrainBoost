@@ -13,8 +13,9 @@ RUN npm install
 # Copy the entire frontend source code into the container
 COPY . .
 
-# Expose port 3000 for the React Development Server
-EXPOSE 3000
+# Expose port 80 for the React Development Server
+EXPOSE 80
 
-# Command to start the frontend in development mode
+# Set PORT environment variable and start the frontend in development mode
+ENV PORT=80
 CMD ["npm", "start"]

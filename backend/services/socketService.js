@@ -12,7 +12,7 @@ class SocketService {
         // Initialize Socket.IO with CORS settings matching Express
         this.io = socketIo(server, {
             cors: {
-                origin: 'http://localhost:3000',
+                origin: 'http://localhost:80',
                 methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
                 credentials: true
             }

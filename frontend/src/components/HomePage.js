@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import SiteHeader from "./Header"
 import SiteFooter from "./Footer"
 import defaultAvatar from "../images/defaultAvatar.png";
-import skillsPlaceholder from "../images/skills-placeholder.png";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api.js";
 import ContentCover from "../components/ContentCover";
@@ -151,7 +150,7 @@ const HomePage = () => {
                 id={c.id}
                 img={c.coverUrl}
                 title={c.title}
-                subject={c.subject}// Thêm dòng này
+                subject={c.subject}
                 grade={c.grade}
                 lessons={c.lessons}
                 hours={c.hours}
@@ -314,7 +313,7 @@ const HomePage = () => {
       <section className="skills-section">
         <div className="skills-container">
           <div className="skills-image">
-            <img src={skillsPlaceholder} alt="Skills Visual" />
+            <img src="/image/skill-gain.png" alt="Skills Visual" />
           </div>
           <div className="skills-content">
             <h2>Skills Students Gain from BrainBoost Courses</h2>
@@ -336,7 +335,7 @@ const HomePage = () => {
       <section className="about-section">
         <div className="about-container">
           <div className="about-image">
-            <img src={skillsPlaceholder} alt="About BrainBoost Visual" />
+            <img src="/image/about-bb.png" alt="About BrainBoost Visual" />
           </div>
           <div className="about-content">
             <h2>About BrainBoost</h2>
@@ -356,48 +355,42 @@ const HomePage = () => {
 
         <div className="why-container">
           <div className="why-image-left">
-            <img src={skillsPlaceholder} alt="Why study with BrainBoost" />
+            <img src="/image/why-study-bb.png" alt="Why study with BrainBoost" />
           </div>
 
           <div className="why-right">
             <article className="why-card">
               <div className="why-thumb">
-                <img src={skillsPlaceholder} alt="" />
+                <img src="/image/high-quality.png" alt="" />
               </div>
               <div className="why-card-body">
                 <h3>High Quality</h3>
                 <p>
-                  All course content is carefully designed with both depth and quality in mind.
-                  Lessons are created by experienced teachers and enhanced with an AI Tutor to
-                  provide instant support, ensuring every learner gets the best guidance.
+                  All course content is carefully designed with both depth and quality in mind. Lessons are created by experienced teachers and enhanced with an AI Tutor to provide instant support, ensuring every learner gets the best guidance.
                 </p>
               </div>
             </article>
 
             <article className="why-card">
               <div className="why-thumb">
-                <img src={skillsPlaceholder} alt="" />
+                <img src="/image/essential-skills.png" alt="" />
               </div>
               <div className="why-card-body">
                 <h3>Essential Skills</h3>
                 <p>
-                  BrainBoost courses help students build problem-solving abilities, logical thinking,
-                  and analytical skills across subjects like Math, English, Physics, and Chemistry —
-                  skills that benefit learning in school and life beyond the classroom.
+                  BrainBoost courses help students build problem-solving abilities, logical thinking, and analytical skills across subjects like Math, English, Physics, and Chemistry — skills that benefit learning in school and life beyond the classroom.
                 </p>
               </div>
             </article>
 
             <article className="why-card">
               <div className="why-thumb">
-                <img src={skillsPlaceholder} alt="" />
+                <img src="/image/preparation-future.png" alt="" />
               </div>
               <div className="why-card-body">
                 <h3>Strong Preparation for the Future</h3>
                 <p>
-                  From elementary to high school, BrainBoost gives students a solid foundation for
-                  advanced learning, exams, and future studies. Each course equips learners with
-                  confidence and habits that support them throughout their educational journey.
+                  From elementary to high school, BrainBoost gives students a solid foundation for advanced learning, exams, and future studies. Each course equips learners with confidence and habits that support them throughout their educational journey.
                 </p>
               </div>
             </article>
@@ -417,9 +410,7 @@ const HomePage = () => {
               <div className="t-meta"><h4>Nguyen Minh Anh</h4><p className="t-sub">- Grade 11, Hanoi -</p></div>
             </div>
             <p className="t-text">
-              BrainBoost makes studying Math and Physics so much easier! The AI Tutor
-              explains every step clearly, and the practice exercises are really helpful.
-              I feel more confident every time I go to class.
+              BrainBoost makes studying Math and Physics so much easier! The AI Tutor explains every step clearly, and the practice exercises are really helpful. I feel more confident every time I go to class.
             </p>
             <div className="t-stars" aria-label="5 out of 5">
               <span>★</span><span>★</span><span>★</span><span>★</span><span>★</span>
@@ -432,9 +423,7 @@ const HomePage = () => {
               <div className="t-meta"><h4>Le Thanh Binh</h4><p className="t-sub">- Grade 12, Da Nang -</p></div>
             </div>
             <p className="t-text">
-              English used to be my weakest subject, but thanks to BrainBoost, I can now
-              write essays and understand reading passages much better. The lessons are
-              fun, and the AI chat helps me whenever I get stuck.
+              English used to be my weakest subject, but thanks to BrainBoost, I can now write essays and understand reading passages much better. The lessons are fun, and the AI chat helps me whenever I get stuck.
             </p>
             <div className="t-stars" aria-label="5 out of 5">
               <span>★</span><span>★</span><span>★</span><span>★</span><span>★</span>
@@ -447,9 +436,7 @@ const HomePage = () => {
               <div className="t-meta"><h4>Tran Quynh Chi</h4><p className="t-sub">- Grade 7, Ho Chi Minh City -</p></div>
             </div>
             <p className="t-text">
-              I love how BrainBoost combines learning and fun. Chemistry experiments are
-              explained so clearly, and I finally understand how everything connects.
-              It’s like having a private tutor at home!
+              I love how BrainBoost combines learning and fun. Chemistry experiments are explained so clearly, and I finally understand how everything connects. It’s like having a private tutor at home!
             </p>
             <div className="t-stars" aria-label="5 out of 5">
               <span>★</span><span>★</span><span>★</span><span>★</span><span>★</span>

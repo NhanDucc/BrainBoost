@@ -63,3 +63,18 @@
 .alert.info    { background: var(--bg-object); color: var(--primary-hover); border: 1px solid var(--primary); }
 .alert.success { background: var(--bg-object); color: var(--success); border: 1px solid var(--success); }
 .alert.error   { background: var(--bg-object); color: var(--error); border: 1px solid var(--error); }
+
+.form-group input[disabled],
+.form-group .readonly {
+  background: var(--bg-hover);
+  color: var(--text-main);
+  -webkit-text-fill-color: var(--text-main);
+  opacity: 1;
+  cursor: not-allowed;
+  border-color: var(--border-color);
+}
+
+.form-group input[disabled]:focus {
+  box-shadow: none;
+  border-color: var(--border-color);
+}

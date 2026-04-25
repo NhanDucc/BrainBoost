@@ -1,8 +1,11 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import '../css/Contact.css';
 
 export default function ApplyInstructor() {
+  const navigate = useNavigate();
+
   const [me, setMe] = useState({ fullname: '', email: '' });
   const [form, setForm] = useState({
     fullName: '', email: '', phone: '',
@@ -11,14 +14,12 @@ export default function ApplyInstructor() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  // auto-hide
   useEffect(() => {
     if (!error && !success) return;
     const t = setTimeout(() => { setError(''); setSuccess(''); }, 3000);
     return () => clearTimeout(t);
   }, [error, success]);
 
-  // If logged in → auto-fill name and email (lock the email field to prevent discrepancies)
   useEffect(() => {
     (async () => {
       try {
@@ -47,8 +48,15 @@ export default function ApplyInstructor() {
   return (
     <div className="contact-wrap">
       <div className="contact-card">
-        <h1>Apply to become an Instructor</h1>
-        <p className="lead">Fill the form below. Admin will review and notify you via email.</p>
+        
+        <div className="btn-back-container">
+          <button onClick={() => navigate(-1)} className="btn-back">
+            <i className="bi bi-arrow-left"></i> Back
+          </button>
+          <h1 style={{ margin: 0 }}>Apply to become an Instructor</h1>
+        </div>
+
+        <p className="lead" style={{ marginTop: '8px' }}>Fill the form below. Admin will review and notify you via email.</p>
 
         {(error || success) && <div className={`alert ${error ? 'alert-error':'alert-success'}`}>{error || success}</div>}
 
@@ -60,7 +68,14 @@ export default function ApplyInstructor() {
             </div>
             <div className="form-group">
               <label>Email*</label>
-              <input name="email" value={form.email} onChange={onChange} required readOnly={!!me.email} />
+              <input 
+                name="email" 
+                value={form.email} 
+                onChange={onChange} 
+                required 
+                readOnly={!!me.email} 
+                className={!!me.email ? "readonly" : ""} 
+              />
             </div>
           </div>
 

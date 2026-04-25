@@ -27,7 +27,7 @@ export default function AboutUs() {
 
                     <figure className="frame-slab">
                         <div className="slab-inner">
-                            <img src={skillsPlaceholder} alt="Overview" />
+                            <img src="/image/about-us.png" alt="Overview" />
                         </div>
                     </figure>
                 </section>
@@ -38,7 +38,7 @@ export default function AboutUs() {
                     <div className="mission-grid">
                         <article className="mission-card">
                             <div className="mission-thumb">
-                                <img src={skillsPlaceholder} alt="Build community" />
+                                <img src="/image/community.png" alt="Build community" />
                             </div>
                             <h3>Build a Learning Community</h3>
                             <p>Connect students nationwide and create a space for sharing knowledge.</p>
@@ -46,7 +46,7 @@ export default function AboutUs() {
 
                         <article className="mission-card">
                             <div className="mission-thumb">
-                                <img src={skillsPlaceholder} alt="Improve quality" />
+                                <img src="/image/improve-quality.png" alt="Improve quality" />
                             </div>
                             <h3>Improve Quality</h3>
                             <p>We constantly update our content and methods to reflect real-world scenarios.</p>
@@ -54,7 +54,7 @@ export default function AboutUs() {
 
                         <article className="mission-card">
                             <div className="mission-thumb">
-                                <img src={skillsPlaceholder} alt="AI-powered" />
+                                <img src="/image/ai-sp.png" alt="AI-powered" />
                             </div>
                             <h3>AI-powered Support</h3>
                             <p>AI Tutor gives instant help and tailors learning to each student.</p>
@@ -62,7 +62,7 @@ export default function AboutUs() {
 
                         <article className="mission-card">
                             <div className="mission-thumb">
-                                <img src={skillsPlaceholder} alt="Inspire" />
+                                <img src="/image/inspire-students.png" alt="Inspire" />
                             </div>
                             <h3>Inspire Students</h3>
                             <p>We aim to foster curiosity and a love for learning in every child.</p>
@@ -75,17 +75,17 @@ export default function AboutUs() {
                     <h4>Do you have any of these traits?</h4>
                     <div className="traits-grid">
                         <div className="trait-card">
-                            <div className="trait-img"><img src={skillsPlaceholder} alt="" /></div>
+                            <div className="trait-img"><img src="/image/struggling-exams.png" alt="" /></div>
                             <p>Struggling to find a reliable place to prepare for exams.</p>
                         </div>
 
                         <div className="trait-card">
-                            <div className="trait-img"><img src={skillsPlaceholder} alt="" /></div>
+                            <div className="trait-img"><img src="/image/study-own-schedule.png" alt="" /></div>
                             <p>Want to study on your own schedule, at your own pace, without a fixed class.</p>
                         </div>
 
                         <div className="trait-card">
-                            <div className="trait-img"><img src={skillsPlaceholder} alt="" /></div>
+                            <div className="trait-img"><img src="/image/overwhelmed.png" alt="" /></div>
                             <p>Capable of self-study, but overwhelmed by too many materials and information.</p>
                         </div>
                     </div>
@@ -93,7 +93,7 @@ export default function AboutUs() {
 
                 {/* overlay banner */}
                 <section className="overlay-hero">
-                    <img src={skillsPlaceholder} alt="Story" className="oh-bg"/>
+                    <img src="/image/about-us-2.png" alt="Story" className="oh-bg"/>
                     <div className="oh-inner">
                         <p className="oh-kicker">BrainBoost was created out of our team’s absolute belief in one thing:</p>
                         <h1>With strong <span className="hl">self-discipline</span> ,<br/> you have everything it takes to prepare for exams and <span className="hl hl-lg">succeed—right</span> from home!</h1>
@@ -129,7 +129,7 @@ export default function AboutUs() {
                 {/* student */}
                 <section className="student-row">
                     <div className="student-img">
-                        <img src={skillsPlaceholder} alt="Student" />
+                        <img src="/image/become-stu.png" alt="Student" />
                     </div>
 
                     <div className="student-col">
@@ -154,7 +154,7 @@ export default function AboutUs() {
                     </div>
 
                     <div className="teacher-img">
-                        <img src={skillsPlaceholder} alt="Teacher" />
+                        <img src="/image/become-teach.png" alt="Teacher" />
                     </div>
                 </section>
 

@@ -278,7 +278,7 @@ const SiteHeader = () => {
         {/* ==== Center Section: Main Navigation (Responsive Drawer) ==== */}
         <nav className={`main-nav ${showMobileNav ? 'open' : ''}`}>
           {user?.role === 'admin' && <a href="/admin">Admin</a>}
-          {(user?.role === 'instructor' || user?.role === 'admin') && <a href="/instructor">Teaching</a>}
+          {(user?.role === 'instructor') && <a href="/instructor">Teaching</a>}
           <a href="/courses">Courses</a>
           <a href="/tests">Online Exam</a>
           <a href="/about">About Us</a>

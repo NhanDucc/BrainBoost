@@ -116,7 +116,7 @@ export default function UpdateProfile() {
 
             <div className="form-group">
               <label>Email</label>
-              <input name="email" value={form.email} disabled style={{ backgroundColor: '#f1f5f9', cursor: 'not-allowed' }} />
+              <input name="email" value={form.email} disabled className="readonly" />
               <small>Email cannot be changed directly. Please contact support if needed.</small>
             </div>
 

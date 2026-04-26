@@ -189,7 +189,7 @@ const SiteHeader = () => {
       document.cookie = "csrf_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
       
       // Hard redirect to the login page to snap all data-fetching loops
-      window.location.href = "/login"; 
+      window.location.href = "/"; 
       
     } catch (error) {
       console.error("Logout Error:", error);

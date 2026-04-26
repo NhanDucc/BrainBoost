@@ -417,7 +417,7 @@ export default function TestEditor() {
    * Component to dynamically render the correct input fields
    * based on the selected question type (MCQ, True/False, Short Answer, or Essay).
    */
-  const QuestionBody = ({ q, qi }) => {
+  const renderQuestionBody = (q, qi) => {
     // ---- MCQ Renderer ----
     if (q.type === "mcq") {
       return (
@@ -636,7 +636,7 @@ export default function TestEditor() {
                     </div>
 
                     {/* Answers: Dynamic Inputs based on type (MCQ / TF / Short / Essay) */}
-                    <QuestionBody q={q} qi={qi} />
+                    {renderQuestionBody(q, qi)}
 
                     {/* Optional Post-Submission Explanation */}
                     <div className="q-row" style={{ marginTop: '15px' }}>

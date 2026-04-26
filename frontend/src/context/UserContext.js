@@ -56,8 +56,12 @@ export function UserProvider({ children }) {
             const res = await api.get("/users/me");
             const u = res.data?.user || res.data || null;
             setUserEverywhere(u);
-        } catch {
-            signOut();
+        } catch (err) {
+            // CHỈ đăng xuất nếu lỗi báo về là hết quyền truy cập (401/403)
+            // Bỏ qua nếu là lỗi 500 hoặc mất mạng để không làm phiền người dùng
+            if (err.response && (err.response.status === 401 || err.response.status === 403)) {
+                signOut();
+            }
         } finally {
             setAuthResolved(true);
         }

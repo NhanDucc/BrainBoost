@@ -27,7 +27,7 @@ export const SocketProvider = ({ children }) => {
         // Only establish a connection if we have a valid logged-in user
         if (currentUserId) {
             // Use environment variable for production, fallback to localhost:8080 for development
-            const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8080'; 
+            const backendUrl = process.env.REACT_APP_BACKEND_URL; 
             
             // Initialize the socket connection
             const newSocket = io(backendUrl, {

@@ -75,7 +75,8 @@ api.interceptors.response.use(
 
         const isUnauthorized = error.response?.status === 401 
             && !originalRequest.url.includes('/auth/login')
-            && !originalRequest.url.includes('/auth/register');
+            && !originalRequest.url.includes('/auth/register')
+            && !originalRequest.url.includes('/auth/logout');
 
         if (isUnauthorized && !originalRequest._retry && originalRequest.url !== '/auth/refresh') {
 
@@ -95,17 +96,23 @@ api.interceptors.response.use(
                 
                 isRefreshing = false;
                 processQueue(null);
-
+                
                 return api(originalRequest);
                 
             } catch (refreshError) {
                 isRefreshing = false;
                 processQueue(refreshError);
                 
-                console.error('Session completely expired. Please login again.');
-                if (window.location.pathname !== '/login') {
+                console.error('Session completely expired or user is a guest.');
+                
+                const isCheckingSession = originalRequest.url.includes('/users/me');
+                const isAuthPage = window.location.pathname === '/login' || window.location.pathname === '/register';
+
+                if (!isCheckingSession && !isAuthPage) {
                     window.location.href = '/login'; 
                 }
+                // ===================================
+
                 return Promise.reject(refreshError);
             }
         }

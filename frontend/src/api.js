@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_URL = process.env.REACT_APP_BACKEND_URL;
+const API_URL = process.env.REACT_APP_BACKEND_URL + '/api';
 
 /**
  * Create a globally configured Axios instance for making HTTP requests.
@@ -54,45 +54,62 @@ api.interceptors.request.use(
  * If a 401 TOKEN_EXPIRED error occurs, it pauses the request, calls the 
  * refresh endpoint to get a new token, and retries the original request.
  */
+let isRefreshing = false;
+let failedQueue = [];
+
+const processQueue = (error, token = null) => {
+    failedQueue.forEach(prom => {
+        if (error) {
+            prom.reject(error);
+        } else {
+            prom.resolve(token);
+        }
+    });
+    failedQueue = [];
+};
+
 api.interceptors.response.use(
-    (response) => {
-        // Pass through successful responses without modification
-        return response;
-    },
+    (response) => response,
     async (error) => {
-        // Retrieve the original request configuration
         const originalRequest = error.config;
 
-        // Condition Check: Is it a 401 error explicitly caused by token expiration?
-        const isTokenExpired = error.response?.status === 401 && error.response?.data?.code === 'TOKEN_EXPIRED';
+        const isUnauthorized = error.response?.status === 401 
+            && !originalRequest.url.includes('/auth/login')
+            && !originalRequest.url.includes('/auth/register');
 
-        // IMPORTANT: Check originalRequest.url !== '/auth/refresh' to prevent infinite loops
-        // if the refresh API itself fails with a 401 error.
-        if (isTokenExpired && !originalRequest._retry && originalRequest.url !== '/auth/refresh') {
-            
-            originalRequest._retry = true; // Mark as retried to prevent looping
+        if (isUnauthorized && !originalRequest._retry && originalRequest.url !== '/auth/refresh') {
+
+            if (isRefreshing) {
+                return new Promise(function(resolve, reject) {
+                    failedQueue.push({ resolve, reject });
+                }).then(() => {
+                    return api(originalRequest);
+                }).catch(err => Promise.reject(err));
+            }
+
+            originalRequest._retry = true;
+            isRefreshing = true;
 
             try {
-                // Attempt to fetch a new Access Token using the httpOnly Refresh Token
                 await api.post('/auth/refresh');
-
-                // If successful, retry the exact same request that failed initially
-                return api(originalRequest);
-
-            } catch (refreshError) {
-                // If the refresh token is also expired or invalid, the session is completely dead.
-                console.error('Session expired. Please login again.');
                 
-                // PREVENT INFINITE LOOP: Only redirect if the user isn't already on the login page
+                isRefreshing = false;
+                processQueue(null);
+
+                return api(originalRequest);
+                
+            } catch (refreshError) {
+                isRefreshing = false;
+                processQueue(refreshError);
+                
+                console.error('Session completely expired. Please login again.');
                 if (window.location.pathname !== '/login') {
                     window.location.href = '/login'; 
                 }
-                
                 return Promise.reject(refreshError);
             }
         }
 
-        // For all other errors (400, 403, 404, 500, etc.), pass them down to the calling component
         return Promise.reject(error);
     }
 );

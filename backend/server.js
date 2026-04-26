@@ -45,10 +45,16 @@ const corsOptions = {
         
         const allowedOrigins = [
             process.env.FRONTEND_URL,
-            'http://localhost:80',
-            'http://127.0.0.1:80',
-            'http://98.94.47.135',  // VPS IP
-            'http://98.94.47.135:80' // VPS IP with port
+            'http://localhost:3001',
+            'http://127.0.0.1:3001',
+            'http://98.94.47.135',
+            'http://98.94.47.135:3001',
+
+            // 'http://brainboost.duckdns.org',
+            // 'http://localhost:80',
+            // 'http://127.0.0.1:80',
+            // 'http://98.94.47.135',
+            // 'http://98.94.47.135:80',
         ];
         
         if (allowedOrigins.indexOf(origin) !== -1) {

@@ -529,11 +529,6 @@ export default function AdminDashboard() {
                                 placeholder="Title (e.g., Scheduled Maintenance)" 
                                 value={broadcastModal.title} 
                                 onChange={(e) => setBroadcastModal({ ...broadcastModal, title: e.target.value })} 
-                                style={{ 
-                                    width: '100%', padding: '10px', marginBottom: '12px', 
-                                    borderRadius: '6px', border: '1px solid var(--border-color)', 
-                                    background: 'var(--bg-input)', color: 'var(--text-main)' 
-                                }}
                                 autoFocus 
                             />
                             

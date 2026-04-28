@@ -6,6 +6,7 @@ import skillsPlaceholder from "../images/skills-placeholder.png";
 import { toAbsolute } from "../utils/url";
 import { api } from "../api";
 import ContentCover from "../components/ContentCover";
+import { useUser } from "../context/UserContext";
 import "../css/AllTests.css";
 
 // ==== Constants & Configurations ====
@@ -35,6 +36,7 @@ const FIRST_DIFF_FROM_TAGS = (tags = []) => tags.find((t) => DIFFS.includes(t)) 
 
 export default function Tests() {
     const navigate = useNavigate();
+    const { user } = useUser();
 
     // ---- Data & Network States ----
     const [tests, setTests] = useState([]);
@@ -123,6 +125,7 @@ export default function Tests() {
         
         // Fetch bookmarked tests for the logged-in user
         const fetchBookmarks = async () => {
+            if (!user) return;
             try {
                 const res = await api.get("/learning/bookmarks");
                 if (res.data) setBookmarkedIds(new Set(res.data.map(b => b.id)));
@@ -131,7 +134,7 @@ export default function Tests() {
             }
         };
         fetchBookmarks();
-    }, []);
+    }, [user]);
 
     /**
      * Window focus listener to refresh the list automatically when the user returns to the tab.

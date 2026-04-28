@@ -6,6 +6,7 @@ import { toAbsolute } from "../utils/url";
 import { api } from "../api";
 import FormulaDisplay from "./FormulaDisplay";
 import defaultAvatar from "../images/defaultAvatar.png";
+import { useUser } from "../context/UserContext";
 import "../css/TestPlayer.css";
 
 // ==== Utility Functions ====
@@ -43,6 +44,7 @@ export default function TestPlayer() {
     const { id } = useParams(); // The ID of the test being taken
     const [sp] = useSearchParams();
     const navigate = useNavigate();
+    const { user } = useUser();
 
     // Extract and parse the time limit from the URL query parameters
     const minutes = useMemo(() => {
@@ -244,9 +246,10 @@ export default function TestPlayer() {
 
     // Checks if a question has been answered (used for UI highlighting in the sidebar palette)
     const isAnswered = (q) => {
-        const v = answers[q.id];
-        if (q.type === "essay" || q.type === "short_answer") return typeof v === "string" && v.trim().length > 0;
-        return typeof v === "number";
+        if (q.type === 'essay' || q.type === 'short_answer') {
+            return (q.essayAnswer || "").trim().length > 0;
+        }
+        return q.chosen !== null && q.chosen !== undefined;
     };
 
     // ==== AI Grading & Submission Logic ====
@@ -315,7 +318,9 @@ export default function TestPlayer() {
         const attemptedCount = Object.keys(answers).filter((qid) => {
             const q = flatQuestions.find((x) => x.id === qid);
             if (!q) return false;
-            if (q.type === "essay") return (answers[qid] || "").trim().length > 0;
+            if (q.type === "essay" || q.type === "short_answer") {
+                return (answers[qid] || "").trim().length > 0;
+            }
             return typeof answers[qid] === "number";
         }).length;
         const incorrectCount = gradableItems.filter((x) => x.chosen != null && x.isCorrect === false).length;
@@ -336,26 +341,33 @@ export default function TestPlayer() {
         setResult({ correctCount, incorrectCount, unansweredCount, attemptedCount, total, gradableTotal, percent, auto, items });
 
         // Step 5: Save to Database
-        try {
-            const payload = {
-                testId: id,
-                resultSummary: { correctCount, gradableTotal, percent },
-                timeSpent: timeSpentMinutes,
-                answers: items.map(it => ({ questionId: `q${it.idx}`, type: it.type, studentAnswer: it.type === 'essay' ? it.essayAnswer : it.chosen, isCorrect: it.isCorrect }))
-            };
+        if (user) {
+            try {
+                const payload = {
+                    testId: id,
+                    resultSummary: { correctCount, gradableTotal, percent },
+                    timeSpent: timeSpentMinutes,
+                    answers: items.map(it => ({ 
+                        questionId: `q${it.idx}`, 
+                        type: it.type, 
+                        studentAnswer: it.type === 'essay' ? it.essayAnswer : it.chosen,
+                        isCorrect: it.isCorrect
+                    }))
+                };
 
-            const res = await api.post("/tests/submit", payload);
-            if (res.data && res.data._id) {
-                setSubmissionId(res.data._id); 
-                localStorage.removeItem(LS_KEY);
-                navigate(`/results/${res.data._id}`);
+                const res = await api.post("/tests/submit", payload);
+                if (res.data && res.data._id) {
+                    setSubmissionId(res.data._id); 
+                    localStorage.removeItem(LS_KEY);
+                    navigate(`/results/${res.data._id}`); 
+                }
+
+                // Fetch updated leaderboard
+                const lbRes = await api.get(`/tests/public/${id}/leaderboard`);
+                setLeaderboard(lbRes.data);
+            } catch (err) {
+                console.error("Failed to save result to DB or fetch leaderboard", err);
             }
-
-            // Fetch updated leaderboard
-            const lbRes = await api.get(`/tests/public/${id}/leaderboard`);
-            setLeaderboard(lbRes.data);
-        } catch (err) {
-            console.error("Failed to save result to DB or fetch leaderboard", err);
         }
         try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch {}
     };

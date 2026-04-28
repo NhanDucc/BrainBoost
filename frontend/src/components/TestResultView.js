@@ -86,6 +86,12 @@ export default function TestResultView() {
             if (ans.studentAnswer && String(ans.studentAnswer).trim().length > 0) {
                 attemptedCount++;
             }
+        } else if (ans.type === 'short_answer') {
+            if (ans.studentAnswer && String(ans.studentAnswer).trim().length > 0) {
+                attemptedCount++;
+                if (ans.isCorrect) correctCount++;
+                else incorrectCount++;
+            }
         } else {
             if (ans.studentAnswer != null) {
                 attemptedCount++;

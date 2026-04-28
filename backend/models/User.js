@@ -98,6 +98,10 @@ const userSchema = new mongoose.Schema({
         earnedAt: { type: Date, default: Date.now },
     }],
 
+    badges: [{ 
+        type: String 
+    }],
+
     streaks: {
         math: {
             mcq: { 

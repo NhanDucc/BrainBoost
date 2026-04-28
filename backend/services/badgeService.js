@@ -1,7 +1,7 @@
 const EventEmitter = require('events');
 class BadgeEmitter extends EventEmitter {}
 const badgeEvents = new BadgeEmitter();
-
+const Badge = require('../models/Badge');
 const User = require('../models/User');
 const socketService = require('./socketService');
 
@@ -17,21 +17,34 @@ async function awardBadge(userId, badgeName, description) {
         const user = await User.findById(userId);
         if (!user) return;
 
-        // Ensure the user schema has a 'badges' array initialized
-        if (!user.badges) user.badges = [];
+        // 1. Tìm huy chương thật trong Collection Badge của Database
+        const badgeDoc = await Badge.findOne({ name: badgeName });
+        
+        if (!badgeDoc) {
+            console.log(`[CẢNH BÁO] Huy chương "${badgeName}" chưa được tạo trong Database. Hãy Insert nó vào Collection badges trước!`);
+            return;
+        }
 
-        // Award the badge if the user does not already own it
-        if (!user.badges.includes(badgeName)) {
-            user.badges.push(badgeName);
+        // 2. Kiểm tra xem User đã có huy chương này trong mảng earnedBadges chưa
+        const alreadyOwned = user.earnedBadges.some(
+            (eb) => eb.badgeId.toString() === badgeDoc._id.toString()
+        );
+
+        // 3. Nếu chưa có thì cấp phát chuẩn theo Schema
+        if (!alreadyOwned) {
+            user.earnedBadges.push({ 
+                badgeId: badgeDoc._id, 
+                earnedAt: new Date() 
+            });
             await user.save();
 
-            // Emit a real-time notification to the user's client
+            // 4. Bắn thông báo Socket
             await socketService.sendNotification({
                 userId: user._id,
                 title: `New Badge: ${badgeName}`,
                 message: description,
                 type: 'badge', 
-                link: `/badges` // Link to the user's badge collection page
+                link: `/badges`
             });
         }
     } catch (error) {
@@ -68,38 +81,89 @@ badgeEvents.on('test_completed', async ({ userId, subject, percent }) => {
  * Event: Fired to evaluate answer streaks (Accuracy Streak).
  * Payload: { userId, subject, answers }
  */
+// TẠO BỘ TỪ ĐIỂN ĐỂ DỊCH MÃ CODE THÀNH TÊN HUY CHƯƠNG ĐẸP
+const SUBJECT_MAP = {
+    math: "Mathematics",
+    physics: "Physics",
+    chemistry: "Chemistry",
+    english: "English"
+};
+
+const TYPE_MAP = {
+    mcq: "MCQ",
+    tf: "TF",             // Hoặc "True/False" tùy theo cách bạn đặt tên trong DB
+    boolean: "TF",        // Đề phòng trường hợp Frontend gửi lên là 'boolean'
+    short_answer: "Short Answer",
+    essay: "Essay"
+};
+
+// CÁC MỐC HUY CHƯƠNG THEO THIẾT KẾ CỦA BẠN
+const MILESTONES = [
+    { count: 10, level: "Explorer" },
+    { count: 20, level: "Foundational" },
+    { count: 50, level: "Insightful" },
+    { count: 100, level: "Master" },
+    { count: 200, level: "Scholarly" },
+    { count: 500, level: "Enlightened" }
+];
+
 badgeEvents.on('answers_batch_submitted', async ({ userId, subject, answers }) => {
     if (!answers || answers.length === 0) return;
 
-    // Calculate the maximum streak of consecutive correct answers
-    let maxStreak = 0;
-    let currentStreak = 0;
+    const user = await User.findById(userId);
+    if (!user) return;
+
+    // Mảng tạm để chứa các huy chương đạt được trong lần nộp bài này
+    const earnedNewBadges = [];
 
     answers.forEach(ans => {
-        // Check if the answer is correct or has a positive score
-        if (ans.isCorrect || ans.score > 0) {
-            currentStreak++;
-            if (currentStreak > maxStreak) maxStreak = currentStreak;
-        } else {
-            currentStreak = 0;
+        // Đồng bộ tên loại câu hỏi với schema trong User.js (vd: boolean -> tf)
+        const schemaType = ans.type === 'boolean' ? 'tf' : ans.type;
+        const isCorrect = ans.isCorrect || ans.score > 0;
+
+        // Đảm bảo môn học và loại câu hỏi có tồn tại trong DB của user
+        if (subject && schemaType && user.streaks[subject] && user.streaks[subject][schemaType]) {
+            if (isCorrect) {
+                // 1. Cộng dồn câu đúng
+                user.streaks[subject][schemaType].current += 1;
+                const currentStreak = user.streaks[subject][schemaType].current;
+                
+                // Cập nhật kỷ lục
+                if (currentStreak > user.streaks[subject][schemaType].highest) {
+                    user.streaks[subject][schemaType].highest = currentStreak;
+                }
+
+                // 2. KIỂM TRA MỐC HUY CHƯƠNG ĐỘNG
+                // Dùng === để chỉ cấp huy chương 1 lần duy nhất ngay khi VỪA CHẠM MỐC
+                const hitMilestone = MILESTONES.find(m => m.count === currentStreak);
+                
+                if (hitMilestone) {
+                    const subjName = SUBJECT_MAP[subject] || subject;
+                    const typeName = TYPE_MAP[schemaType] || schemaType;
+                    
+                    // Ghép tên theo đúng format: "Tên môn học + Loại câu hỏi + Cấp bậc"
+                    const badgeName = `${subjName} ${typeName} ${hitMilestone.level}`;
+                    
+                    earnedNewBadges.push({
+                        name: badgeName,
+                        desc: `Outstanding! You've reached a streak of ${currentStreak} correct answers in ${subjName} ${typeName}.`
+                    });
+                }
+            } else {
+                // Trả về 0 nếu làm sai
+                user.streaks[subject][schemaType].current = 0; 
+            }
         }
     });
 
-    // 10 correct answers in a row
-    if (maxStreak >= 10) {
-        await awardBadge(
-            userId, 
-            "Sharp Shooter", 
-            "Incredible! You answered 10 questions correctly in a row without making any mistakes."
-        );
-    }
-    // 5 correct answers in a row
-    else if (maxStreak >= 5) {
-        await awardBadge(
-            userId, 
-            "On Fire", 
-            "You are on fire! You have a streak of 5 correct answers in a row."
-        );
+    // 3. LƯU DỮ LIỆU ĐIỂM SỐ TRƯỚC
+    user.markModified('streaks'); 
+    await user.save();
+
+    // 4. CẤP HUY CHƯƠNG & BẮN THÔNG BÁO TỪNG CÁI MỘT
+    // Vòng lặp này giúp xử lý việc nếu user đạt nhiều huy chương cùng lúc ở các môn/loại câu khác nhau
+    for (const badge of earnedNewBadges) {
+        await awardBadge(userId, badge.name, badge.desc);
     }
 });
 
